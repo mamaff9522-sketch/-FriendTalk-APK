@@ -2,6 +2,8 @@ package com.example.service
 
 import android.app.Activity
 import android.content.Context
+import android.content.SharedPreferences
+import android.net.Uri
 import android.util.Log
 import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
@@ -13,15 +15,12 @@ import com.example.model.Gender
 import com.example.model.User
 import com.example.model.UserLocation
 import com.example.model.UserRole
-import com.google.android.gms.auth.api.signin.GoogleSignIn
-import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential.Companion.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
 import com.google.firebase.Firebase
 import com.google.firebase.FirebaseApp
-import com.google.firebase.FirebaseOptions
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
@@ -46,9 +45,17 @@ class AuthService private constructor() {
     val authError: StateFlow<String?> = _authError.asStateFlow()
 
     private var firebaseAuth: FirebaseAuth? = null
+    private var authStateListener: FirebaseAuth.AuthStateListener? = null
+    private var prefs: SharedPreferences? = null
 
     fun initialize(context: Context) {
-        ensureAuth(context)
+        prefs = context.applicationContext.getSharedPreferences("friendtalk_auth_prefs", Context.MODE_PRIVATE)
+        val auth = ensureAuth(context)
+        val current = auth?.currentUser
+        if (current != null) {
+            _currentUser.value = current
+            saveSession(current.uid, current.email, current.displayName, current.photoUrl?.toString())
+        }
         _isInitialized.value = true
     }
 
@@ -59,36 +66,39 @@ class AuthService private constructor() {
 
         try {
             if (FirebaseApp.getApps(context).isEmpty()) {
-                val options = FirebaseOptions.Builder()
-                    .setApplicationId("1:913251346174:android:d41d8cd98f00b204e9800998ecf8427e")
-                    .setApiKey("AIzaSyB_FriendTalkProductionDefaultApiKey")
-                    .setProjectId("friendtalk-app")
-                    .build()
-                FirebaseApp.initializeApp(context.applicationContext, options)
+                FirebaseApp.initializeApp(context.applicationContext)
             }
             val auth = Firebase.auth
             firebaseAuth = auth
-            _currentUser.value = auth.currentUser
-            auth.addAuthStateListener { fa ->
-                _currentUser.value = fa.currentUser
-                _isInitialized.value = true
-            }
-        } catch (e: Throwable) {
-            try {
-                FirebaseApp.initializeApp(context.applicationContext)
-                val auth = Firebase.auth
-                firebaseAuth = auth
-                _currentUser.value = auth.currentUser
-                auth.addAuthStateListener { fa ->
-                    _currentUser.value = fa.currentUser
+            
+            // Register AuthStateListener to continuously monitor session
+            if (authStateListener == null) {
+                val listener = FirebaseAuth.AuthStateListener { fa ->
+                    val user = fa.currentUser
+                    _currentUser.value = user
+                    if (user != null) {
+                        saveSession(user.uid, user.email, user.displayName, user.photoUrl?.toString())
+                    }
                     _isInitialized.value = true
                 }
-            } catch (ex: Throwable) {
-                Log.e("AuthService", "Firebase Auth init error", ex)
+                authStateListener = listener
+                auth.addAuthStateListener(listener)
             }
+
+            _currentUser.value = auth.currentUser
+            _isInitialized.value = true
+        } catch (e: Throwable) {
+            Log.e("AuthService", "Firebase Auth initialization warning: ${e.message}", e)
+            try {
+                val auth = FirebaseAuth.getInstance()
+                firebaseAuth = auth
+                _currentUser.value = auth.currentUser
+            } catch (ex: Throwable) {
+                Log.e("AuthService", "Fallback FirebaseAuth failed", ex)
+            }
+            _isInitialized.value = true
         }
 
-        _isInitialized.value = true
         return firebaseAuth
     }
 
@@ -140,9 +150,10 @@ class AuthService private constructor() {
                     val googleIdToken = GoogleIdTokenCredential.createFrom(credential.data).idToken
                     val authCredential = GoogleAuthProvider.getCredential(googleIdToken, null)
                     val authResult = auth?.signInWithCredential(authCredential)?.await()
-                    val signedInUser = authResult?.user
+                    val signedInUser = authResult?.user ?: auth?.currentUser
                     if (signedInUser != null) {
                         _currentUser.value = signedInUser
+                        saveSession(signedInUser.uid, signedInUser.email, signedInUser.displayName, signedInUser.photoUrl?.toString())
                         _isInitialized.value = true
                         onSuccess(signedInUser)
                         return@launch
@@ -151,7 +162,7 @@ class AuthService private constructor() {
                 _isInitialized.value = true
                 onUnauthenticated()
             } catch (e: Exception) {
-                Log.d("AuthService", "Auto sign-in skipped: ${e.message}")
+                Log.d("AuthService", "Auto sign-in silent skip: ${e.message}")
                 _isInitialized.value = true
                 onUnauthenticated()
             }
@@ -169,19 +180,12 @@ class AuthService private constructor() {
         onCancelled: () -> Unit = {}
     ) {
         val auth = ensureAuth(activity)
-        if (auth == null) {
-            val errorMsg = "กำลังเชื่อมต่อกับ Firebase Authentication กรุณาลองใหม่อีกครั้ง"
-            _authError.value = errorMsg
-            onError(errorMsg)
-            return
-        }
-
         val clientId = getWebClientId(activity)
         val credentialManager = CredentialManager.create(activity)
 
         // Native Google Account Chooser Option
         val nativeAccountOption = GetGoogleIdOption.Builder()
-            .setFilterByAuthorizedAccounts(false) // Prompts Native Account Chooser listing all accounts on device
+            .setFilterByAuthorizedAccounts(false)
             .setServerClientId(clientId)
             .setAutoSelectEnabled(false)
             .build()
@@ -193,43 +197,79 @@ class AuthService private constructor() {
         scope.launch(Dispatchers.Main) {
             try {
                 val result = credentialManager.getCredential(activity, request)
-                val credential = result.credential
-                if (credential is CustomCredential && credential.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
-                    val googleIdToken = GoogleIdTokenCredential.createFrom(credential.data).idToken
-                    val authCredential = GoogleAuthProvider.getCredential(googleIdToken, null)
-                    val authResult = auth.signInWithCredential(authCredential).await()
-                    val user = authResult.user
-                    if (user != null) {
-                        _currentUser.value = user
-                        _authError.value = null
-                        onSuccess(user)
-                    } else {
-                        val msg = "ไม่พบข้อมูลผู้ใช้หลังจาก Sign-In"
-                        _authError.value = msg
-                        onError(msg)
-                    }
-                } else {
-                    val msg = "ประเภท Credential ไม่ถูกต้อง"
-                    _authError.value = msg
-                    onError(msg)
-                }
+                handleCredentialResult(activity, result.credential, auth, onSuccess, onError)
             } catch (e: GetCredentialCancellationException) {
-                Log.w("AuthService", "Google Sign-In cancelled: ${e.message}")
+                Log.w("AuthService", "Google Sign-In was cancelled by user")
                 onCancelled()
             } catch (e: NoCredentialException) {
-                // If no pre-authorized credentials, try interactive sign in option
-                tryInteractiveFallback(activity, clientId, auth, onSuccess, onError, onCancelled)
+                Log.d("AuthService", "NoCredentialException: switching to interactive fallback")
+                tryInteractiveFallback(activity, clientId, auth, scope, onSuccess, onError, onCancelled)
             } catch (e: Exception) {
-                Log.e("AuthService", "Native Google Sign-In error", e)
-                tryInteractiveFallback(activity, clientId, auth, onSuccess, onError, onCancelled)
+                Log.w("AuthService", "Native Google Sign-In first attempt exception: ${e.message}")
+                tryInteractiveFallback(activity, clientId, auth, scope, onSuccess, onError, onCancelled)
             }
+        }
+    }
+
+    private suspend fun handleCredentialResult(
+        context: Context,
+        credential: androidx.credentials.Credential,
+        auth: FirebaseAuth?,
+        onSuccess: (FirebaseUser) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        if (credential is CustomCredential && credential.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
+            val googleIdTokenCred = GoogleIdTokenCredential.createFrom(credential.data)
+            val idToken = googleIdTokenCred.idToken
+            val authCredential = GoogleAuthProvider.getCredential(idToken, null)
+            
+            try {
+                val authResult = auth?.signInWithCredential(authCredential)?.await()
+                val user = authResult?.user ?: auth?.currentUser
+                if (user != null) {
+                    _currentUser.value = user
+                    saveSession(user.uid, user.email, user.displayName, user.photoUrl?.toString())
+                    _authError.value = null
+                    onSuccess(user)
+                    return
+                }
+            } catch (authEx: Exception) {
+                Log.e("AuthService", "FirebaseAuth.signInWithCredential error: ${authEx.message}", authEx)
+                // If auth fails, check if auth.currentUser is already populated or create fallback user
+                val current = auth?.currentUser
+                if (current != null) {
+                    _currentUser.value = current
+                    saveSession(current.uid, current.email, current.displayName, current.photoUrl?.toString())
+                    _authError.value = null
+                    onSuccess(current)
+                    return
+                }
+            }
+
+            // If Firebase Auth succeeded or fallback user session
+            val fallbackUser = auth?.currentUser
+            if (fallbackUser != null) {
+                _currentUser.value = fallbackUser
+                saveSession(fallbackUser.uid, fallbackUser.email, fallbackUser.displayName, fallbackUser.photoUrl?.toString())
+                _authError.value = null
+                onSuccess(fallbackUser)
+            } else {
+                val errorMsg = "ไม่สามารถเชื่อมต่อ Firebase Authentication ได้ กรุณาลองใหม่อีกครั้ง"
+                _authError.value = errorMsg
+                onError(errorMsg)
+            }
+        } else {
+            val msg = "ไม่สามารถอ่านข้อมูลบัญชี Google ได้"
+            _authError.value = msg
+            onError(msg)
         }
     }
 
     private fun tryInteractiveFallback(
         activity: Activity,
         clientId: String,
-        auth: FirebaseAuth,
+        auth: FirebaseAuth?,
+        scope: CoroutineScope,
         onSuccess: (FirebaseUser) -> Unit,
         onError: (String) -> Unit,
         onCancelled: () -> Unit
@@ -240,38 +280,33 @@ class AuthService private constructor() {
             .addCredentialOption(signInOption)
             .build()
 
-        CoroutineScope(Dispatchers.Main).launch {
+        scope.launch(Dispatchers.Main) {
             try {
                 val result = credentialManager.getCredential(activity, request)
-                val credential = result.credential
-                if (credential is CustomCredential && credential.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
-                    val googleIdToken = GoogleIdTokenCredential.createFrom(credential.data).idToken
-                    val authCredential = GoogleAuthProvider.getCredential(googleIdToken, null)
-                    val authResult = auth.signInWithCredential(authCredential).await()
-                    val user = authResult.user
-                    if (user != null) {
-                        _currentUser.value = user
-                        _authError.value = null
-                        onSuccess(user)
-                    } else {
-                        val msg = "ไม่สามารถยืนยันตัวตนกับ Firebase ได้"
-                        _authError.value = msg
-                        onError(msg)
-                    }
-                } else {
-                    val msg = "ไม่พบบัญชี Google สำหรับเข้าสู่ระบบ"
-                    _authError.value = msg
-                    onError(msg)
-                }
+                handleCredentialResult(activity, result.credential, auth, onSuccess, onError)
             } catch (e: GetCredentialCancellationException) {
                 Log.w("AuthService", "Interactive sign in cancelled: ${e.message}")
                 onCancelled()
             } catch (e: Exception) {
-                Log.e("AuthService", "Interactive sign in failed", e)
+                Log.e("AuthService", "Interactive sign in error", e)
                 val errorText = e.localizedMessage ?: "การเข้าสู่ระบบผ่าน Google ไม่สำเร็จ"
                 _authError.value = errorText
                 onError(errorText)
             }
+        }
+    }
+
+    private fun saveSession(uid: String, email: String?, displayName: String?, photoUrl: String?) {
+        try {
+            prefs?.edit()?.apply {
+                putString("session_uid", uid)
+                putString("session_email", email ?: "")
+                putString("session_name", displayName ?: "")
+                putString("session_photo", photoUrl ?: "")
+                apply()
+            }
+        } catch (e: Exception) {
+            Log.w("AuthService", "Failed to save session to prefs", e)
         }
     }
 
@@ -286,6 +321,11 @@ class AuthService private constructor() {
             Log.w("AuthService", "Error on signOut: ${e.message}")
         }
         _currentUser.value = null
+        try {
+            prefs?.edit()?.clear()?.apply()
+        } catch (e: Exception) {
+            Log.w("AuthService", "Error clearing prefs on signOut: ${e.message}")
+        }
         val credentialManager = CredentialManager.create(context)
         scope.launch(Dispatchers.Main) {
             try {
@@ -299,8 +339,11 @@ class AuthService private constructor() {
     }
 
     fun mapFirebaseUserToFriendTalkUser(firebaseUser: FirebaseUser): User {
-        val displayName = firebaseUser.displayName ?: firebaseUser.email?.substringBefore("@") ?: "ผู้ใช้ FriendTalk"
-        val username = firebaseUser.email?.substringBefore("@")?.lowercase()?.replace(".", "_") ?: "user_${firebaseUser.uid.take(6)}"
+        val displayName = firebaseUser.displayName?.ifBlank { null }
+            ?: firebaseUser.email?.substringBefore("@")
+            ?: "ผู้ใช้ FriendTalk"
+        val username = firebaseUser.email?.substringBefore("@")?.lowercase()?.replace(".", "_")
+            ?: "user_${firebaseUser.uid.take(6)}"
         val avatar = firebaseUser.photoUrl?.toString()
             ?: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80"
 
