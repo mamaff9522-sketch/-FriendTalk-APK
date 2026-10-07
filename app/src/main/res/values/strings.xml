@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">FriendTalk</string>
+    <string name="default_web_client_id">913251346174-friendtalk.apps.googleusercontent.com</string>
 </resources>

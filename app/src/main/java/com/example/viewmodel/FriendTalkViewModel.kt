@@ -151,6 +151,20 @@ class FriendTalkViewModel : ViewModel() {
     }
 
     // --- User & Profile ---
+    fun syncFirebaseUser(firebaseUser: com.google.firebase.auth.FirebaseUser) {
+        val mappedUser = com.example.service.AuthService.getInstance().mapFirebaseUserToFriendTalkUser(firebaseUser)
+        val existingIndex = _uiState.value.users.indexOfFirst { it.id == firebaseUser.uid }
+        val updatedUsers = if (existingIndex >= 0) {
+            _uiState.value.users.map { if (it.id == firebaseUser.uid) mappedUser else it }
+        } else {
+            listOf(mappedUser) + _uiState.value.users
+        }
+        _uiState.value = _uiState.value.copy(
+            currentUser = mappedUser,
+            users = updatedUsers
+        )
+    }
+
     fun switchUser(userId: String) {
         val user = _uiState.value.users.find { it.id == userId }
         if (user != null) {

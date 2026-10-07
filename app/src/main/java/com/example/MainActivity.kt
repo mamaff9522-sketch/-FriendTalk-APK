@@ -1,21 +1,28 @@
 package com.example
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.companion.ui.*
 import com.example.model.parseHexColor
+import com.example.service.AuthService
 import com.example.ui.admin.AdminDashboardDialog
 import com.example.ui.admin.AdminUiBuilderDialog
 import com.example.ui.admin.ApkDownloadDialog
+import com.example.ui.auth.AuthScreen
 import com.example.ui.chat.CallDialog
 import com.example.ui.chat.ChatRoomDialog
 import com.example.ui.chat.ChatTab
@@ -31,22 +38,94 @@ import com.example.ui.profile.CreatorStudioDialog
 import com.example.ui.profile.EditProfileDialog
 import com.example.ui.profile.ProfileTab
 import com.example.ui.theme.FriendTalkTheme
+import com.example.ui.theme.Pink500
 import com.example.ui.theme.Slate950
 import com.example.viewmodel.FriendTalkViewModel
+import com.google.firebase.FirebaseApp
+import com.google.firebase.auth.FirebaseUser
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        try {
+            AuthService.getInstance().initialize(this)
+        } catch (e: Exception) {
+            Log.w("MainActivity", "Firebase initialization on startup: ${e.message}")
+        }
         enableEdgeToEdge()
         setContent {
-            FriendTalkApp()
+            FriendTalkRoot()
+        }
+    }
+}
+
+@Composable
+fun FriendTalkRoot(
+    viewModel: FriendTalkViewModel = viewModel()
+) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val authService = remember { AuthService.getInstance() }
+    val firebaseUser by authService.currentUser.collectAsStateWithLifecycle()
+    val isInitialized by authService.isInitialized.collectAsStateWithLifecycle()
+
+    // Attempt auto sign-in once on startup
+    LaunchedEffect(Unit) {
+        authService.attemptAutoSignIn(
+            context = context,
+            scope = coroutineScope,
+            onSuccess = { user ->
+                viewModel.syncFirebaseUser(user)
+            },
+            onUnauthenticated = {
+                // Stay on AuthScreen
+            }
+        )
+    }
+
+    LaunchedEffect(firebaseUser) {
+        firebaseUser?.let { user ->
+            viewModel.syncFirebaseUser(user)
+        }
+    }
+
+    FriendTalkTheme {
+        if (!isInitialized) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Slate950),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(
+                    color = Pink500,
+                    strokeWidth = 3.dp,
+                    modifier = Modifier.size(36.dp)
+                )
+            }
+        } else if (firebaseUser == null) {
+            AuthScreen(
+                onAuthSuccess = { user ->
+                    viewModel.syncFirebaseUser(user)
+                }
+            )
+        } else {
+            FriendTalkApp(
+                viewModel = viewModel,
+                currentUserFirebase = firebaseUser,
+                onSignOut = {
+                    authService.signOut(context, coroutineScope) {}
+                }
+            )
         }
     }
 }
 
 @Composable
 fun FriendTalkApp(
-    viewModel: FriendTalkViewModel = viewModel()
+    viewModel: FriendTalkViewModel,
+    currentUserFirebase: FirebaseUser?,
+    onSignOut: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
