@@ -1,0 +1,10 @@
+{
+  "name": "FriendTalk",
+  "description": "FriendTalk แอปโซเชียลยอดนิยมสำหรับหาเพื่อนใหม่ แชตส่วนตัวและกลุ่ม ไลฟ์สด PK ส่งของขวัญ เรดาร์หาเพื่อน และคอมมูนิตี้คนรุ่นใหม่ในไทย",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
