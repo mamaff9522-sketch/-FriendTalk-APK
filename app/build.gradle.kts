@@ -64,7 +64,7 @@ secrets {
   ignoreList.add("FIREBASE_APPCHECK_DEBUG_TOKEN")
 }
 
-googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN }
+googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.ERROR }
 
 dependencies {
   implementation(platform(libs.androidx.compose.bom))
