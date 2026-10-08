@@ -1,31 +1,52 @@
 {
   "project_info": {
-    "project_number": "913251346174",
-    "project_id": "friendtalk-app",
-    "storage_bucket": "friendtalk-app.appspot.com"
+    "project_number": "123224091480",
+    "project_id": "friendtalk-4e623",
+    "storage_bucket": "friendtalk-4e623.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:913251346174:android:d41d8cd98f00b204e9800998ecf8427e",
+        "mobilesdk_app_id": "1:123224091480:android:4100ae82c91f9e9173132d",
         "android_client_info": {
           "package_name": "com.example"
         }
       },
       "oauth_client": [
         {
-          "client_id": "913251346174-friendtalk.apps.googleusercontent.com",
+          "client_id": "123224091480-2s8qq4pvaq30efarpr43a30drr8etqog.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example",
+            "certificate_hash": "8d5eb4a35ea526fe896a97886ffd358f1a852c1f"
+          }
+        },
+        {
+          "client_id": "123224091480-6d10usr7h5odgnp4ka8io2q1ejobuki1.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example",
+            "certificate_hash": "6fcd3b0b436552390147e0e82c9e41ced100453f"
+          }
+        },
+        {
+          "client_id": "123224091480-04es6lppmsd7iouk4akokd22o8sduh73.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
       "api_key": [
         {
-          "current_key": "AIzaSyB_FriendTalkProductionDefaultApiKey"
+          "current_key": "AIzaSyAQi63Z5_h9kikOPY8SdGM1Juw-h59CQfU"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "123224091480-04es6lppmsd7iouk4akokd22o8sduh73.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
