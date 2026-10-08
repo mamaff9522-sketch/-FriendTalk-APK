@@ -28,6 +28,7 @@ import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.auth
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -37,6 +38,7 @@ import kotlinx.coroutines.tasks.await
 class AuthService private constructor() {
 
     private val TAG = "AUTH_FLOW_DEBUG"
+    private val authScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private val _currentUser = MutableStateFlow<FirebaseUser?>(null)
     val currentUser: StateFlow<FirebaseUser?> = _currentUser.asStateFlow()
@@ -46,6 +48,10 @@ class AuthService private constructor() {
 
     private val _authError = MutableStateFlow<String?>(null)
     val authError: StateFlow<String?> = _authError.asStateFlow()
+
+    fun clearError() {
+        _authError.value = null
+    }
 
     private var firebaseAuth: FirebaseAuth? = null
     private var authStateListener: FirebaseAuth.AuthStateListener? = null
@@ -78,13 +84,21 @@ class AuthService private constructor() {
             if (authStateListener == null) {
                 val listener = FirebaseAuth.AuthStateListener { fa ->
                     val user = fa.currentUser
-                    Log.i(TAG, "[AUTH_FLOW_DEBUG_7] onAuthStateChanged callback received: user=${user?.uid ?: "null"}")
-                    _currentUser.value = user
-                    _isInitialized.value = true
+                    Log.i(TAG, "[AUTH_FLOW_DEBUG_STEP_7_STATE] onAuthStateChanged callback received: user=${user?.uid ?: "null"}, email=${user?.email ?: "null"}")
+                    if (user != null) {
+                        _currentUser.value = user
+                        _isInitialized.value = true
+                    } else {
+                        if (_currentUser.value != null) {
+                            Log.w(TAG, "[AUTH_FLOW_DEBUG_STEP_7_LOGOUT] onAuthStateChanged reported user changed from ${_currentUser.value?.uid} to null!")
+                        }
+                        _currentUser.value = null
+                        _isInitialized.value = true
+                    }
                 }
                 authStateListener = listener
                 auth.addAuthStateListener(listener)
-                Log.i(TAG, "[AUTH_FLOW_DEBUG_7] AuthStateListener registered with FirebaseAuth")
+                Log.i(TAG, "[AUTH_FLOW_DEBUG_STEP_7] AuthStateListener registered with FirebaseAuth")
             }
 
             _currentUser.value = auth.currentUser
@@ -151,7 +165,7 @@ class AuthService private constructor() {
             .addCredentialOption(googleIdOption)
             .build()
 
-        scope.launch(Dispatchers.Main) {
+        authScope.launch {
             try {
                 Log.i(TAG, "[AUTH_FLOW_DEBUG_AUTO] Attempting silent CredentialManager.getCredential...")
                 val result = credentialManager.getCredential(context, request)
@@ -185,54 +199,60 @@ class AuthService private constructor() {
      */
     fun signInWithGoogleNative(
         activity: Activity,
-        scope: CoroutineScope,
+        scope: CoroutineScope? = null,
         onSuccess: (FirebaseUser) -> Unit,
         onError: (String) -> Unit,
-        onCancelled: () -> Unit = {}
+        onCancelled: (String) -> Unit = {}
     ) {
+        clearError()
         val auth = ensureAuth(activity)
         val clientId = getWebClientId(activity)
         val credentialManager = CredentialManager.create(activity)
 
-        // Step 1: Log Google Sign-In start
-        Log.i(TAG, "[AUTH_FLOW_DEBUG_1] START Google Sign-In requested. Activity=${activity.localClassName}, Package=${activity.packageName}, ServerClientId=$clientId")
+        // Step 1: Log Google Sign-In start with non-sensitive identifiers
+        val safeClientIdPrefix = if (clientId.length > 12) clientId.take(12) + "..." else clientId
+        Log.i(TAG, "[AUTH_FLOW_DEBUG_STEP_1_INIT] START Google Sign-In requested. Activity=${activity.localClassName}, Package=${activity.packageName}, ServerClientIdPrefix=$safeClientIdPrefix (len=${clientId.length})")
 
-        val nativeAccountOption = GetGoogleIdOption.Builder()
-            .setFilterByAuthorizedAccounts(false)
-            .setServerClientId(clientId)
-            .setAutoSelectEnabled(false)
-            .build()
+        if (activity.isFinishing || activity.isDestroyed) {
+            val err = "Activity ไม่พร้อมใช้งาน (isFinishing/isDestroyed) ไม่สามารถเปิดหน้าต่างเลือกบัญชีได้"
+            Log.e(TAG, "[AUTH_FLOW_DEBUG_STEP_1_FAIL] $err")
+            _authError.value = err
+            onError(err)
+            return
+        }
 
+        // Primary: Use GetSignInWithGoogleOption (the official standard for interactive button sign-in)
+        val signInOption = GetSignInWithGoogleOption.Builder(serverClientId = clientId).build()
         val request = GetCredentialRequest.Builder()
-            .addCredentialOption(nativeAccountOption)
+            .addCredentialOption(signInOption)
             .build()
 
-        scope.launch(Dispatchers.Main) {
+        authScope.launch {
             try {
-                Log.i(TAG, "[AUTH_FLOW_DEBUG_1] Invoking credentialManager.getCredential with GetGoogleIdOption...")
+                Log.i(TAG, "[AUTH_FLOW_DEBUG_STEP_2_REQ] Invoking credentialManager.getCredential with GetSignInWithGoogleOption...")
                 val result = credentialManager.getCredential(activity, request)
-                Log.i(TAG, "[AUTH_FLOW_DEBUG_2] CredentialManager returned credential type=${result.credential.type}")
+                Log.i(TAG, "[AUTH_FLOW_DEBUG_STEP_3_CALLBACK] CredentialManager returned successfully. Type=${result.credential.type}")
                 handleCredentialResult(activity, result.credential, auth, onSuccess, onError)
             } catch (e: GetCredentialCancellationException) {
                 // Step 3: Cancellation exception
-                Log.w(TAG, "[AUTH_FLOW_DEBUG_3] Google Sign-In CANCELLED by user: ${e.message}")
-                onCancelled()
+                val cancelMsg = e.message ?: "Google Play Services ปิดหน้าต่างเลือกบัญชี"
+                Log.w(TAG, "[AUTH_FLOW_DEBUG_STEP_3_CANCEL] GetCredentialCancellationException: $cancelMsg")
+                val fullMsg = "การเลือกบัญชีถูกปิดหรือยกเลิก ($cancelMsg). หากเลือกอีเมลแล้วเด้งกลับ กรุณาตรวจสอบว่าได้ลงทะเบียน SHA-1 ใน Firebase Console แล้วหรือยัง"
+                _authError.value = fullMsg
+                onCancelled(fullMsg)
             } catch (e: NoCredentialException) {
-                // Step 3: NoCredentialException
-                Log.w(TAG, "[AUTH_FLOW_DEBUG_3] NoCredentialException: ${e.message}. Trying GetSignInWithGoogleOption fallback...")
-                tryInteractiveFallback(activity, clientId, auth, scope, onSuccess, onError, onCancelled)
+                // Step 3: NoCredentialException -> Try GetGoogleIdOption fallback
+                Log.w(TAG, "[AUTH_FLOW_DEBUG_STEP_3_FALLBACK] NoCredentialException: ${e.message}. Trying GetGoogleIdOption fallback...")
+                tryGoogleIdOptionFallback(activity, clientId, auth, onSuccess, onError, onCancelled)
             } catch (e: GetCredentialCustomException) {
-                // Step 3: Custom exception with type
-                Log.e(TAG, "[AUTH_FLOW_DEBUG_3] GetCredentialCustomException: type=${e.type}, message=${e.message}", e)
-                tryInteractiveFallback(activity, clientId, auth, scope, onSuccess, onError, onCancelled)
+                Log.e(TAG, "[AUTH_FLOW_DEBUG_STEP_3_ERROR] GetCredentialCustomException: type=${e.type}, message=${e.message}", e)
+                tryGoogleIdOptionFallback(activity, clientId, auth, onSuccess, onError, onCancelled)
             } catch (e: GetCredentialException) {
-                // Step 3: General GetCredentialException
-                Log.e(TAG, "[AUTH_FLOW_DEBUG_3] GetCredentialException: type=${e.type}, message=${e.message}", e)
-                tryInteractiveFallback(activity, clientId, auth, scope, onSuccess, onError, onCancelled)
+                Log.e(TAG, "[AUTH_FLOW_DEBUG_STEP_3_ERROR] GetCredentialException: type=${e.type}, message=${e.message}", e)
+                tryGoogleIdOptionFallback(activity, clientId, auth, onSuccess, onError, onCancelled)
             } catch (e: Exception) {
-                // Step 3: Any other exception
-                Log.e(TAG, "[AUTH_FLOW_DEBUG_3] Native Google Sign-In unexpected exception: ${e.javaClass.simpleName} - ${e.message}", e)
-                tryInteractiveFallback(activity, clientId, auth, scope, onSuccess, onError, onCancelled)
+                Log.e(TAG, "[AUTH_FLOW_DEBUG_STEP_3_ERROR] Native Google Sign-In unexpected exception: ${e.javaClass.simpleName} - ${e.message}", e)
+                tryGoogleIdOptionFallback(activity, clientId, auth, onSuccess, onError, onCancelled)
             }
         }
     }
@@ -244,106 +264,125 @@ class AuthService private constructor() {
         onSuccess: (FirebaseUser) -> Unit,
         onError: (String) -> Unit
     ) {
-        // Step 2 & 3: Check Google Credential / ID Token
-        if (credential is CustomCredential && credential.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
-            val googleIdTokenCred = try {
-                GoogleIdTokenCredential.createFrom(credential.data)
-            } catch (e: Exception) {
-                Log.e(TAG, "[AUTH_FLOW_DEBUG_3] Failed parsing GoogleIdTokenCredential: ${e.message}", e)
-                val err = "ล้มเหลวในการอ่าน ID Token: [${e.javaClass.simpleName}] ${e.message}"
-                _authError.value = err
-                onError(err)
-                return
-            }
-
-            val idToken = googleIdTokenCred.idToken
-            Log.i(TAG, "[AUTH_FLOW_DEBUG_2] Google ID Token received successfully. Length=${idToken.length}, DisplayName=${googleIdTokenCred.displayName ?: "null"}, Id=${googleIdTokenCred.id}")
-
-            // Step 4: Check FirebaseAuth.signInWithCredential()
-            Log.i(TAG, "[AUTH_FLOW_DEBUG_4] Creating GoogleAuthProvider credential and calling FirebaseAuth.signInWithCredential...")
-            val authCredential = GoogleAuthProvider.getCredential(idToken, null)
-
-            try {
-                val authResult = auth?.signInWithCredential(authCredential)?.await()
-                val user = authResult?.user ?: auth?.currentUser
-
-                // Step 5: signInWithCredential result check
-                Log.i(TAG, "[AUTH_FLOW_DEBUG_5] FirebaseAuth.signInWithCredential SUCCESS: userUid=${user?.uid ?: "null"}, email=${user?.email ?: "null"}")
-
-                // Step 6: Immediately check currentUser
-                val immediateCurrentUser = auth?.currentUser
-                Log.i(TAG, "[AUTH_FLOW_DEBUG_6] Immediate check FirebaseAuth.currentUser: uid=${immediateCurrentUser?.uid ?: "null"}")
-
-                if (user != null) {
-                    _currentUser.value = user
-                    _authError.value = null
-                    Log.i(TAG, "[AUTH_FLOW_DEBUG_8] Triggering onSuccess callback with user=${user.uid}")
-                    onSuccess(user)
-                    return
-                } else {
-                    val msg = "[AUTH_FLOW_DEBUG_6_FAIL] Firebase signInWithCredential succeeded but returned null user"
-                    Log.e(TAG, msg)
-                    _authError.value = msg
-                    onError(msg)
-                    return
-                }
-            } catch (authEx: FirebaseAuthException) {
-                // Step 5: FirebaseAuthException details
-                val errCode = authEx.errorCode
-                val errMsg = authEx.message ?: "Unknown Firebase error"
-                Log.e(TAG, "[AUTH_FLOW_DEBUG_5_FAIL] FirebaseAuthException: ErrorCode=[$errCode], Message=[$errMsg]", authEx)
-                val fullError = "Firebase Auth ล้มเหลว: [$errCode] $errMsg"
-                _authError.value = fullError
-                onError(fullError)
-                return
-            } catch (authEx: Exception) {
-                // Step 5: Generic Exception details
-                val exClass = authEx.javaClass.name
-                val exMsg = authEx.message ?: "Unknown error"
-                Log.e(TAG, "[AUTH_FLOW_DEBUG_5_FAIL] Exception during signInWithCredential: Class=[$exClass], Message=[$exMsg]", authEx)
-                val fullError = "Firebase Sign-In Error: [$exClass] $exMsg"
-                _authError.value = fullError
-                onError(fullError)
-                return
-            }
-        } else {
-            // Step 3: Not a Google ID Token credential
-            val msg = "ไม่ได้รับ ID Token: Credential Type ไม่ถูกต้อง (${credential.type})"
-            Log.e(TAG, "[AUTH_FLOW_DEBUG_3_FAIL] $msg")
+        // Step 3: Verify Credential Type
+        if (credential !is CustomCredential || credential.type != TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
+            val msg = "ไม่ได้รับ Google ID Token: Credential Type ไม่ถูกต้อง (${credential.type})"
+            Log.e(TAG, "[AUTH_FLOW_DEBUG_STEP_3_FAIL] $msg")
             _authError.value = msg
             onError(msg)
+            return
+        }
+
+        // Step 4: Parse GoogleIdTokenCredential and verify ID Token existence
+        val googleIdTokenCred = try {
+            GoogleIdTokenCredential.createFrom(credential.data)
+        } catch (e: Exception) {
+            Log.e(TAG, "[AUTH_FLOW_DEBUG_STEP_4_FAIL] Failed parsing GoogleIdTokenCredential: ${e.message}", e)
+            val err = "ล้มเหลวในการอ่าน ID Token: [${e.javaClass.simpleName}] ${e.message}"
+            _authError.value = err
+            onError(err)
+            return
+        }
+
+        val idToken = googleIdTokenCred.idToken
+        if (idToken.isBlank()) {
+            val err = "ข้อผิดพลาด: ได้รับข้อมูลจาก Google แต่ไม่มี ID Token (idToken ว่างเปล่า)"
+            Log.e(TAG, "[AUTH_FLOW_DEBUG_STEP_4_FAIL] $err")
+            _authError.value = err
+            onError(err)
+            return
+        }
+
+        val safeIdPrefix = if (googleIdTokenCred.id.length > 6) googleIdTokenCred.id.take(6) + "..." else googleIdTokenCred.id
+        Log.i(TAG, "[AUTH_FLOW_DEBUG_STEP_4_SUCCESS] Google ID Token received. Length=${idToken.length}, DisplayName=${googleIdTokenCred.displayName ?: "null"}, IdPrefix=$safeIdPrefix")
+
+        // Step 5: Check FirebaseAuth and invoke signInWithCredential
+        val currentAuth = auth ?: ensureAuth(context)
+        if (currentAuth == null) {
+            val err = "ไม่สามารถเชื่อมต่อ Firebase Auth ได้ (FirebaseAuth instance เป็น null)"
+            Log.e(TAG, "[AUTH_FLOW_DEBUG_STEP_5_FAIL] $err")
+            _authError.value = err
+            onError(err)
+            return
+        }
+
+        Log.i(TAG, "[AUTH_FLOW_DEBUG_STEP_5_SIGNIN] Creating GoogleAuthProvider credential and calling FirebaseAuth.signInWithCredential...")
+        val authCredential = GoogleAuthProvider.getCredential(idToken, null)
+
+        try {
+            val authResult = currentAuth.signInWithCredential(authCredential).await()
+            val user = authResult.user ?: currentAuth.currentUser
+
+            // Step 6: Verify sign-in result
+            if (user != null) {
+                Log.i(TAG, "[AUTH_FLOW_DEBUG_STEP_6_SUCCESS] FirebaseAuth.signInWithCredential SUCCESS: userUid=${user.uid}, email=${user.email ?: "null"}")
+                _currentUser.value = user
+                _authError.value = null
+                Log.i(TAG, "[AUTH_FLOW_DEBUG_STEP_8_NAV] Triggering onSuccess callback with user=${user.uid}")
+                onSuccess(user)
+            } else {
+                val msg = "[AUTH_FLOW_DEBUG_STEP_6_FAIL] Firebase signInWithCredential สำเร็จแต่ user เป็น null"
+                Log.e(TAG, msg)
+                _authError.value = msg
+                onError(msg)
+            }
+        } catch (authEx: FirebaseAuthException) {
+            val errCode = authEx.errorCode
+            val errMsg = authEx.message ?: "Unknown Firebase error"
+            Log.e(TAG, "[AUTH_FLOW_DEBUG_STEP_5_FAIL] FirebaseAuthException: ErrorCode=[$errCode], Message=[$errMsg]", authEx)
+            val fullError = when (errCode) {
+                "ERROR_INVALID_CREDENTIAL" -> "ข้อมูลรับรอง Google ไม่ถูกต้องหรือหมดอายุ [$errCode]. กรุณาตรวจสอบ SHA-1 ใน Firebase Console"
+                "ERROR_USER_DISABLED" -> "บัญชีผู้ใช้นี้ถูกระงับการใช้งานใน Firebase [$errCode]"
+                else -> "Firebase Auth ล้มเหลว [$errCode]: $errMsg"
+            }
+            _authError.value = fullError
+            onError(fullError)
+        } catch (authEx: Exception) {
+            val exClass = authEx.javaClass.simpleName
+            val exMsg = authEx.message ?: "Unknown error"
+            Log.e(TAG, "[AUTH_FLOW_DEBUG_STEP_5_FAIL] Exception during signInWithCredential: Class=[$exClass], Message=[$exMsg]", authEx)
+            val fullError = "Firebase Sign-In Error: [$exClass] $exMsg"
+            _authError.value = fullError
+            onError(fullError)
         }
     }
 
-    private fun tryInteractiveFallback(
+    private fun tryGoogleIdOptionFallback(
         activity: Activity,
         clientId: String,
         auth: FirebaseAuth?,
-        scope: CoroutineScope,
         onSuccess: (FirebaseUser) -> Unit,
         onError: (String) -> Unit,
-        onCancelled: () -> Unit
+        onCancelled: (String) -> Unit
     ) {
         val credentialManager = CredentialManager.create(activity)
-        Log.i(TAG, "[AUTH_FLOW_DEBUG_FALLBACK] Calling GetSignInWithGoogleOption with serverClientId=$clientId")
+        Log.i(TAG, "[AUTH_FLOW_DEBUG_STEP_3_FALLBACK] Calling GetGoogleIdOption fallback with serverClientIdPrefix=${clientId.take(12)}...")
 
-        val signInOption = GetSignInWithGoogleOption.Builder(serverClientId = clientId).build()
-        val request = GetCredentialRequest.Builder()
-            .addCredentialOption(signInOption)
+        val googleIdOption = GetGoogleIdOption.Builder()
+            .setFilterByAuthorizedAccounts(false)
+            .setServerClientId(clientId)
+            .setAutoSelectEnabled(false)
             .build()
 
-        scope.launch(Dispatchers.Main) {
+        val request = GetCredentialRequest.Builder()
+            .addCredentialOption(googleIdOption)
+            .build()
+
+        authScope.launch {
             try {
                 val result = credentialManager.getCredential(activity, request)
-                Log.i(TAG, "[AUTH_FLOW_DEBUG_FALLBACK] Fallback returned credential type=${result.credential.type}")
+                Log.i(TAG, "[AUTH_FLOW_DEBUG_STEP_3_FALLBACK] Fallback returned credential type=${result.credential.type}")
                 handleCredentialResult(activity, result.credential, auth, onSuccess, onError)
             } catch (e: GetCredentialCancellationException) {
-                Log.w(TAG, "[AUTH_FLOW_DEBUG_3] Fallback cancelled by user: ${e.message}")
-                onCancelled()
+                val cancelMsg = e.message ?: "ผู้ใช้หรือระบบยกเลิก"
+                Log.w(TAG, "[AUTH_FLOW_DEBUG_STEP_3_CANCEL] Fallback cancelled: $cancelMsg")
+                val fullMsg = "การเข้าสู่ระบบถูกยกเลิก ($cancelMsg). หากเลือกอีเมลแล้วเด้งกลับ ตรวจสอบ SHA-1 ใน Firebase Console"
+                _authError.value = fullMsg
+                onCancelled(fullMsg)
             } catch (e: Exception) {
                 val exName = e.javaClass.simpleName
                 val exMsg = e.message ?: "Unknown error"
-                Log.e(TAG, "[AUTH_FLOW_DEBUG_3_FAIL] Fallback failed: [$exName] $exMsg", e)
+                Log.e(TAG, "[AUTH_FLOW_DEBUG_STEP_3_FAIL] Fallback failed: [$exName] $exMsg", e)
                 val errorText = "Google Sign-In ล้มเหลว: [$exName] $exMsg"
                 _authError.value = errorText
                 onError(errorText)

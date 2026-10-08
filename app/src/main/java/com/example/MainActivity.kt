@@ -84,6 +84,7 @@ fun FriendTalkRoot(
     }
 
     LaunchedEffect(firebaseUser) {
+        Log.i("MainActivity", "[AUTH_FLOW_DEBUG_STEP_8_NAV] LaunchedEffect(firebaseUser) observed: uid=${firebaseUser?.uid ?: "null"}")
         firebaseUser?.let { user ->
             viewModel.syncFirebaseUser(user)
         }

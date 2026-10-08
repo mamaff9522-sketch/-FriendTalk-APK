@@ -4,14 +4,18 @@ import android.app.Activity
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -22,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.service.AuthService
 import com.example.ui.theme.*
 import com.google.firebase.auth.FirebaseUser
@@ -35,8 +40,11 @@ fun AuthScreen(
     val coroutineScope = rememberCoroutineScope()
     val authService = remember { AuthService.getInstance() }
 
-    var isLoading by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
+    val serviceAuthError by authService.authError.collectAsStateWithLifecycle()
+    var isLoading by rememberSaveable { mutableStateOf(false) }
+    var localError by rememberSaveable { mutableStateOf<String?>(null) }
+
+    val displayError = localError ?: serviceAuthError
 
     Box(
         modifier = Modifier
@@ -92,10 +100,10 @@ fun AuthScreen(
                 textAlign = TextAlign.Center
             )
 
-            Spacer(modifier = Modifier.height(36.dp))
+            Spacer(modifier = Modifier.height(28.dp))
 
-            // Error Message Banner
-            AnimatedVisibility(visible = errorMessage != null) {
+            // Diagnostic Error Message Banner
+            AnimatedVisibility(visible = displayError != null) {
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = Rose500.copy(alpha = 0.15f),
@@ -104,14 +112,75 @@ fun AuthScreen(
                         .fillMaxWidth()
                         .padding(bottom = 16.dp)
                 ) {
-                    Text(
-                        text = errorMessage ?: "",
-                        color = Rose500,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.padding(12.dp),
-                        textAlign = TextAlign.Center
-                    )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "ข้อผิดพลาดการเข้าสู่ระบบ ⚠️",
+                                color = Rose500,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            IconButton(
+                                onClick = {
+                                    localError = null
+                                    authService.clearError()
+                                },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "ปิด",
+                                    tint = Rose500,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Text(
+                            text = displayError ?: "",
+                            color = Rose500,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            lineHeight = 16.sp
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    localError = null
+                                    authService.clearError()
+                                },
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = null,
+                                tint = Pink400,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "ลองใหม่อีกครั้ง",
+                                color = Pink400,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
                 }
             }
 
@@ -127,7 +196,8 @@ fun AuthScreen(
                 Button(
                     onClick = {
                         isLoading = true
-                        errorMessage = null
+                        localError = null
+                        authService.clearError()
                         val activity = context as? Activity
                         if (activity != null) {
                             authService.signInWithGoogleNative(
@@ -135,19 +205,21 @@ fun AuthScreen(
                                 scope = coroutineScope,
                                 onSuccess = { firebaseUser: FirebaseUser ->
                                     isLoading = false
+                                    localError = null
                                     onAuthSuccess(firebaseUser)
                                 },
                                 onError = { err: String ->
                                     isLoading = false
-                                    errorMessage = err
+                                    localError = err
                                 },
-                                onCancelled = {
+                                onCancelled = { cancelReason: String ->
                                     isLoading = false
+                                    localError = cancelReason
                                 }
                             )
                         } else {
                             isLoading = false
-                            errorMessage = "Activity Context ไม่ถูกต้อง"
+                            localError = "Activity Context ไม่ถูกต้อง"
                         }
                     },
                     colors = ButtonDefaults.buttonColors(
