@@ -32,7 +32,6 @@ jobs:
             exit 1
           fi
 
-          # เก็บเฉพาะตัวอักษรที่เป็น Base64 จริง
           printf '%s' "$ANDROID_KEYSTORE_BASE64" \
             | tr -cd 'A-Za-z0-9+/=' \
             > keystore.clean.base64
@@ -40,13 +39,11 @@ jobs:
           echo "Clean Base64 length:"
           wc -c keystore.clean.base64
 
-          # ถอดกลับเป็นไฟล์ JKS
           base64 --decode keystore.clean.base64 > my-upload-key.jks
 
           echo "Decoded JKS size:"
           stat -c%s my-upload-key.jks
 
-          # ไฟล์ต้นฉบับของเราที่ตรวจใน Termux = 2247 bytes
           if [ "$(stat -c%s my-upload-key.jks)" -ne 2247 ]; then
             echo "::error::Keystore size is not 2247 bytes"
             exit 1
@@ -74,8 +71,12 @@ jobs:
           STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          chmod +x ./gradlew
-          ./gradlew clean assembleRelease --no-daemon --stacktrace
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+            ./gradlew clean assembleRelease --no-daemon --stacktrace
+          else
+            gradle clean assembleRelease --no-daemon --stacktrace
+          fi
 
       - name: Verify Signed APK
         run: |
