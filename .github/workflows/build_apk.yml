@@ -12,93 +12,133 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-    - name: Set up JDK 17
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
-        cache: gradle
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+          cache: gradle
 
-    - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v4
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
 
-    - name: Build with Gradle
-      run: |
-        if [ -f "./gradlew" ]; then
+      - name: Restore Fixed Android Keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 secret is missing"
+            exit 1
+          fi
+
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > my-upload-key.jks
+
+          if [ ! -s "my-upload-key.jks" ]; then
+            echo "::error::Failed to restore my-upload-key.jks"
+            exit 1
+          fi
+
+          echo "Fixed keystore restored successfully"
+
+      - name: Verify Keystore
+        env:
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$STORE_PASSWORD" ]; then
+            echo "::error::ANDROID_KEYSTORE_PASSWORD secret is missing"
+            exit 1
+          fi
+
+          keytool -list \
+            -keystore my-upload-key.jks \
+            -storepass "$STORE_PASSWORD" \
+            -alias upload
+
+      - name: Build Signed Release APK
+        env:
+          KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$STORE_PASSWORD" ]; then
+            echo "::error::ANDROID_KEYSTORE_PASSWORD secret is missing"
+            exit 1
+          fi
+
+          if [ -z "$KEY_PASSWORD" ]; then
+            echo "::error::ANDROID_KEY_PASSWORD secret is missing"
+            exit 1
+          fi
+
           chmod +x ./gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
-        else
-          gradle assembleDebug --no-daemon --stacktrace
-        fi
+          ./gradlew clean assembleRelease --no-daemon --stacktrace
 
-    - name: Verify APK Integrity and Display Signing Certificate
-      run: |
-        APK_FILE="app/build/outputs/apk/debug/app-debug.apk"
+      - name: Verify Signed APK
+        run: |
+          APK_FILE="app/build/outputs/apk/release/app-release.apk"
 
-        # 1. Check file existence
-        if [ ! -f "$APK_FILE" ]; then
-          echo "::error::Build output APK not found at $APK_FILE"
-          exit 1
-        fi
+          if [ ! -f "$APK_FILE" ]; then
+            echo "::error::Release APK not found at $APK_FILE"
+            exit 1
+          fi
 
-        # 2. Check file size
-        FILE_SIZE=$(stat -c%s "$APK_FILE" 2>/dev/null || stat -f%z "$APK_FILE" 2>/dev/null)
-        echo "=========================================================="
-        echo " [VERIFY] APK Location: $APK_FILE"
-        echo " [VERIFY] APK File Size: $FILE_SIZE bytes"
-        echo "=========================================================="
+          FILE_SIZE=$(stat -c%s "$APK_FILE")
 
-        if [ "$FILE_SIZE" -lt 5000000 ]; then
-          echo "::error::APK file size is too small ($FILE_SIZE bytes). Build output may be corrupted or incomplete!"
-          exit 1
-        fi
+          echo "=========================================================="
+          echo "APK FILE: $APK_FILE"
+          echo "APK SIZE: $FILE_SIZE bytes"
+          echo "=========================================================="
 
-        # 3. Test APK ZIP container integrity
-        echo " [VERIFY] Testing APK ZIP integrity..."
-        if ! unzip -t "$APK_FILE" > /dev/null; then
-          echo "::error::APK file failed ZIP integrity test! Corrupted APK package."
-          exit 1
-        fi
-        echo " [VERIFY] APK ZIP integrity: OK"
+          if [ "$FILE_SIZE" -lt 5000000 ]; then
+            echo "::error::APK file is unexpectedly small"
+            exit 1
+          fi
 
-        # 4. Locate apksigner and extract real signing certificate directly from the APK
-        APKSIGNER=$(which apksigner 2>/dev/null || find "${ANDROID_SDK_ROOT:-$ANDROID_HOME}" /usr/local/lib/android/sdk /opt/android/sdk -name apksigner 2>/dev/null | sort -V | tail -n 1)
+          unzip -t "$APK_FILE" > /dev/null
 
-        if [ -z "$APKSIGNER" ] || [ ! -x "$APKSIGNER" ]; then
-          echo "::error::apksigner tool not found in Android SDK environment!"
-          exit 1
-        fi
+          APKSIGNER=$(find "${ANDROID_SDK_ROOT:-$ANDROID_HOME}" \
+            -name apksigner 2>/dev/null | sort -V | tail -n 1)
 
-        echo "Using apksigner: $APKSIGNER"
-        CERT_OUTPUT=$("$APKSIGNER" verify --print-certs "$APK_FILE")
+          if [ -z "$APKSIGNER" ]; then
+            echo "::error::apksigner not found"
+            exit 1
+          fi
 
-        RAW_SHA1=$(echo "$CERT_OUTPUT" | grep -i "SHA-1 digest" | head -n 1 | awk '{print $NF}')
-        RAW_SHA256=$(echo "$CERT_OUTPUT" | grep -i "SHA-256 digest" | head -n 1 | awk '{print $NF}')
-        CERT_DN=$(echo "$CERT_OUTPUT" | grep -i "certificate DN" | head -n 1 | sed 's/.*certificate DN: //')
+          CERT_OUTPUT=$("$APKSIGNER" verify --print-certs "$APK_FILE")
 
-        FORMATTED_SHA1=$(echo "$RAW_SHA1" | sed 's/..\B/&:/g' | tr '[:lower:]' '[:upper:]')
-        FORMATTED_SHA256=$(echo "$RAW_SHA256" | sed 's/..\B/&:/g' | tr '[:lower:]' '[:upper:]')
+          RAW_SHA1=$(echo "$CERT_OUTPUT" \
+            | grep -i "SHA-1 digest" \
+            | head -n 1 \
+            | awk '{print $NF}')
 
-        echo "=========================================================="
-        echo " ⭐ ACTUAL BUILT APK SIGNING CERTIFICATE DETAILS ⭐"
-        echo "=========================================================="
-        echo " Certificate DN  : $CERT_DN"
-        echo " SHA-1 (Hex)     : $FORMATTED_SHA1"
-        echo " SHA-1 (Raw)     : $RAW_SHA1"
-        echo " SHA-256 (Hex)   : $FORMATTED_SHA256"
-        echo " SHA-256 (Raw)   : $RAW_SHA256"
-        echo "=========================================================="
-        echo ">> COMPARE FORMATTED_SHA1 WITH FIREBASE CONSOLE <<"
-        echo "=========================================================="
+          RAW_SHA256=$(echo "$CERT_OUTPUT" \
+            | grep -i "SHA-256 digest" \
+            | head -n 1 \
+            | awk '{print $NF}')
 
-    - name: Upload APK Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: FriendTalk-debug-apk
-        path: app/build/outputs/apk/debug/app-debug.apk
-        if-no-files-found: error
-        compression-level: 0
-        overwrite: true
+          FORMATTED_SHA1=$(echo "$RAW_SHA1" \
+            | sed 's/..\B/&:/g' \
+            | tr '[:lower:]' '[:upper:]')
+
+          FORMATTED_SHA256=$(echo "$RAW_SHA256" \
+            | sed 's/..\B/&:/g' \
+            | tr '[:lower:]' '[:upper:]')
+
+          echo "=========================================================="
+          echo "FIXED RELEASE SIGNING CERTIFICATE"
+          echo "=========================================================="
+          echo "SHA-1   : $FORMATTED_SHA1"
+          echo "SHA-256 : $FORMATTED_SHA256"
+          echo "=========================================================="
+
+      - name: Upload Signed Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: FriendTalk-release-apk
+          path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: true
