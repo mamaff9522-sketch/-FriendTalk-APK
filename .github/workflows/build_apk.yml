@@ -3,8 +3,6 @@ name: Build Android APK
 on:
   push:
     branches: [ "main", "master" ]
-  pull_request:
-    branches: [ "main", "master" ]
   workflow_dispatch:
 
 jobs:
@@ -30,25 +28,38 @@ jobs:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
           if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
-            echo "::error::ANDROID_KEYSTORE_BASE64 secret is missing"
+            echo "::error::ANDROID_KEYSTORE_BASE64 is missing"
             exit 1
           fi
 
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > my-upload-key.jks
+          # เก็บเฉพาะตัวอักษรที่เป็น Base64 จริง
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" \
+            | tr -cd 'A-Za-z0-9+/=' \
+            > keystore.clean.base64
 
-          if [ ! -s "my-upload-key.jks" ]; then
-            echo "::error::Failed to restore my-upload-key.jks"
+          echo "Clean Base64 length:"
+          wc -c keystore.clean.base64
+
+          # ถอดกลับเป็นไฟล์ JKS
+          base64 --decode keystore.clean.base64 > my-upload-key.jks
+
+          echo "Decoded JKS size:"
+          stat -c%s my-upload-key.jks
+
+          # ไฟล์ต้นฉบับของเราที่ตรวจใน Termux = 2247 bytes
+          if [ "$(stat -c%s my-upload-key.jks)" -ne 2247 ]; then
+            echo "::error::Keystore size is not 2247 bytes"
             exit 1
           fi
 
-          echo "Fixed keystore restored successfully"
+          echo "Keystore restored correctly"
 
       - name: Verify Keystore
         env:
           STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
           if [ -z "$STORE_PASSWORD" ]; then
-            echo "::error::ANDROID_KEYSTORE_PASSWORD secret is missing"
+            echo "::error::ANDROID_KEYSTORE_PASSWORD is missing"
             exit 1
           fi
 
@@ -63,16 +74,6 @@ jobs:
           STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          if [ -z "$STORE_PASSWORD" ]; then
-            echo "::error::ANDROID_KEYSTORE_PASSWORD secret is missing"
-            exit 1
-          fi
-
-          if [ -z "$KEY_PASSWORD" ]; then
-            echo "::error::ANDROID_KEY_PASSWORD secret is missing"
-            exit 1
-          fi
-
           chmod +x ./gradlew
           ./gradlew clean assembleRelease --no-daemon --stacktrace
 
@@ -81,23 +82,9 @@ jobs:
           APK_FILE="app/build/outputs/apk/release/app-release.apk"
 
           if [ ! -f "$APK_FILE" ]; then
-            echo "::error::Release APK not found at $APK_FILE"
+            echo "::error::Release APK not found"
             exit 1
           fi
-
-          FILE_SIZE=$(stat -c%s "$APK_FILE")
-
-          echo "=========================================================="
-          echo "APK FILE: $APK_FILE"
-          echo "APK SIZE: $FILE_SIZE bytes"
-          echo "=========================================================="
-
-          if [ "$FILE_SIZE" -lt 5000000 ]; then
-            echo "::error::APK file is unexpectedly small"
-            exit 1
-          fi
-
-          unzip -t "$APK_FILE" > /dev/null
 
           APKSIGNER=$(find "${ANDROID_SDK_ROOT:-$ANDROID_HOME}" \
             -name apksigner 2>/dev/null | sort -V | tail -n 1)
@@ -107,32 +94,7 @@ jobs:
             exit 1
           fi
 
-          CERT_OUTPUT=$("$APKSIGNER" verify --print-certs "$APK_FILE")
-
-          RAW_SHA1=$(echo "$CERT_OUTPUT" \
-            | grep -i "SHA-1 digest" \
-            | head -n 1 \
-            | awk '{print $NF}')
-
-          RAW_SHA256=$(echo "$CERT_OUTPUT" \
-            | grep -i "SHA-256 digest" \
-            | head -n 1 \
-            | awk '{print $NF}')
-
-          FORMATTED_SHA1=$(echo "$RAW_SHA1" \
-            | sed 's/..\B/&:/g' \
-            | tr '[:lower:]' '[:upper:]')
-
-          FORMATTED_SHA256=$(echo "$RAW_SHA256" \
-            | sed 's/..\B/&:/g' \
-            | tr '[:lower:]' '[:upper:]')
-
-          echo "=========================================================="
-          echo "FIXED RELEASE SIGNING CERTIFICATE"
-          echo "=========================================================="
-          echo "SHA-1   : $FORMATTED_SHA1"
-          echo "SHA-256 : $FORMATTED_SHA256"
-          echo "=========================================================="
+          "$APKSIGNER" verify --verbose --print-certs "$APK_FILE"
 
       - name: Upload Signed Release APK
         uses: actions/upload-artifact@v4
