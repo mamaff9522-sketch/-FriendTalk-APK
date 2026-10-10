@@ -74,6 +74,7 @@ jobs:
       - name: Verify Keystore
         env:
           STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
           if [ -z "$STORE_PASSWORD" ]; then
             echo "::error::ANDROID_KEYSTORE_PASSWORD is missing"
@@ -83,13 +84,15 @@ jobs:
           keytool -list \
             -keystore my-upload-key.jks \
             -storepass "$STORE_PASSWORD" \
-            -alias upload
+            -alias "${KEY_ALIAS:-upload}"
 
       - name: Build Signed Release APK
         env:
           KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
           STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          VERSION_CODE: ${{ github.run_number }}
         run: |
           if [ -f "./gradlew" ]; then
             chmod +x ./gradlew
@@ -125,3 +128,88 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           overwrite: true
+
+  aab:
+    name: Build signed AAB and upload to Play (internal, draft)
+    runs-on: ubuntu-latest
+    env:
+      HAS_SIGNING: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != '' && secrets.ANDROID_KEY_PASSWORD != '' }}
+      HAS_PLAY: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
+      HAS_GS: ${{ secrets.GOOGLE_SERVICES_JSON != '' }}
+
+    steps:
+      - name: Check signing secrets
+        run: |
+          if [ "$HAS_SIGNING" != "true" ] || [ "$HAS_GS" != "true" ]; then
+            echo "::notice::AAB skipped: ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_PASSWORD / GOOGLE_SERVICES_JSON secret missing."
+          else
+            echo "Signing secrets present - building AAB."
+          fi
+
+      - name: Checkout Code
+        if: env.HAS_SIGNING == 'true' && env.HAS_GS == 'true'
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        if: env.HAS_SIGNING == 'true' && env.HAS_GS == 'true'
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+          cache: gradle
+
+      - name: Setup Gradle
+        if: env.HAS_SIGNING == 'true' && env.HAS_GS == 'true'
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Restore google-services.json and keystore
+        if: env.HAS_SIGNING == 'true' && env.HAS_GS == 'true'
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
+          python3 -m json.tool app/google-services.json > /dev/null
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -cd 'A-Za-z0-9+/=' | base64 --decode > "$RUNNER_TEMP/upload-key.jks"
+          echo "Keystore bytes: $(stat -c%s "$RUNNER_TEMP/upload-key.jks")"
+
+      - name: Build signed release AAB
+        if: env.HAS_SIGNING == 'true' && env.HAS_GS == 'true'
+        env:
+          KEYSTORE_PATH: ${{ runner.temp }}/upload-key.jks
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          VERSION_CODE: ${{ github.run_number }}
+        run: |
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+            ./gradlew bundleRelease --no-daemon --stacktrace
+          else
+            gradle bundleRelease --no-daemon --stacktrace
+          fi
+          ls -la app/build/outputs/bundle/release/
+
+      - name: Upload AAB artifact
+        if: env.HAS_SIGNING == 'true' && env.HAS_GS == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: FriendTalk-release-aab
+          path: app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: true
+
+      - name: Play upload skipped notice
+        if: env.HAS_SIGNING == 'true' && env.HAS_GS == 'true' && env.HAS_PLAY != 'true'
+        run: echo "::notice::Play upload skipped - PLAY_SERVICE_ACCOUNT_JSON secret missing."
+
+      - name: Upload to Google Play (internal, draft)
+        if: env.HAS_SIGNING == 'true' && env.HAS_GS == 'true' && env.HAS_PLAY == 'true'
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.example
+          releaseFiles: app/build/outputs/bundle/release/app-release.aab
+          track: internal
+          status: draft

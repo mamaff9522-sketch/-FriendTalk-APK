@@ -16,7 +16,7 @@ android {
     applicationId = "com.example"
     minSdk = 24
     targetSdk = 36
-    versionCode = 4
+    versionCode = (System.getenv("VERSION_CODE") ?: "4").toInt()
     versionName = "1.2.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -27,7 +27,7 @@ android {
       val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
       storeFile = file(keystorePath)
       storePassword = System.getenv("STORE_PASSWORD")
-      keyAlias = "upload"
+      keyAlias = System.getenv("KEY_ALIAS")?.ifBlank { null } ?: "upload"
       keyPassword = System.getenv("KEY_PASSWORD")
     }
   
