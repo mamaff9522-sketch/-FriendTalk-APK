@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.*
 import kotlinx.coroutines.launch
+import com.example.ui.layout.hasSectionStyle
 import com.example.ui.components.ReportDialog
 import com.example.ui.theme.*
 
@@ -275,13 +276,16 @@ fun FeedTab(
                 var feedShown = false
                 layout.blocks.filter { it.visible }.forEach { b ->
                     when (b.type) {
-                        "section" -> when (b.section) {
-                            "tabs" -> secTabs()
-                            "banners" -> secBanners()
-                            "stories" -> secStories()
-                            "clubs" -> secClubs()
-                            "sdc" -> secSdc()
-                            "feed" -> { if (!feedShown) { feedShown = true; secFeed() } }
+                        "section" -> {
+                            val scope: LazyListScope = if (b.hasSectionStyle()) com.example.ui.layout.StyledLazyScope(this, b) else this
+                            when (b.section) {
+                                "tabs" -> scope.secTabs()
+                                "banners" -> scope.secBanners()
+                                "stories" -> scope.secStories()
+                                "clubs" -> scope.secClubs()
+                                "sdc" -> scope.secSdc()
+                                "feed" -> { if (!feedShown) { feedShown = true; scope.secFeed() } }
+                            }
                         }
                         else -> item(key = "ui_" + b.id) { com.example.ui.layout.LayoutBlockView(b) }
                     }

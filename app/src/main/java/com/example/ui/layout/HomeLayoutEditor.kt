@@ -2,6 +2,7 @@ package com.example.ui.layout
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -13,7 +14,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.zIndex
+import coil.compose.AsyncImage
+import com.example.data.MockData
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -67,6 +75,9 @@ fun HomeLayoutEditor() {
     var busy by remember { mutableStateOf(false) }
     var addMenu by remember { mutableStateOf(false) }
     var canvasWidthPx by remember { mutableStateOf(1) }
+    var canvasTop by remember { mutableStateOf(0f) }
+    var canvasBottom by remember { mutableStateOf(0f) }
+    val canvasScroll = rememberScrollState()
 
     fun commit(newLayout: UiLayout, recordUndo: Boolean = true) {
         if (recordUndo) { undo.add(layout); if (undo.size > 30) undo.removeAt(0) }
@@ -129,7 +140,7 @@ fun HomeLayoutEditor() {
                     UiBlock.SECTIONS.filter { s -> layout.blocks.none { it.type == "section" && it.section == s } }.forEach { s ->
                         DropdownMenuItem(text = { Text("ส่วนเดิม: ${SECTION_LABELS[s]}") }, onClick = {
                             addMenu = false
-                            commit(layout.copy(blocks = layout.blocks + UiBlock("sec_$s", "section", section = s)))
+                            commit(layout.copy(blocks = layout.blocks + UiBlock.sectionBlock(s)))
                         })
                     }
                 }
@@ -145,7 +156,7 @@ fun HomeLayoutEditor() {
         }
         if (msg.isNotBlank()) Text(msg, color = Amber400, fontSize = 11.sp, modifier = Modifier.padding(vertical = 4.dp))
         Text(
-            if (mode == "edit") "กดค้างแล้วลากเพื่อย้าย · ลากมุมขวาล่างเพื่อปรับขนาด · แตะเพื่อแก้คุณสมบัติ" else "",
+            if (mode == "edit") "ลากที่ ≡ เพื่อย้าย · แตะบล็อกเพื่อเลือกและแก้คุณสมบัติ · ลาก ⤡ เพื่อปรับขนาด" else "",
             color = Slate400, fontSize = 10.sp
         )
 
@@ -184,7 +195,8 @@ fun HomeLayoutEditor() {
         ) {
             Column(
                 Modifier.fillMaxSize().onSizeChanged { canvasWidthPx = maxOf(1, it.width) }
-                    .verticalScroll(rememberScrollState()).padding(vertical = 8.dp)
+                    .onGloballyPositioned { val y = it.positionInWindow().y; canvasTop = y; canvasBottom = y + it.size.height }
+                    .verticalScroll(canvasScroll).padding(vertical = 8.dp)
             ) {
                 layout.blocks.forEach { b ->
                     key(b.id) {
@@ -196,6 +208,9 @@ fun HomeLayoutEditor() {
                             EditableBlock(
                                 block = b,
                                 selected = selectedId == b.id,
+                                canvasTop = canvasTop,
+                                canvasBottom = canvasBottom,
+                                onAutoScroll = { d -> canvasScroll.dispatchRawDelta(d) },
                                 onSelect = { selectedId = if (selectedId == b.id) null else b.id },
                                 onDragStart = { undo.add(layout); if (undo.size > 30) undo.removeAt(0) },
                                 onDragSwap = { dir ->
@@ -250,14 +265,65 @@ private fun SmallBtn(label: String, enabled: Boolean = true, primary: Boolean = 
 
 @Composable
 private fun SectionPlaceholder(b: UiBlock, editing: Boolean) {
-    Box(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).clip(RoundedCornerShape(10.dp))
-            .background(Color(0xFF334155).copy(alpha = if (b.visible) 0.6f else 0.25f)).padding(12.dp)
-    ) {
-        Text(
-            "▦ ส่วนเดิม: ${SECTION_LABELS[b.section] ?: b.section}" + if (editing && !b.visible) " (ซ่อน)" else "",
-            color = Slate300, fontSize = 12.sp
-        )
+    // Miniature of the real built-in section, with the block's size/padding/radius/background applied
+    Box(Modifier.alpha(if (b.visible) 1f else 0.4f)) {
+        SectionStyleBox(b) { SectionMiniPreview(b.section) }
+        if (editing && !b.visible) Text("ซ่อนอยู่", color = Amber400, fontSize = 10.sp, modifier = Modifier.align(Alignment.TopEnd).padding(6.dp))
+    }
+}
+
+@Composable
+private fun SectionMiniPreview(section: String) {
+    val title = SECTION_LABELS[section] ?: section
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
+        Text(title, color = Slate400, fontSize = 9.sp)
+        Spacer(Modifier.height(3.dp))
+        when (section) {
+            "tabs" -> Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("ทั้งหมด", "คนใกล้เคียง", "ออนไลน์", "หาเพื่อน").forEachIndexed { i, t ->
+                    Surface(shape = RoundedCornerShape(14.dp), color = if (i == 0) Pink500 else Slate800) {
+                        Text(t, color = White, fontSize = 10.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
+                    }
+                }
+            }
+            "banners" -> Surface(shape = RoundedCornerShape(12.dp), color = Pink600, modifier = Modifier.fillMaxWidth()) {
+                Text("แบนเนอร์ประกาศ (จากหน้า Config)", color = White, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(10.dp))
+            }
+            "stories" -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MockData.initialStories.take(5).forEach { st ->
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        AsyncImage(model = st.userAvatar, contentDescription = null, contentScale = ContentScale.Crop,
+                            modifier = Modifier.size(40.dp).clip(CircleShape).border(2.dp, Pink500, CircleShape))
+                        Text(st.userName.take(6), color = Slate300, fontSize = 8.sp)
+                    }
+                }
+            }
+            "clubs" -> Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                MockData.initialClubs.take(3).forEach { c ->
+                    Surface(shape = RoundedCornerShape(10.dp), color = Slate800) {
+                        Text("${c.icon} ${c.name.take(10)}", color = White, fontSize = 10.sp, modifier = Modifier.padding(8.dp))
+                    }
+                }
+            }
+            "sdc" -> Surface(shape = RoundedCornerShape(12.dp), color = Slate800, modifier = Modifier.fillMaxWidth()) {
+                Text("การ์ดจากเซิร์ฟเวอร์ (ถ้ามี)", color = Slate300, fontSize = 11.sp, modifier = Modifier.padding(10.dp))
+            }
+            "feed" -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                MockData.initialPosts.take(2).forEach { p ->
+                    Surface(shape = RoundedCornerShape(12.dp), color = Slate800, modifier = Modifier.fillMaxWidth()) {
+                        Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            AsyncImage(model = p.authorAvatar, contentDescription = null, contentScale = ContentScale.Crop,
+                                modifier = Modifier.size(28.dp).clip(CircleShape))
+                            Spacer(Modifier.width(6.dp))
+                            Column {
+                                Text(p.authorName, color = White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text(p.content.take(60), color = Slate300, fontSize = 9.sp, maxLines = 2)
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -265,6 +331,9 @@ private fun SectionPlaceholder(b: UiBlock, editing: Boolean) {
 private fun EditableBlock(
     block: UiBlock,
     selected: Boolean,
+    canvasTop: Float,
+    canvasBottom: Float,
+    onAutoScroll: (Float) -> Unit,
     onSelect: () -> Unit,
     onDragStart: () -> Unit,
     onDragSwap: (Int) -> Unit,
@@ -272,49 +341,82 @@ private fun EditableBlock(
     onResize: (Float, Float) -> Unit
 ) {
     var dragY by remember { mutableStateOf(0f) }
+    var dragging by remember { mutableStateOf(false) }
     var heightPx by remember { mutableStateOf(1) }
+    var winY by remember { mutableStateOf(0f) }
     val currentOnSwap by rememberUpdatedState(onDragSwap)
     val currentOnResize by rememberUpdatedState(onResize)
+    val currentAutoScroll by rememberUpdatedState(onAutoScroll)
+    val currentTop by rememberUpdatedState(canvasTop)
+    val currentBottom by rememberUpdatedState(canvasBottom)
+
+    fun dragBy(dy: Float) {
+        dragY += dy
+        val threshold = heightPx * 0.55f
+        if (dragY > threshold) { currentOnSwap(1); dragY -= heightPx }
+        else if (dragY < -threshold) { currentOnSwap(-1); dragY += heightPx }
+        val y = winY + dragY
+        if (y < currentTop + 80f) currentAutoScroll(-14f)
+        else if (y + heightPx > currentBottom - 80f) currentAutoScroll(14f)
+    }
+
     Box(
-        Modifier.fillMaxWidth()
+        Modifier.fillMaxWidth().padding(vertical = 2.dp)
             .onSizeChanged { heightPx = maxOf(1, it.height) }
-            .graphicsLayer { translationY = dragY; alpha = if (block.visible) 1f else 0.45f }
-            .then(if (selected) Modifier.border(2.dp, Cyan400, RoundedCornerShape(6.dp)) else Modifier)
+            .onGloballyPositioned { winY = it.positionInWindow().y - dragY }
+            .zIndex(if (dragging) 1f else 0f)
+            .graphicsLayer { translationY = dragY; shadowElevation = if (dragging) 16f else 0f }
+            .border(
+                width = if (selected || dragging) 2.dp else 1.dp,
+                color = if (selected || dragging) Cyan400 else Slate700.copy(alpha = 0.6f),
+                shape = RoundedCornerShape(8.dp)
+            )
+            .background(if (dragging) Slate900 else Color.Transparent, RoundedCornerShape(8.dp))
             .pointerInput(block.id) {
                 detectDragGesturesAfterLongPress(
-                    onDragStart = { onDragStart() },
-                    onDragEnd = { dragY = 0f },
-                    onDragCancel = { dragY = 0f },
-                    onDrag = { change, amount ->
-                        change.consume()
-                        dragY += amount.y
-                        val threshold = heightPx * 0.6f
-                        if (dragY > threshold) { currentOnSwap(1); dragY -= heightPx }
-                        else if (dragY < -threshold) { currentOnSwap(-1); dragY += heightPx }
-                    }
+                    onDragStart = { dragging = true; onDragStart() },
+                    onDragEnd = { dragging = false; dragY = 0f },
+                    onDragCancel = { dragging = false; dragY = 0f },
+                    onDrag = { change, amount -> change.consume(); dragBy(amount.y) }
                 )
             }
             .clickable { onSelect() }
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // Always-visible drag handle (long-press + drag anywhere on the block also works)
-            Text("≡", color = Slate300, fontSize = 22.sp, modifier = Modifier.padding(start = 6.dp))
+            // Drag handle: drag starts immediately here
+            Box(
+                Modifier.width(36.dp).heightIn(min = 44.dp)
+                    .background(if (dragging) Cyan400.copy(alpha = 0.3f) else Slate800, RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp))
+                    .pointerInput(block.id + "_handle") {
+                        detectDragGestures(
+                            onDragStart = { dragging = true; onDragStart() },
+                            onDragEnd = { dragging = false; dragY = 0f },
+                            onDragCancel = { dragging = false; dragY = 0f },
+                            onDrag = { change, amount -> change.consume(); dragBy(amount.y) }
+                        )
+                    },
+                contentAlignment = Alignment.Center
+            ) { Text("≡", color = White, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
             Box(Modifier.weight(1f)) {
-                if (block.type == "section") SectionPlaceholder(block, editing = true) else LayoutBlockView(block, interactive = false)
+                if (block.type == "section") SectionPlaceholder(block, editing = true)
+                else Box(Modifier.alpha(if (block.visible) 1f else 0.4f)) { LayoutBlockView(block, interactive = false) }
             }
             Column {
-                Text("▲", color = Slate300, fontSize = 14.sp, modifier = Modifier.clickable { onStep(-1) }.padding(horizontal = 8.dp, vertical = 2.dp))
-                Text("▼", color = Slate300, fontSize = 14.sp, modifier = Modifier.clickable { onStep(1) }.padding(horizontal = 8.dp, vertical = 2.dp))
+                Text("▲", color = Slate300, fontSize = 14.sp, modifier = Modifier.clickable { onStep(-1) }.padding(horizontal = 8.dp, vertical = 4.dp))
+                Text("▼", color = Slate300, fontSize = 14.sp, modifier = Modifier.clickable { onStep(1) }.padding(horizontal = 8.dp, vertical = 4.dp))
             }
         }
-        if (selected && block.type != "section") {
+        if (selected) {
+            // Corner resize handle (width + height)
             Box(
-                Modifier.align(Alignment.BottomEnd).padding(end = 10.dp, bottom = 2.dp).size(22.dp)
-                    .clip(RoundedCornerShape(4.dp)).background(Cyan400)
+                Modifier.align(Alignment.BottomEnd).padding(end = 34.dp, bottom = 2.dp).size(28.dp)
+                    .clip(RoundedCornerShape(6.dp)).background(Cyan400)
                     .pointerInput(block.id + "_resize") {
                         detectDragGestures { change, amount -> change.consume(); currentOnResize(amount.x, amount.y) }
                     }
-            ) { Text("⤡", color = Color.Black, fontSize = 12.sp, modifier = Modifier.align(Alignment.Center)) }
+            ) { Text("⤡", color = Color.Black, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.Center)) }
+            Text(block.type.let { if (it == "section") "ส่วนเดิม" else it }, color = Color.Black, fontSize = 9.sp,
+                modifier = Modifier.align(Alignment.TopEnd).padding(end = 34.dp, top = 2.dp).background(Cyan400, RoundedCornerShape(4.dp)).padding(horizontal = 4.dp))
         }
     }
 }
@@ -333,6 +435,14 @@ private fun PropertiesPanel(block: UiBlock, onChange: ((UiBlock) -> UiBlock) -> 
                 SmallBtn("▲ ขึ้น") { onMove(-1) }
                 SmallBtn("▼ ลง") { onMove(1) }
                 SmallBtn("🗑 ลบ") { onDelete() }
+            }
+            if (block.type == "section") {
+                Text("ปรับขนาด ระยะขอบ มุมโค้ง และสีพื้นของส่วนเดิมได้", color = Slate400, fontSize = 10.sp)
+                PropField("สีพื้น (#RRGGBB ว่าง = ไม่มี)", block.bgColorHex) { v -> onChange { it.copy(bgColorHex = v.trim().take(9)) } }
+                PropSlider("ความกว้าง ${(block.widthFraction * 100).toInt()}%", block.widthFraction, 0.2f..1f) { v -> onChange { it.copy(widthFraction = v) } }
+                PropSlider("ความสูงสูงสุด ${if (block.heightDp == 0) "อัตโนมัติ" else "${block.heightDp}dp"}", block.heightDp.toFloat(), 0f..400f) { v -> onChange { it.copy(heightDp = v.toInt()) } }
+                PropSlider("มุมโค้ง ${block.cornerRadiusDp}dp", block.cornerRadiusDp.toFloat(), 0f..40f) { v -> onChange { it.copy(cornerRadiusDp = v.toInt()) } }
+                PropSlider("ระยะขอบ ${block.paddingDp}dp", block.paddingDp.toFloat(), 0f..40f) { v -> onChange { it.copy(paddingDp = v.toInt()) } }
             }
             if (block.type != "section") {
                 if (block.type in setOf("text", "button", "banner", "frame", "image")) PropField("ข้อความ", block.text) { v -> onChange { it.copy(text = v.take(500)) } }

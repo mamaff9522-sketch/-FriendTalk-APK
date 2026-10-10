@@ -33,6 +33,8 @@ data class UiBlock(
 
     companion object {
         val TYPES = setOf("image", "frame", "text", "button", "banner", "spacer", "section")
+        /** Built-in section with neutral styling (looks exactly like the built-in Home). */
+        fun sectionBlock(section: String) = UiBlock(id = "sec_$section", type = "section", section = section, paddingDp = 0, cornerRadiusDp = 0)
         val SECTIONS = listOf("tabs", "banners", "stories", "clubs", "sdc", "feed")
 
         fun fromJson(o: JSONObject): UiBlock? {
@@ -75,6 +77,6 @@ data class UiLayout(val screen: String = "home", val blocks: List<UiBlock> = emp
         }
 
         /** Same order as the built-in Home screen; starting point for the editor. */
-        fun defaultHome() = UiLayout("home", UiBlock.SECTIONS.map { UiBlock(id = "sec_$it", type = "section", section = it) })
+        fun defaultHome() = UiLayout("home", UiBlock.SECTIONS.map { sectionBlock(it) })
     }
 }
