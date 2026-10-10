@@ -14,7 +14,7 @@ app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return res.sendStatus(o && CORS.includes(o) ? 204 : 403);
   next();
 });
-app.use(express.json({ limit: '32kb' }));
+app.use(express.json({ limit: '128kb' }));
 const now = () => admin.database.ServerValue.TIMESTAMP;
 app.get('/health', (_q, r) => r.json({ ok: true, service: 'friendtalk-brain' }));
 async function auth(req, res, next) {
@@ -292,5 +292,9 @@ app.post('/admin/ui/layout/:screen/revert', perm('config_edit'), w(notBanned), w
   await base.update({ current: { layout: v.layout, publishedAt: t, publishedBy: q.uid, versionId: vid, revertedFrom: vid }, draft: null });
   r.json({ reverted: vid });
 }));
-app.use((e, _q, r, _n) => r.status(e.code === 404 ? 404 : 500).json({ error: e.code === 404 ? 'user not found' : 'internal' }));
+app.use((e, _q, r, _n) => {
+  if (e.type === 'entity.too.large') return r.status(413).json({ error: 'request too large' });
+  if (e.type === 'entity.parse.failed') return r.status(400).json({ error: 'invalid JSON' });
+  r.status(e.code === 404 ? 404 : 500).json({ error: e.code === 404 ? 'user not found' : 'internal' });
+});
 app.listen(process.env.PORT || 8080);
