@@ -50,3 +50,10 @@ Done:
 Open:
 - Both services allow unauthenticated calls (`allUsers` invoker, ingress `all`). Each service must check the Firebase ID token itself.
 - The Android app still runs mostly on local mock data and does not call these services yet.
+
+## AI chat characters (friendtalk-brain)
+- Always labeled AI; they say they are AI if asked; free (never take coins or gifts).
+- RTDB: `aiBots/{botId}` {name, avatarUrl, bio, persona, interests, enabled} (6 Thai personas, 18+, non-sexual); `appConfig/aiBotsEnabled` global switch; chats in `botChats/{uid}/{botId}` (owner read-only); counters `botRate/{uid}/{hour}`, `botDaily/{yyyymmdd}`; `matchQueue` for random match (60 s TTL).
+- Endpoints (Firebase ID token required): `POST /match` (real waiting user first, else an enabled bot if bots are on, else `waiting`), `POST /bot/chat {botId, message}`, `DELETE /bot/chat/:botId` (end chat). Admin (`config_edit`): `GET /admin/bots`, `PUT /admin/bots/enabled {enabled}`, `PUT /admin/bots/:botId {enabled, ...}`.
+- Model: Vertex AI `gemini-2.5-flash-lite` (global endpoint), max 150 output tokens, last 10 messages as context, safety filters at BLOCK_LOW_AND_ABOVE. `ft-brain-sa` has `roles/aiplatform.user`.
+- Limits (env): `BOT_HOURLY_PER_USER=30`, `BOT_DAILY_LIMIT=2000` messages/day total; over the limit the endpoint returns 429.

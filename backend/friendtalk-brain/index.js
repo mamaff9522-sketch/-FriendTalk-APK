@@ -53,7 +53,7 @@ async function isSuper(req, res, next) {
   req.role = r; next();
 }
 const w = fn => (q, r, n) => fn(q, r, n).catch(e => { console.error(e.message); r.status(e.code === 404 ? 404 : 500).json({ error: e.code === 404 ? 'user not found' : 'internal' }); });
-app.use(['/coins', '/age', '/config', '/admin', '/superadmin', '/me'], w(auth));
+app.use(['/coins', '/age', '/config', '/admin', '/superadmin', '/me', '/match', '/bot'], w(auth));
 app.get('/me', w(async (q, r) => {
   const role = await loadRole(q.uid);
   r.json({ uid: q.uid, role: role?.role || 'user', permissions: role?.permissions || {} });
@@ -126,6 +126,106 @@ app.delete('/superadmin/admins/:uid', w(notBanned), w(async (q, r) => {
   });
   if (blocked) return r.status(409).json({ error: 'cannot remove the last superadmin' });
   if (!res.snapshot.child(uid).exists()) return r.json({ revoked: uid }); r.status(409).json({ error: 'not revoked' });
+}));
+// ===== AI chat characters (clearly labeled AI; free; never take coins/gifts) =====
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
+const PROJECT = process.env.GOOGLE_CLOUD_PROJECT || 'friendtalk-4e623';
+const BOT_DAILY_LIMIT = parseInt(process.env.BOT_DAILY_LIMIT || '2000', 10);
+const BOT_HOURLY_PER_USER = parseInt(process.env.BOT_HOURLY_PER_USER || '30', 10);
+const QUEUE_TTL_MS = 60_000;
+const botsEnabled = async () => (await db.ref('appConfig/aiBotsEnabled').get()).val() === true;
+const publicBot = (id, b) => ({ id, name: b.name, avatarUrl: b.avatarUrl, bio: b.bio, interests: b.interests || [], enabled: b.enabled === true, isAI: true });
+async function gcpToken() {
+  const res = await fetch('http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token', { headers: { 'Metadata-Flavor': 'Google' } });
+  if (!res.ok) throw new Error('metadata token ' + res.status);
+  return (await res.json()).access_token;
+}
+async function bump(path, limit) {
+  let over = false;
+  await db.ref(path).transaction(c => { c = c || 0; if (c >= limit) { over = true; return; } return c + 1; });
+  return !over;
+}
+app.post('/match', w(notBanned), w(async (q, r) => {
+  const me = q.uid, t = Date.now(), qref = db.ref('matchQueue');
+  let partner = null;
+  await qref.transaction(all => {
+    all = all || {}; partner = null;
+    for (const [uid, v] of Object.entries(all)) if (!v || t - v.ts > QUEUE_TTL_MS) delete all[uid];
+    const other = Object.keys(all).find(u => u !== me);
+    if (other) { partner = other; delete all[other]; delete all[me]; }
+    else all[me] = { ts: t };
+    return all;
+  });
+  if (partner) return r.json({ type: 'user', uid: partner });
+  if (await botsEnabled()) {
+    const all = (await db.ref('aiBots').get()).val() || {};
+    const list = Object.entries(all).filter(([, b]) => b && b.enabled === true);
+    if (list.length) {
+      await db.ref(`matchQueue/${me}`).remove();
+      const [id, b] = list[Math.floor(Math.random() * list.length)];
+      return r.json({ type: 'bot', bot: publicBot(id, b) });
+    }
+  }
+  r.json({ type: 'waiting' });
+}));
+app.post('/bot/chat', w(notBanned), w(async (q, r) => {
+  const { botId, message } = q.body || {};
+  if (typeof botId !== 'string' || !/^[A-Za-z0-9_-]{1,40}$/.test(botId) || typeof message !== 'string' || !message.trim() || message.length > 500)
+    return r.status(400).json({ error: 'botId and message (1-500 chars) required' });
+  if (!(await botsEnabled())) return r.status(403).json({ error: 'bots disabled' });
+  const bot = (await db.ref(`aiBots/${botId}`).get()).val();
+  if (!bot || bot.enabled !== true) return r.status(403).json({ error: 'bots disabled' });
+  const d = new Date(), day = d.toISOString().slice(0, 10).replace(/-/g, ''), hour = day + String(d.getUTCHours()).padStart(2, '0');
+  if (!(await bump(`botRate/${q.uid}/${hour}`, BOT_HOURLY_PER_USER))) return r.status(429).json({ error: 'rate limit: try again later' });
+  if (!(await bump(`botDaily/${day}`, BOT_DAILY_LIMIT))) return r.status(429).json({ error: 'daily bot limit reached' });
+  const chatRef = db.ref(`botChats/${q.uid}/${botId}`);
+  const hist = Object.values((await chatRef.orderByKey().limitToLast(10).get()).val() || {}).sort((a, b) => a.ts - b.ts);
+  const system = [
+    `คุณคือ "${bot.name}" ตัวละคร AI ในแอป FriendTalk บุคลิก: ${bot.persona}. ความสนใจ: ${(bot.interests || []).join(', ')}.`,
+    'คุณเป็นตัวละคร AI ไม่ใช่มนุษย์ ห้ามอ้างว่าเป็นคนจริง ถ้าถูกถามว่าเป็นบอทหรือคนจริง ให้ตอบตรงๆ ว่าเป็น AI',
+    'ตอบเป็นภาษาไทยแบบเป็นกันเอง สั้นๆ 1-3 ประโยค',
+    'ห้ามเนื้อหาทางเพศหรือชวนสัมพันธ์เชิงชู้สาว ห้ามเนื้อหาเกี่ยวกับผู้เยาว์ ห้ามขอข้อมูลส่วนตัว (ที่อยู่ เบอร์โทร รหัสผ่าน) หรือข้อมูลการเงิน ห้ามขอเงิน เหรียญ หรือของขวัญ',
+    'ถ้าผู้ใช้พูดถึงการทำร้ายตัวเอง ให้แนะนำให้ติดต่อสายด่วนสุขภาพจิต 1323'
+  ].join('\n');
+  const contents = [...hist.map(m => ({ role: m.from === 'bot' ? 'model' : 'user', parts: [{ text: m.text }] })), { role: 'user', parts: [{ text: message.trim() }] }];
+  const res = await fetch(`https://aiplatform.googleapis.com/v1/projects/${PROJECT}/locations/global/publishers/google/models/${GEMINI_MODEL}:generateContent`, {
+    method: 'POST', headers: { Authorization: `Bearer ${await gcpToken()}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: system }] }, contents,
+      generationConfig: { maxOutputTokens: 150, temperature: 0.8 },
+      safetySettings: ['HARM_CATEGORY_SEXUALLY_EXPLICIT', 'HARM_CATEGORY_HARASSMENT', 'HARM_CATEGORY_HATE_SPEECH', 'HARM_CATEGORY_DANGEROUS_CONTENT'].map(category => ({ category, threshold: 'BLOCK_LOW_AND_ABOVE' }))
+    })
+  });
+  if (!res.ok) { console.error('vertex', res.status, (await res.text()).slice(0, 300)); return r.status(502).json({ error: 'ai unavailable' }); }
+  const j = await res.json();
+  const reply = (j.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('').trim() || 'ขอโทษนะ ตอบเรื่องนี้ไม่ได้ เปลี่ยนเรื่องคุยกันดีกว่า 😊';
+  const ts = Date.now();
+  await chatRef.push({ from: 'user', text: message.trim(), ts });
+  await chatRef.push({ from: 'bot', text: reply, ts: ts + 1 });
+  r.json({ botId, reply, isAI: true });
+}));
+app.delete('/bot/chat/:botId', w(async (q, r) => {
+  if (!/^[A-Za-z0-9_-]{1,40}$/.test(q.params.botId)) return r.status(400).json({ error: 'bad botId' });
+  await db.ref(`botChats/${q.uid}/${q.params.botId}`).remove(); r.json({ ended: q.params.botId });
+}));
+app.get('/admin/bots', perm('config_edit'), w(async (_q, r) => {
+  const all = (await db.ref('aiBots').get()).val() || {};
+  r.json({ enabled: await botsEnabled(), bots: Object.entries(all).map(([id, b]) => ({ ...publicBot(id, b), persona: b.persona })) });
+}));
+app.put('/admin/bots/enabled', perm('config_edit'), w(notBanned), w(async (q, r) => {
+  if (typeof q.body?.enabled !== 'boolean') return r.status(400).json({ error: 'enabled (boolean) required' });
+  await db.ref('appConfig/aiBotsEnabled').set(q.body.enabled); r.json({ aiBotsEnabled: q.body.enabled });
+}));
+app.put('/admin/bots/:botId', perm('config_edit'), w(notBanned), w(async (q, r) => {
+  const id = q.params.botId, b = q.body || {}, u = {};
+  if (!/^[A-Za-z0-9_-]{1,40}$/.test(id)) return r.status(400).json({ error: 'bad botId' });
+  if (typeof b.enabled === 'boolean') u.enabled = b.enabled;
+  for (const k of ['name', 'avatarUrl', 'bio', 'persona']) if (typeof b[k] === 'string' && b[k].length <= 1000) u[k] = b[k];
+  if (Array.isArray(b.interests)) u.interests = b.interests.filter(x => typeof x === 'string').slice(0, 10);
+  if (!Object.keys(u).length) return r.status(400).json({ error: 'nothing to update' });
+  const ref = db.ref(`aiBots/${id}`);
+  if (!(await ref.get()).exists() && !u.name) return r.status(404).json({ error: 'bot not found' });
+  await ref.update(u); r.json({ id, ...u });
 }));
 app.use((e, _q, r, _n) => r.status(e.code === 404 ? 404 : 500).json({ error: e.code === 404 ? 'user not found' : 'internal' }));
 app.listen(process.env.PORT || 8080);

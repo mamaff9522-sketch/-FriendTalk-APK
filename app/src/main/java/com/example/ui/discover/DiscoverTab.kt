@@ -2,6 +2,8 @@ package com.example.ui.discover
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -41,6 +43,7 @@ fun DiscoverTab(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -48,7 +51,8 @@ fun DiscoverTab(
                 "radar" to "เรดาร์ 📡",
                 "nearby" to "ใกล้เคียง 📍",
                 "swipe" to "ปัดหาคู่ 💘",
-                "shake" to "เขย่าเจอ 📱"
+                "shake" to "เขย่าเจอ 📱",
+                "random" to "สุ่มคุย 🎲"
             ).forEach { (key, label) ->
                 val isSel = subTab == key
                 Surface(
@@ -74,6 +78,7 @@ fun DiscoverTab(
             "nearby" -> NearbyListView(users = users, currentUser = currentUser, onStartChat = onStartChat)
             "swipe" -> SwipeMatchView(users = users.filter { it.id != currentUser.id }, onMatch = onStartChat)
             "shake" -> ShakeView(users = users.filter { it.id != currentUser.id }, onFoundUser = onStartChat)
+            "random" -> com.example.ui.ai.RandomMatchView(users = users.filter { it.id != currentUser.id }, onStartChatWithUser = onStartChat)
         }
     }
 }

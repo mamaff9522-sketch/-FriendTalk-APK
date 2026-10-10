@@ -130,7 +130,8 @@ fun AdminDashboardDialog(
                     "🚨 รายงาน (${reports.count { it.status == ReportStatus.PENDING }})",
                     "💰 ถอนเงิน (${withdrawals.count { it.status == "PENDING" }})",
                     "📜 บันทึก",
-                    "⚙️ เครื่องมือ"
+                    "⚙️ เครื่องมือ",
+                    "🤖 บอท AI"
                 )
 
                 LazyRow(
@@ -197,6 +198,7 @@ fun AdminDashboardDialog(
                             onOpenCompanionAdmin = { onDismiss(); onOpenCompanionAdmin() },
                             onOpenApkDownload = { onDismiss(); onOpenApkDownload() }
                         )
+                        5 -> com.example.ui.ai.AdminBotsTab()
                     }
                 }
             }
