@@ -33,17 +33,20 @@ Environment variables (names only):
 
 ## Artifact Registry cleanup policy
 - Repository `cloud-run-source-deploy` (asia-southeast1).
-- Status checked 2026-10-10: **no cleanup policy is set on this repository.** The intended policy (keep the 3 most recent versions, keep images tagged `serving*`, delete everything else older than 1 day) has not been applied to FriendTalk yet.
+- Status checked 2026-10-10: **cleanup policy is active** (not dry-run):
+  - `keep-3-recent`: always keep the 3 most recent versions.
+  - `keep-serving`: keep images tagged with prefix `serving`.
+  - `delete-older-1d`: delete any other version older than 1 day.
 
 ## Hardening status (2026-10-10)
 Done:
 - Every service runs under its own service account.
 - The web API key is held in Secret Manager.
 - Max instances = 2 on both services (limits runaway cost).
+- Artifact Registry cleanup policy active (old images deleted automatically).
 - RTDB rules default closed. Roles, bans, wallets and transactions can't be written from the client.
 - No keys or `.env` files are committed. `google-services.json` is supplied in CI from a GitHub secret.
 
 Open:
 - Both services allow unauthenticated calls (`allUsers` invoker, ingress `all`). Each service must check the Firebase ID token itself.
-- Artifact Registry cleanup policy not applied (see above).
 - The Android app still runs mostly on local mock data and does not call these services yet.
