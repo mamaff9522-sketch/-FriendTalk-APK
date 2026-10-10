@@ -5,7 +5,43 @@
     "users": {
       ".read": "auth != null",
       "$uid": {
-        ".write": "auth != null && auth.uid === $uid && !root.child('bans').child(auth.uid).exists()"
+        ".write": "auth != null && auth.uid === $uid && !root.child('bans').child(auth.uid).exists() && (auth.token.email_verified === true || auth.token.firebase.sign_in_provider !== 'password')",
+        ".validate": "newData.hasChildren(['displayName'])",
+        "displayName": {
+          ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 50"
+        },
+        "username": {
+          ".validate": "newData.isString() && newData.val().length <= 30"
+        },
+        "avatar": {
+          ".validate": "newData.isString() && newData.val().length <= 500 && (newData.val() === '' || newData.val().beginsWith('https://'))"
+        },
+        "bio": {
+          ".validate": "newData.isString() && newData.val().length <= 300"
+        },
+        "gender": {
+          ".validate": "newData.isString() && (newData.val() === '' || newData.val() === 'male' || newData.val() === 'female' || newData.val() === 'other')"
+        },
+        "age": {
+          ".validate": "newData.isNumber() && newData.val() >= 18 && newData.val() <= 99"
+        },
+        "province": {
+          ".validate": "newData.isString() && newData.val().length <= 60"
+        },
+        "interests": {
+          "$i": {
+            ".validate": "newData.isString() && newData.val().length <= 40"
+          }
+        },
+        "createdAt": {
+          ".validate": "newData.isNumber() && (!data.exists() || newData.val() === data.val())"
+        },
+        "lastActive": {
+          ".validate": "newData.isNumber() && newData.val() <= now + 60000"
+        },
+        "$other": {
+          ".validate": false
+        }
       }
     },
     "usernames": {
@@ -70,7 +106,18 @@
     "chats": {
       "$chatId": {
         ".read": "auth != null && root.child('chatMembers').child($chatId).child(auth.uid).exists()",
-        ".write": "auth != null && !root.child('bans').child(auth.uid).exists() && root.child('chatMembers').child($chatId).child(auth.uid).exists()"
+        "lastMessage": {
+          ".write": "auth != null && !root.child('bans').child(auth.uid).exists() && (auth.token.email_verified === true || auth.token.firebase.sign_in_provider !== 'password') && root.child('chatMembers').child($chatId).child(auth.uid).exists()",
+          ".validate": "newData.isString() && newData.val().length <= 200"
+        },
+        "lastAt": {
+          ".write": "auth != null && !root.child('bans').child(auth.uid).exists() && (auth.token.email_verified === true || auth.token.firebase.sign_in_provider !== 'password') && root.child('chatMembers').child($chatId).child(auth.uid).exists()",
+          ".validate": "newData.isNumber() && newData.val() <= now + 60000"
+        },
+        "lastSenderUid": {
+          ".write": "auth != null && !root.child('bans').child(auth.uid).exists() && (auth.token.email_verified === true || auth.token.firebase.sign_in_provider !== 'password') && root.child('chatMembers').child($chatId).child(auth.uid).exists()",
+          ".validate": "newData.val() === auth.uid"
+        }
       }
     },
     "chatMembers": {
@@ -89,7 +136,23 @@
       "$chatId": {
         ".read": "auth != null && root.child('chatMembers').child($chatId).child(auth.uid).exists()",
         "$msgId": {
-          ".write": "auth != null && !data.exists() && !root.child('bans').child(auth.uid).exists() && root.child('chatMembers').child($chatId).child(auth.uid).exists() && newData.child('senderUid').val() === auth.uid"
+          ".write": "auth != null && !data.exists() && !root.child('bans').child(auth.uid).exists() && (auth.token.email_verified === true || auth.token.firebase.sign_in_provider !== 'password') && root.child('chatMembers').child($chatId).child(auth.uid).exists()",
+          ".validate": "newData.hasChildren(['senderUid','at']) && (newData.hasChild('text') || newData.hasChild('imagePath'))",
+          "senderUid": {
+            ".validate": "newData.val() === auth.uid"
+          },
+          "text": {
+            ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 2000"
+          },
+          "imagePath": {
+            ".validate": "newData.isString() && newData.val().beginsWith('chatImages/' + $chatId + '/' + auth.uid + '/') && newData.val().length <= 300"
+          },
+          "at": {
+            ".validate": "newData.isNumber() && newData.val() <= now + 60000 && newData.val() >= now - 600000"
+          },
+          "$other": {
+            ".validate": false
+          }
         }
       }
     },
@@ -165,6 +228,36 @@
         },
         ".write": false
       }
+    },
+    "readReceipts": {
+      "$chatId": {
+        ".read": "auth != null && root.child('chatMembers').child($chatId).child(auth.uid).exists()",
+        "$uid": {
+          ".write": "auth != null && auth.uid === $uid && root.child('chatMembers').child($chatId).child(auth.uid).exists()",
+          ".validate": "newData.isNumber() && newData.val() <= now + 60000"
+        }
+      }
+    },
+    "matches": {
+      "$pairId": {
+        ".read": "auth != null && data.child('members').child(auth.uid).exists()",
+        ".write": false
+      }
+    },
+    "matchNotifications": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$pairId": {
+          "seen": {
+            ".write": "auth != null && auth.uid === $uid",
+            ".validate": "newData.isBoolean()"
+          }
+        }
+      }
+    },
+    "swipes": {
+      ".read": false,
+      ".write": false
     }
   }
 }

@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -90,6 +91,7 @@ fun FriendTalkRoot(
         Log.i("MainActivity", "[AUTH_FLOW_DEBUG_STEP_8_NAV] LaunchedEffect(firebaseUser) observed: uid=${firebaseUser?.uid ?: "null"}")
         firebaseUser?.let { user ->
             viewModel.syncFirebaseUser(user)
+            com.example.social.SocialRepo.upsertOnSignIn(user)
             com.example.service.UiLayoutRepository.refreshHome()
         }
     }
@@ -133,6 +135,8 @@ fun FriendTalkApp(
     onSignOut: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val profileScope = rememberCoroutineScope()
+    val profileContext = androidx.compose.ui.platform.LocalContext.current
 
     var isCoinsOpen by remember { mutableStateOf(false) }
     var isNotifsOpen by remember { mutableStateOf(false) }
@@ -162,6 +166,8 @@ fun FriendTalkApp(
                 .fillMaxSize()
                 .background(appBgColor),
             topBar = {
+                Column {
+                com.example.ui.social.VerifyEmailBanner()
                 if (uiState.uiConfig.feed.showHeader) {
                     AppHeader(
                         currentUser = uiState.currentUser,
@@ -182,6 +188,7 @@ fun FriendTalkApp(
                         onOpenUiBuilder = { isUiBuilderOpen = true },
                         onOpenApkDownload = { isApkDownloadOpen = true }
                     )
+                }
                 }
             },
             bottomBar = {
@@ -247,13 +254,8 @@ fun FriendTalkApp(
 
                     "movie" -> MovieTab()
 
-                    "chat" -> ChatTab(
-                        conversations = uiState.conversations,
-                        users = uiState.users,
-                        currentUser = uiState.currentUser,
-                        onSelectConversation = { viewModel.setActiveChatRoomId(it) },
-                        onCreateGroup = { isCreateGroupOpen = true }
-                    )
+                    // Real 1:1 chats from Firebase RTDB (the old mock ChatTab is kept in code but no longer shown)
+                    "chat" -> com.example.ui.social.RealChatListScreen()
 
                     "companion" -> CompanionMainScreen(
                         currentUser = uiState.currentUser,
@@ -478,12 +480,19 @@ fun FriendTalkApp(
         )
     }
 
+    val openChatId by com.example.social.SocialRepo.openChat.collectAsStateWithLifecycle()
+    openChatId?.let { id -> com.example.ui.social.RealChatRoomDialog(chatId = id, onClose = { com.example.social.SocialRepo.openChat.value = null }) }
+
     if (isEditProfileOpen) {
         EditProfileDialog(
             currentUser = uiState.currentUser,
             onDismiss = { isEditProfileOpen = false },
             onSave = { dName, bio, age, gen, prov, interests ->
                 viewModel.updateProfile(dName, bio, age, gen, prov, interests)
+                profileScope.launch {
+                    val ok = com.example.social.SocialRepo.saveProfile(dName, bio, age, gen.name.lowercase(), prov, interests)
+                    android.widget.Toast.makeText(profileContext, if (ok) "บันทึกโปรไฟล์แล้ว" else "บันทึกโปรไฟล์ไม่สำเร็จ (ยืนยันอีเมลแล้วหรือยัง?)", android.widget.Toast.LENGTH_SHORT).show()
+                }
             }
         )
     }

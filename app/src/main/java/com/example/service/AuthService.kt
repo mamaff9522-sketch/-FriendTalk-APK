@@ -794,6 +794,8 @@ class AuthService private constructor() {
             .addOnSuccessListener { result ->
                 val user = result.user
                 if (user != null) {
+                    // Email verification: backend + DB rules block writes until verified
+                    user.sendEmailVerification()
                     if (displayName.isNotBlank()) {
                         val profileUpdates = UserProfileChangeRequest.Builder()
                             .setDisplayName(displayName.trim())

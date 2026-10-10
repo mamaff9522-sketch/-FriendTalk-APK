@@ -61,7 +61,7 @@ object BrainApi {
 
     // ===== AI characters =====
     data class AiBot(val id: String, val name: String, val avatarUrl: String, val bio: String, val interests: List<String>, val enabled: Boolean)
-    data class MatchResult(val type: String, val partnerUid: String? = null, val bot: AiBot? = null)
+    data class MatchResult(val type: String, val partnerUid: String? = null, val bot: AiBot? = null, val chatId: String? = null)
     /** code = HTTP status (0 = network error); body = parsed JSON or null */
     data class ApiResponse(val code: Int, val json: JSONObject?)
 
@@ -97,7 +97,7 @@ object BrainApi {
         if (r.code != 200) return null
         return when (j.optString("type")) {
             "bot" -> MatchResult("bot", bot = j.optJSONObject("bot")?.let { parseBot(it) })
-            "user" -> MatchResult("user", partnerUid = j.optString("uid"))
+            "user" -> MatchResult("user", partnerUid = j.optString("uid"), chatId = j.optString("chatId").ifBlank { null })
             else -> MatchResult("waiting")
         }
     }

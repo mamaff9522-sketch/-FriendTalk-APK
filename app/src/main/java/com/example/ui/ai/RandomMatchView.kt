@@ -42,8 +42,10 @@ fun RandomMatchView(users: List<User>, onStartChatWithUser: (User) -> Unit) {
             when (res?.type) {
                 "bot" -> bot = res.bot
                 "user" -> {
-                    val u = users.firstOrNull { it.id == res.partnerUid }
-                    if (u != null) onStartChatWithUser(u) else status = "เจอผู้ใช้จริงแล้ว (UID ${res.partnerUid?.take(6)}…)"
+                    // Real user matched: open the real chat created by the backend
+                    val cid = res.chatId ?: res.partnerUid?.let { com.example.social.SocialRepo.openChatWith(it) }
+                    if (cid != null) { status = "เจอผู้ใช้จริงแล้ว!"; com.example.social.SocialRepo.openChat.value = cid }
+                    else status = "เจอผู้ใช้จริงแล้ว แต่เปิดแชทไม่สำเร็จ"
                 }
                 "waiting" -> status = "ยังไม่มีคนว่าง กำลังรอคู่… ลองกดอีกครั้งในไม่กี่วินาที"
                 else -> status = "สุ่มไม่สำเร็จ ลองใหม่อีกครั้ง"

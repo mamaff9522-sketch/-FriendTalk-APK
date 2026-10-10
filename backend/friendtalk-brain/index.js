@@ -53,7 +53,7 @@ async function isSuper(req, res, next) {
   req.role = r; next();
 }
 const w = fn => (q, r, n) => fn(q, r, n).catch(e => { console.error(e.message); r.status(e.code === 404 ? 404 : 500).json({ error: e.code === 404 ? 'user not found' : 'internal' }); });
-app.use(['/coins', '/age', '/config', '/admin', '/superadmin', '/me', '/match', '/bot', '/ui'], w(auth));
+app.use(['/coins', '/age', '/config', '/admin', '/superadmin', '/me', '/match', '/bot', '/ui', '/chats', '/swipe'], w(auth));
 app.get('/me', w(async (q, r) => {
   const role = await loadRole(q.uid);
   r.json({ uid: q.uid, role: role?.role || 'user', permissions: role?.permissions || {} });
@@ -156,7 +156,7 @@ app.post('/match', w(notBanned), w(async (q, r) => {
     else all[me] = { ts: t };
     return all;
   });
-  if (partner) return r.json({ type: 'user', uid: partner });
+  if (partner) { const { chatId } = await openDirectChat(me, partner); return r.json({ type: 'user', uid: partner, chatId }); }
   if (await botsEnabled()) {
     const all = (await db.ref('aiBots').get()).val() || {};
     const list = Object.entries(all).filter(([, b]) => b && b.enabled === true);
@@ -291,6 +291,76 @@ app.post('/admin/ui/layout/:screen/revert', perm('config_edit'), w(notBanned), w
   const t = Date.now();
   await base.update({ current: { layout: v.layout, publishedAt: t, publishedBy: q.uid, versionId: vid, revertedFrom: vid }, draft: null });
   r.json({ reverted: vid });
+}));
+// ===== Phase 1: real chats, swipe match =====
+const STORAGE_BUCKET = process.env.STORAGE_BUCKET || 'friendtalk-4e623.firebasestorage.app';
+const UID_RE = /^[A-Za-z0-9]{10,128}$/;
+async function isBanned(uid) {
+  const b = (await db.ref(`bans/${uid}`).get()).val();
+  return !!(b && (!b.until || b.until > Date.now()));
+}
+const directChatId = (a, b) => 'd_' + [a, b].sort().join('_');
+async function openDirectChat(a, b) {
+  const id = directChatId(a, b), t = Date.now();
+  const exists = (await db.ref(`chatMembers/${id}`).get()).exists();
+  if (!exists) {
+    await db.ref().update({
+      [`chats/${id}`]: { type: 'direct', createdAt: t, lastAt: t, lastMessage: '' },
+      [`chatMembers/${id}/${a}`]: true, [`chatMembers/${id}/${b}`]: true,
+      [`userChats/${a}/${id}`]: t, [`userChats/${b}/${id}`]: t
+    });
+  }
+  return { chatId: id, created: !exists };
+}
+app.post('/chats/open', w(notBanned), w(async (q, r) => {
+  const other = q.body?.otherUid;
+  if (typeof other !== 'string' || !UID_RE.test(other) || other === q.uid) return r.status(400).json({ error: 'valid otherUid required' });
+  if (!(await db.ref(`users/${other}`).get()).exists()) return r.status(404).json({ error: 'user not found' });
+  if (await isBanned(other)) return r.status(403).json({ error: 'user unavailable' });
+  r.json(await openDirectChat(q.uid, other));
+}));
+// Chat images: Storage objects are never client-readable; members read through here.
+app.get('/chats/:chatId/image', w(async (q, r) => {
+  const { chatId } = q.params, path = String(q.query.path || '');
+  if (!/^[A-Za-z0-9_-]{1,300}$/.test(chatId) || !path.startsWith(`chatImages/${chatId}/`) || path.includes('..') || path.length > 400) return r.status(400).json({ error: 'bad path' });
+  if (!(await db.ref(`chatMembers/${chatId}/${q.uid}`).get()).exists()) return r.status(403).json({ error: 'not a member' });
+  const file = admin.storage().bucket(STORAGE_BUCKET).file(path);
+  const [meta] = await file.getMetadata().catch(() => [null]);
+  if (!meta || !String(meta.contentType || '').startsWith('image/')) return r.status(404).json({ error: 'not found' });
+  r.set('Content-Type', meta.contentType); r.set('Cache-Control', 'private, max-age=3600');
+  file.createReadStream().on('error', () => r.end()).pipe(r);
+}));
+const publicProfile = (uid, u) => ({ uid, displayName: u.displayName || '', username: u.username || '', avatar: u.avatar || '', bio: u.bio || '', age: u.age || null, gender: u.gender || '', interests: u.interests || [] });
+app.get('/swipe/candidates', w(notBanned), w(async (q, r) => {
+  const limit = Math.min(20, Math.max(1, parseInt(q.query.limit || '10', 10)));
+  const [users, swiped, bans] = await Promise.all([db.ref('users').get(), db.ref(`swipes/${q.uid}`).get(), db.ref('bans').get()]);
+  const s = swiped.val() || {}, b = bans.val() || {}, now = Date.now();
+  const out = [];
+  for (const [uid, u] of Object.entries(users.val() || {})) {
+    if (uid === q.uid || s[uid] || !u || !u.displayName) continue;
+    const ban = b[uid]; if (ban && (!ban.until || ban.until > now)) continue;
+    out.push(publicProfile(uid, u)); if (out.length >= limit) break;
+  }
+  r.json({ candidates: out });
+}));
+app.post('/swipe', w(notBanned), w(async (q, r) => {
+  const { targetUid, action } = q.body || {};
+  if (typeof targetUid !== 'string' || !UID_RE.test(targetUid) || targetUid === q.uid || !['like', 'pass', 'superlike'].includes(action)) return r.status(400).json({ error: 'targetUid and action (like|pass|superlike) required' });
+  if (!(await db.ref(`users/${targetUid}`).get()).exists()) return r.status(404).json({ error: 'user not found' });
+  const t = Date.now();
+  await db.ref(`swipes/${q.uid}/${targetUid}`).set({ action, at: t });
+  if (action === 'pass') return r.json({ matched: false });
+  const back = (await db.ref(`swipes/${targetUid}/${q.uid}`).get()).val();
+  if (!back || back.action === 'pass' || await isBanned(targetUid)) return r.json({ matched: false });
+  const pairId = [q.uid, targetUid].sort().join('_');
+  const { chatId } = await openDirectChat(q.uid, targetUid);
+  const already = (await db.ref(`matches/${pairId}`).get()).exists();
+  if (!already) await db.ref().update({
+    [`matches/${pairId}`]: { members: { [q.uid]: true, [targetUid]: true }, createdAt: t, chatId },
+    [`matchNotifications/${q.uid}/${pairId}`]: { otherUid: targetUid, chatId, at: t, seen: false },
+    [`matchNotifications/${targetUid}/${pairId}`]: { otherUid: q.uid, chatId, at: t, seen: false }
+  });
+  r.json({ matched: true, pairId, chatId });
 }));
 app.use((e, _q, r, _n) => {
   if (e.type === 'entity.too.large') return r.status(413).json({ error: 'request too large' });

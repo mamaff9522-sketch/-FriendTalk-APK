@@ -1,0 +1,19 @@
+rules_version = '2';
+// Chat images: uploader writes only into their own folder of a chat; nobody reads directly.
+// Members read images through friendtalk-brain GET /chats/{chatId}/image (membership checked in RTDB).
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /chatImages/{chatId}/{uid}/{fileName} {
+      allow read: if false;
+      allow create: if request.auth != null
+        && request.auth.uid == uid
+        && (request.auth.token.email_verified == true || request.auth.token.firebase.sign_in_provider != 'password')
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      allow update, delete: if false;
+    }
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
