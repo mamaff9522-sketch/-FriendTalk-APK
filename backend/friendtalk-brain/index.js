@@ -156,8 +156,21 @@ const SEED_LIMITS = {
   adBonus: { aiBotMessagesPerDay: 10, radarPerDay: 10, shakePerDay: 10, randomMatchPerDay: 10, searchPerDay: 10, personalityMatchPerDay: 10, chatMessagesPerDay: 0 },
   global: { botDailyLimit: parseInt(process.env.BOT_DAILY_LIMIT || '2000', 10), botHourlyPerUser: parseInt(process.env.BOT_HOURLY_PER_USER || '30', 10), adMinIntervalSec: 20 },
   ads: { adsEnabled: true, rewardEnabled: true, bannerEnabled: true, interstitialEnabled: false, interstitialEverySwipes: 10, ssvRequired: false },
-  posting: { enabled: true, freeEnabled: true, vipEnabled: true, reason: '' }
+  posting: { enabled: true, freeEnabled: true, vipEnabled: true, reason: '' },
+  // person-to-person chat switches; read by RTDB rules too (messages write)
+  chat: { enabled: true, freeEnabled: true, vipEnabled: true, reason: '' },
+  comments: { enabled: true, reason: '' }
 };
+const withDefaults = L => ({ ...L, posting: { ...SEED_LIMITS.posting, ...(L.posting || {}) }, chat: { ...SEED_LIMITS.chat, ...(L.chat || {}) }, comments: { ...SEED_LIMITS.comments, ...(L.comments || {}) } });
+const chatDay = () => Math.floor((Date.now() + 7 * 3600 * 1000) / 86400000); // Bangkok day number (same formula as RTDB rules)
+async function chatFor(uid, tier, L) {
+  const C = { ...SEED_LIMITS.chat, ...(L.chat || {}) };
+  const blk = (await db.ref(`chatBlocks/${uid}`).get()).val();
+  if (blk) return { canChat: false, reason: String(blk.reason || 'บัญชีนี้ถูกระงับการแชท') };
+  if (!C.enabled) return { canChat: false, reason: C.reason || 'ปิดระบบแชทชั่วคราว' };
+  if (!(tier === 'vip' ? C.vipEnabled : C.freeEnabled)) return { canChat: false, reason: C.reason || 'ระดับสมาชิกของคุณยังแชทไม่ได้' };
+  return { canChat: true, reason: '' };
+}
 let limitsCache = { at: 0, v: null };
 async function getLimits() {
   if (limitsCache.v && Date.now() - limitsCache.at < 30000) return limitsCache.v;
@@ -190,8 +203,11 @@ async function quotaInfo(uid, L) {
     const base = num(t[f]), extra = num(b[f]), lim = base === 0 ? 0 : base + extra;
     features[f] = { limit: lim, base, bonus: extra, used: num(u[f]), remaining: lim === 0 ? null : Math.max(0, lim - num(u[f])), unlimited: base === 0 };
   }
-  const posting = await postingFor(uid, tier, L);
-  return { tier, vipUntil, day, features, posting, ads: { watched: num(u.ads), max: num(t.maxAdsPerDay), perAd: L.adBonus || {}, ...(L.ads || {}), showAds: tier !== 'vip' && L.ads?.adsEnabled === true } };
+  const cc = (await db.ref(`chatCount/${uid}`).get()).val();
+  { const f = features.chatMessagesPerDay; if (f) { f.used = cc && cc.day === chatDay() ? num(cc.n) : 0; f.limit = f.base; f.bonus = 0; f.remaining = f.base === 0 ? null : Math.max(0, f.base - f.used); } }
+  const posting = await postingFor(uid, tier, L), chat = await chatFor(uid, tier, L);
+  const comments = { ...SEED_LIMITS.comments, ...(L.comments || {}) };
+  return { tier, vipUntil, day, features, posting, chat, comments, ads: { watched: num(u.ads), max: num(t.maxAdsPerDay), perAd: L.adBonus || {}, ...(L.ads || {}), showAds: tier !== 'vip' && L.ads?.adsEnabled === true } };
 }
 /** Atomically consume 1 unit of `feature`; returns null if OK, else the limit hit. 0 = unlimited. */
 async function consume(uid, feature) {
@@ -211,7 +227,7 @@ const quota = feature => async (q, r, n) => {
   n();
 };
 app.get('/limits', w(async (q, r) => r.json(await quotaInfo(q.uid, await getLimits()))));
-app.get('/admin/limits', perm('config_edit'), w(async (_q, r) => { limitsCache.at = 0; r.json(await getLimits()); }));
+app.get('/admin/limits', perm('config_edit'), w(async (_q, r) => { limitsCache.at = 0; r.json(withDefaults(await getLimits())); }));
 app.put('/admin/limits', perm('config_edit'), w(notBanned), w(async (q, r) => {
   const b = q.body || {}, cur = await getLimits(), out = JSON.parse(JSON.stringify(cur));
   const int = (v, path) => { if (!Number.isInteger(v) || v < 0 || v > 100000) throw Object.assign(new Error(`${path} must be an integer 0..100000`), { status: 400 }); return v; };
@@ -233,17 +249,41 @@ app.put('/admin/limits', perm('config_edit'), w(notBanned), w(async (q, r) => {
       if (!['enabled', 'freeEnabled', 'vipEnabled'].includes(k) || typeof v !== 'boolean') return r.status(400).json({ error: `bad posting.${k}` });
       out.posting[k] = v;
     }
+    for (const grp of ['chat', 'comments']) {
+      out[grp] = { ...SEED_LIMITS[grp], ...(out[grp] || {}) };
+      for (const [k, v] of Object.entries(b[grp] || {})) {
+        if (k === 'reason') { if (typeof v !== 'string' || v.length > 200) return r.status(400).json({ error: `bad ${grp}.reason` }); out[grp].reason = v; continue; }
+        if (!Object.keys(SEED_LIMITS[grp]).includes(k) || typeof v !== 'boolean') return r.status(400).json({ error: `bad ${grp}.${k}` });
+        out[grp][k] = v;
+      }
+    }
   } catch (e) { return r.status(e.status || 400).json({ error: e.message }); }
   out.updatedAt = Date.now(); out.updatedBy = q.uid;
   await db.ref('appConfig/limits').set(out);
   limitsCache = { at: Date.now(), v: out };
-  r.json(out);
+  r.json(withDefaults(out));
 }));
 app.put('/admin/post-block/:uid', perm('manage_content'), w(notBanned), w(async (q, r) => {
   const uid = q.params.uid; if (!UID_RE.test(uid)) return r.status(400).json({ error: 'bad uid' });
   if (q.body?.blocked === false) { await db.ref(`postBlocks/${uid}`).remove(); return r.json({ uid, blocked: false }); }
   await db.ref(`postBlocks/${uid}`).set({ reason: String(q.body?.reason || '').slice(0, 200) || 'บัญชีนี้ถูกระงับการโพสต์', by: q.uid, at: Date.now() });
   r.json({ uid, blocked: true });
+}));
+// Per-user restrictions: noPost (postBlocks) and noChat (chatBlocks, also enforced by RTDB rules on messages).
+app.get('/admin/restrict/:uid', perm('manage_content'), w(async (q, r) => {
+  const uid = q.params.uid; if (!UID_RE.test(uid)) return r.status(400).json({ error: 'bad uid' });
+  const [p, c] = await Promise.all([db.ref(`postBlocks/${uid}`).get(), db.ref(`chatBlocks/${uid}`).get()]);
+  r.json({ uid, noPost: p.exists(), noChat: c.exists(), postReason: p.val()?.reason || '', chatReason: c.val()?.reason || '' });
+}));
+app.put('/admin/restrict/:uid', perm('manage_content'), w(notBanned), w(async (q, r) => {
+  const uid = q.params.uid, b = q.body || {}; if (!UID_RE.test(uid)) return r.status(400).json({ error: 'bad uid' });
+  const reason = String(b.reason || '').slice(0, 200), upd = {};
+  if (typeof b.noPost === 'boolean') upd[`postBlocks/${uid}`] = b.noPost ? { reason: reason || 'บัญชีนี้ถูกระงับการโพสต์', by: q.uid, at: Date.now() } : null;
+  if (typeof b.noChat === 'boolean') upd[`chatBlocks/${uid}`] = b.noChat ? { reason: reason || 'บัญชีนี้ถูกระงับการแชท', by: q.uid, at: Date.now() } : null;
+  if (!Object.keys(upd).length) return r.status(400).json({ error: 'noPost or noChat (boolean) required' });
+  await db.ref().update(upd);
+  const [p, c] = await Promise.all([db.ref(`postBlocks/${uid}`).get(), db.ref(`chatBlocks/${uid}`).get()]);
+  r.json({ uid, noPost: p.exists(), noChat: c.exists() });
 }));
 app.put('/admin/vip/:uid', perm('config_edit'), w(notBanned), w(async (q, r) => {
   const uid = q.params.uid; if (!UID_RE.test(uid)) return r.status(400).json({ error: 'bad uid' });
@@ -563,7 +603,34 @@ app.post('/chats/open', w(notBanned), w(async (q, r) => {
   if (typeof other !== 'string' || !UID_RE.test(other) || other === q.uid) return r.status(400).json({ error: 'valid otherUid required' });
   if (!(await db.ref(`users/${other}`).get()).exists()) return r.status(404).json({ error: 'user not found' });
   if (await isBanned(other)) return r.status(403).json({ error: 'user unavailable' });
+  { const cf = await chatFor(q.uid, (await tierOf(q.uid)).tier, await getLimits()); if (!cf.canChat) return r.status(403).json({ code: 'chat_disabled', error: cf.reason }); }
   r.json(await openDirectChat(q.uid, other));
+}));
+// Can I send in this chat right now? (app shows the reason and disables the input; RTDB rules enforce the same)
+app.get('/chats/:chatId/status', w(async (q, r) => {
+  const { chatId } = q.params; if (!/^[A-Za-z0-9_-]{1,300}$/.test(chatId)) return r.status(400).json({ error: 'bad id' });
+  if (!(await db.ref(`chatMembers/${chatId}/${q.uid}`).get()).exists()) return r.status(403).json({ error: 'not a member' });
+  const L = await getLimits(), { tier } = await tierOf(q.uid);
+  const closed = (await db.ref(`chats/${chatId}/closed`).get()).val();
+  const cf = await chatFor(q.uid, tier, L), lim = num(L.tiers?.[tier]?.chatMessagesPerDay);
+  const cc = (await db.ref(`chatCount/${q.uid}`).get()).val(), used = cc && cc.day === chatDay() ? num(cc.n) : 0;
+  let canSend = true, reason = '';
+  if (closed) { canSend = false; reason = closed.by === q.uid ? 'คุณปิดแชทนี้แล้ว' : 'อีกฝ่ายปิดแชทนี้แล้ว'; }
+  else if (!cf.canChat) { canSend = false; reason = cf.reason; }
+  else if (lim > 0 && used >= lim) { canSend = false; reason = `ส่งข้อความครบ ${lim} ข้อความของวันนี้แล้ว`; }
+  r.json({ canSend, reason, closed: closed ? { byMe: closed.by === q.uid, at: closed.at } : null, chatLimit: lim, chatUsed: used, day: chatDay() });
+}));
+// 'Close my chat': a member closes (or the closer reopens) a chat; RTDB rules block new messages while closed.
+app.post('/chats/:chatId/close', w(notBanned), w(async (q, r) => {
+  const { chatId } = q.params; if (!/^[A-Za-z0-9_-]{1,300}$/.test(chatId)) return r.status(400).json({ error: 'bad id' });
+  if (!(await db.ref(`chatMembers/${chatId}/${q.uid}`).get()).exists()) return r.status(403).json({ error: 'not a member' });
+  const ref = db.ref(`chats/${chatId}/closed`), cur = (await ref.get()).val();
+  if (q.body?.closed === false) {
+    if (cur && cur.by !== q.uid) return r.status(403).json({ error: 'only the member who closed can reopen' });
+    await ref.remove(); return r.json({ chatId, closed: false });
+  }
+  if (!cur) await ref.set({ by: q.uid, at: Date.now() });
+  r.json({ chatId, closed: true });
 }));
 // Chat images: Storage objects are never client-readable; members read through here.
 app.get('/chats/:chatId/image', w(async (q, r) => {
@@ -690,9 +757,12 @@ app.patch('/posts/:id', w(notBanned), w(async (q, r) => {
   const id = q.params.id; if (!POST_ID_RE.test(id)) return r.status(400).json({ error: 'bad id' });
   const post = (await db.ref(`posts/${id}`).get()).val();
   if (!post || post.authorId !== q.uid) return r.status(404).json({ error: 'not found' });
-  if (!VIS.includes(q.body?.visibility)) return r.status(400).json({ error: 'visibility must be public|friends|only_me' });
-  await db.ref(`posts/${id}/visibility`).set(q.body.visibility);
-  r.json({ id, visibility: q.body.visibility });
+  const upd = {};
+  if (q.body?.visibility !== undefined) { if (!VIS.includes(q.body.visibility)) return r.status(400).json({ error: 'visibility must be public|friends|only_me' }); upd.visibility = q.body.visibility; }
+  if (q.body?.commentsOff !== undefined) { if (typeof q.body.commentsOff !== 'boolean') return r.status(400).json({ error: 'commentsOff must be boolean' }); upd.commentsOff = q.body.commentsOff; }
+  if (!Object.keys(upd).length) return r.status(400).json({ error: 'visibility or commentsOff required' });
+  await db.ref(`posts/${id}`).update(upd);
+  r.json({ id, visibility: upd.visibility ?? post.visibility ?? 'public', commentsOff: upd.commentsOff ?? !!post.commentsOff });
 }));
 app.get('/feed', w(async (q, r) => {
   const limit = Math.min(30, Math.max(1, parseInt(q.query.limit || '20', 10)));
@@ -721,7 +791,7 @@ app.get('/feed', w(async (q, r) => {
   posts.splice(0, posts.length, ...posts.filter((_, i) => vis[i]));
   const liked = await Promise.all(posts.map(p => db.ref(`postLikes/${p.id}/${q.uid}`).get()));
   posts.forEach((p, i) => { p.likedByMe = liked[i].exists(); p.images = p.images || []; });
-  posts.forEach(p => { p.visibility = p.visibility || 'public'; if (p.authorId !== q.uid) delete p.place?.lat, delete p.place?.lng; });
+  posts.forEach(p => { p.commentsOff = p.commentsOff === true; p.visibility = p.visibility || 'public'; if (p.authorId !== q.uid) delete p.place?.lat, delete p.place?.lng; });
   r.json({ posts, nextCursor: rawCount === limit ? oldest : null });
 }));
 async function setLike(q, r, on) {
@@ -745,7 +815,10 @@ app.delete('/posts/:id/like', w(notBanned), w((q, r) => setLike(q, r, false)));
 app.post('/posts/:id/comments', w(notBanned), w(async (q, r) => {
   const id = q.params.id; if (!POST_ID_RE.test(id)) return r.status(400).json({ error: 'bad id' });
   const text = cleanText(q.body?.text, 1000); if (!text) return r.status(400).json({ error: 'text required' });
-  if (!(await visiblePost(q, r, id))) return;
+  const vp = await visiblePost(q, r, id); if (!vp) return;
+  { const C = { ...SEED_LIMITS.comments, ...((await getLimits()).comments || {}) };
+    if (!C.enabled) return r.status(403).json({ code: 'comments_off', error: C.reason || 'ปิดการแสดงความคิดเห็นชั่วคราว' });
+    if ((await db.ref(`posts/${id}/commentsOff`).get()).val() === true) return r.status(403).json({ code: 'comments_off', error: 'เจ้าของโพสต์ปิดความคิดเห็น' }); }
   let parentId = q.body?.parentId || null;
   if (parentId) {
     if (!POST_ID_RE.test(parentId)) return r.status(400).json({ error: 'bad parentId' });

@@ -137,7 +137,7 @@ fun UserProfileDialog(uid: String, distance: String? = null, onDismiss: () -> Un
                     } }, colors = ButtonDefaults.buttonColors(containerColor = Purple600)) { Text("เพิ่มเพื่อน") }
                     Button(onClick = { scope.launch {
                         val cid = SocialRepo.openChatWith(uid)
-                        if (cid != null) { onDismiss(); SocialRepo.openChat.value = cid } else msg = "เปิดแชทไม่สำเร็จ"
+                        if (cid != null) { onDismiss(); SocialRepo.openChat.value = cid } else msg = SocialRepo.lastOpenError.ifBlank { "เปิดแชทไม่สำเร็จ" }
                     } }, colors = ButtonDefaults.buttonColors(containerColor = Pink500)) { Text("เริ่มแชท") }
                 }
                 if (msg.isNotBlank()) Text(msg, color = Amber400, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))

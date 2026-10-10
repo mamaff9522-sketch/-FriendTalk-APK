@@ -78,6 +78,7 @@ class RealFeedState(private val scope: CoroutineScope, val tag: String? = null, 
             if (n == null) update(p.id) { it.copy(likedByMe = p.likedByMe, likeCount = p.likeCount) } else update(p.id) { it.copy(likeCount = n) }
         }
     }
+    fun setCommentsOff(p: FeedPost, off: Boolean) { scope.launch { if (FeedRepo.setCommentsOff(p.id, off)) update(p.id) { it.copy(commentsOff = off) } else error = "เปลี่ยนการตั้งค่าความคิดเห็นไม่สำเร็จ" } }
     fun setVisibility(p: FeedPost, v: String) { scope.launch { if (FeedRepo.setVisibility(p.id, v)) update(p.id) { it.copy(visibility = v) } else error = "เปลี่ยนการมองเห็นไม่สำเร็จ" } }
     fun delete(p: FeedPost) { scope.launch { if (FeedRepo.deletePost(p.id)) posts.removeAll { it.id == p.id } else error = "ลบไม่สำเร็จ" } }
 }
@@ -101,7 +102,7 @@ fun LazyListScope.realFeedItems(state: RealFeedState) {
     }
     items(state.posts, key = { "rp_" + it.id }) { p ->
         RealPostCard(p, onLike = { state.toggleLike(p) }, onComments = { state.commentsFor = p }, onDelete = { state.delete(p) },
-            onTag = { state.openTag = it }, onVisibility = { state.setVisibility(p, it) })
+            onTag = { state.openTag = it }, onVisibility = { v -> when (v) { "#comments_on" -> state.setCommentsOff(p, false); "#comments_off" -> state.setCommentsOff(p, true); else -> state.setVisibility(p, v) } })
         if (p.id == state.posts.lastOrNull()?.id) LaunchedEffect(p.id) { state.loadMore() }
     }
     if (state.endReached && !state.loading) item(key = "real_end") { Text("— ดูครบทุกโพสต์แล้ว —", color = Slate400, fontSize = 12.sp, modifier = Modifier.fillMaxWidth().padding(16.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center) }
@@ -197,6 +198,7 @@ fun RealPostCard(p: FeedPost, onLike: () -> Unit, onComments: () -> Unit, onDele
                             listOf("public" to "🌐 สาธารณะ", "friends" to "👥 เพื่อน", "only_me" to "🔒 เฉพาะฉัน").forEach { (k, l) ->
                                 DropdownMenuItem(text = { Text(l) }, onClick = { visMenu = false; onVisibility(k) })
                             }
+                            DropdownMenuItem(text = { Text(if (p.commentsOff) "💬 เปิดความคิดเห็น" else "🚫 ปิดความคิดเห็น") }, onClick = { visMenu = false; onVisibility(if (p.commentsOff) "#comments_on" else "#comments_off") })
                         }
                     }
                     TextButton(onClick = { confirm = true }) { Text("ลบ", color = Rose500, fontSize = 12.sp) }
@@ -263,7 +265,9 @@ fun RealCommentsDialog(state: RealFeedState) {
                     TextButton(onClick = { replyTo = null }) { Text("ยกเลิก", color = Slate400, fontSize = 12.sp) }
                 } }
                 if (msg.isNotBlank()) Text(msg, color = Amber400, fontSize = 12.sp)
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                val off = state.posts.firstOrNull { it.id == post.id }?.commentsOff ?: post.commentsOff
+                if (off) Text("🚫 เจ้าของโพสต์ปิดความคิดเห็น", color = Slate400, fontSize = 12.sp, modifier = Modifier.padding(8.dp))
+                else Row(verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(value = input, onValueChange = { if (it.length <= 1000) input = it }, modifier = Modifier.weight(1f),
                         placeholder = { Text("เขียนความคิดเห็น…", color = Slate400) }, maxLines = 3,
                         colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White))
@@ -272,7 +276,7 @@ fun RealCommentsDialog(state: RealFeedState) {
                         val t = input; val parent = replyTo?.id; input = ""; replyTo = null
                         scope.launch {
                             val n = FeedRepo.addComment(post.id, t, parent)
-                            if (n == null) { msg = "ส่งไม่สำเร็จ"; input = t } else { msg = ""; state.update(post.id) { it.copy(commentCount = n) }; reload() }
+                            if (n == null) { msg = FeedRepo.lastCommentError.ifBlank { "ส่งไม่สำเร็จ" }; input = t } else { msg = ""; state.update(post.id) { it.copy(commentCount = n) }; reload() }
                         }
                     }) { Text("ส่ง") }
                 }

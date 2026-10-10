@@ -157,7 +157,15 @@ object SocialRepo {
     private suspend fun pushMessage(chatId: String, fields: Map<String, Any>, preview: String): Boolean {
         val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return false
         val now = System.currentTimeMillis()
-        val ok = db.getReference("messages/$chatId").push().setValue(fields + mapOf("senderUid" to uid, "at" to now)).awaitOk()
+        val key = db.getReference("messages/$chatId").push().key ?: return false
+        // daily counter written in the same atomic update; RTDB rules check it against appConfig/limits (chatMessagesPerDay)
+        val day = (now + 7 * 3600_000L) / 86_400_000L
+        val cc = get("chatCount/$uid")
+        val prevDay = cc?.child("day")?.getValue(Long::class.java); val prevN = cc?.child("n")?.getValue(Long::class.java) ?: 0L
+        val n = if (prevDay == day) prevN + 1 else 1L
+        val ok = db.reference.updateChildren(mapOf(
+            "messages/$chatId/$key" to (fields + mapOf("senderUid" to uid, "at" to now)),
+            "chatCount/$uid" to mapOf("day" to day, "n" to n, "last" to key))).awaitOk()
         if (ok) db.getReference("chats/$chatId").updateChildren(mapOf("lastMessage" to preview.take(200), "lastAt" to now, "lastSenderUid" to uid))
         return ok
     }
@@ -175,9 +183,23 @@ object SocialRepo {
 
     fun imageUrl(chatId: String, path: String) = "https://friendtalk-brain-123224091480.asia-southeast1.run.app/chats/$chatId/image?path=" + Uri.encode(path)
 
+    data class ChatStatus(val canSend: Boolean, val reason: String, val closedByMe: Boolean, val closed: Boolean)
+    suspend fun chatStatus(chatId: String): ChatStatus? {
+        val u = FirebaseAuth.getInstance().currentUser ?: return null
+        val j = BrainApi.call(u, "GET", "/chats/$chatId/status").json ?: return null
+        val c = j.optJSONObject("closed")
+        return ChatStatus(j.optBoolean("canSend", true), j.optString("reason"), c?.optBoolean("byMe") == true, c != null)
+    }
+    suspend fun setClosed(chatId: String, closed: Boolean): String? {
+        val u = FirebaseAuth.getInstance().currentUser ?: return "ไม่ได้เข้าสู่ระบบ"
+        val r = BrainApi.call(u, "POST", "/chats/$chatId/close", JSONObject().put("closed", closed))
+        return if (r.code == 200) null else (r.json?.optString("error") ?: "ไม่สำเร็จ (${r.code})")
+    }
+    var lastOpenError = ""
     suspend fun openChatWith(otherUid: String): String? {
         val u = FirebaseAuth.getInstance().currentUser ?: return null
         val r = BrainApi.call(u, "POST", "/chats/open", JSONObject().put("otherUid", otherUid))
+        lastOpenError = r.json?.optString("error").orEmpty()
         return if (r.code == 200) r.json?.optString("chatId") else null
     }
 

@@ -26,6 +26,11 @@ fun AdminLimitsTab() {
     val fields = remember { mutableStateMapOf<String, String>() } // "tiers.free.radarPerDay" -> "50"
     val flags = remember { mutableStateMapOf<String, Boolean>() }  // "ads.bannerEnabled" -> true
     var reason by remember { mutableStateOf("") }
+    var chatReason by remember { mutableStateOf("") }
+    var commentsReason by remember { mutableStateOf("") }
+    var rUid by remember { mutableStateOf("") }
+    var rReason by remember { mutableStateOf("") }
+    var rState by remember { mutableStateOf<JSONObject?>(null) }
     var msg by remember { mutableStateOf("") }
     fun load(j: JSONObject) {
         cfg = j; fields.clear(); flags.clear()
@@ -34,6 +39,8 @@ fun AdminLimitsTab() {
         j.optJSONObject("global")?.let { o -> o.keys().forEach { k -> fields["global.$k"] = o.opt(k).toString() } }
         j.optJSONObject("ads")?.let { o -> o.keys().forEach { k -> val v = o.opt(k); if (v is Boolean) flags["ads.$k"] = v else fields["ads.$k"] = v.toString() } }
         j.optJSONObject("posting")?.let { o -> o.keys().forEach { k -> val v = o.opt(k); if (v is Boolean) flags["posting.$k"] = v }; reason = o.optString("reason") }
+        j.optJSONObject("chat")?.let { o -> o.keys().forEach { k -> val v = o.opt(k); if (v is Boolean) flags["chat.$k"] = v }; chatReason = o.optString("reason") }
+        j.optJSONObject("comments")?.let { o -> o.keys().forEach { k -> val v = o.opt(k); if (v is Boolean) flags["comments.$k"] = v }; commentsReason = o.optString("reason") }
     }
     LaunchedEffect(Unit) {
         val u = FirebaseAuth.getInstance().currentUser ?: return@LaunchedEffect
@@ -74,6 +81,15 @@ fun AdminLimitsTab() {
         Flag("posting.enabled", "เปิดให้โพสต์"); Flag("posting.freeEnabled", "สมาชิกฟรีโพสต์ได้"); Flag("posting.vipEnabled", "VIP โพสต์ได้")
         OutlinedTextField(value = reason, onValueChange = { if (it.length <= 200) reason = it }, label = { Text("ข้อความเหตุผลเมื่อปิด") }, modifier = Modifier.fillMaxWidth(),
             colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White))
+        Spacer(Modifier.height(8.dp))
+        Text("แชทระหว่างผู้ใช้", color = White, fontWeight = FontWeight.Bold)
+        Flag("chat.enabled", "เปิดระบบแชท"); Flag("chat.freeEnabled", "สมาชิกฟรีแชทได้"); Flag("chat.vipEnabled", "VIP แชทได้")
+        OutlinedTextField(value = chatReason, onValueChange = { if (it.length <= 200) chatReason = it }, label = { Text("เหตุผลเมื่อปิดแชท") }, modifier = Modifier.fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White))
+        Text("ความคิดเห็น", color = White, fontWeight = FontWeight.Bold)
+        Flag("comments.enabled", "เปิดให้แสดงความคิดเห็น")
+        OutlinedTextField(value = commentsReason, onValueChange = { if (it.length <= 200) commentsReason = it }, label = { Text("เหตุผลเมื่อปิดความคิดเห็น") }, modifier = Modifier.fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White))
         if (msg.isNotBlank()) Text(msg, color = Amber400, fontSize = 12.sp)
         Button(onClick = {
             val b = JSONObject()
@@ -81,11 +97,29 @@ fun AdminLimitsTab() {
                 var o = b; for (i in 0 until parts.size - 1) o = o.optJSONObject(parts[i]) ?: JSONObject().also { nn -> o.put(parts[i], nn) }; o.put(parts.last(), n) }
             flags.forEach { (k, v) -> val (a, c) = k.split("."); (b.optJSONObject(a) ?: JSONObject().also { b.put(a, it) }).put(c, v) }
             (b.optJSONObject("posting") ?: JSONObject().also { b.put("posting", it) }).put("reason", reason)
+            (b.optJSONObject("chat") ?: JSONObject().also { b.put("chat", it) }).put("reason", chatReason)
+            (b.optJSONObject("comments") ?: JSONObject().also { b.put("comments", it) }).put("reason", commentsReason)
             scope.launch {
                 val u = FirebaseAuth.getInstance().currentUser ?: return@launch
                 val r = BrainApi.call(u, "PUT", "/admin/limits", b)
                 if (r.code == 200 && r.json != null) { load(r.json); msg = "บันทึกแล้ว มีผลทันที" } else msg = r.json?.optString("error") ?: "บันทึกไม่สำเร็จ (${r.code})"
             }
         }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Pink500)) { Text("บันทึก") }
+        Spacer(Modifier.height(16.dp))
+        Text("จำกัดสิทธิ์รายผู้ใช้ (ห้ามโพสต์ / ห้ามแชท)", color = White, fontWeight = FontWeight.Bold)
+        OutlinedTextField(value = rUid, onValueChange = { rUid = it.trim().take(128); rState = null }, label = { Text("UID ผู้ใช้") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White))
+        OutlinedTextField(value = rReason, onValueChange = { if (it.length <= 200) rReason = it }, label = { Text("เหตุผล (แสดงให้ผู้ใช้เห็น)") }, modifier = Modifier.fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White))
+        fun restrict(body: JSONObject?) { scope.launch {
+            val u = FirebaseAuth.getInstance().currentUser ?: return@launch
+            val r = if (body == null) BrainApi.call(u, "GET", "/admin/restrict/$rUid") else BrainApi.call(u, "PUT", "/admin/restrict/$rUid", body.put("reason", rReason))
+            if (r.code == 200) rState = r.json else msg = r.json?.optString("error") ?: "ไม่สำเร็จ (${r.code})"
+        } }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { OutlinedButton(enabled = rUid.isNotBlank(), onClick = { restrict(null) }) { Text("ดูสถานะ", color = White) } }
+        rState?.let { st ->
+            Row(verticalAlignment = Alignment.CenterVertically) { Text("ห้ามโพสต์", color = White, modifier = Modifier.weight(1f)); Switch(checked = st.optBoolean("noPost"), onCheckedChange = { restrict(JSONObject().put("noPost", it)) }) }
+            Row(verticalAlignment = Alignment.CenterVertically) { Text("ห้ามแชท", color = White, modifier = Modifier.weight(1f)); Switch(checked = st.optBoolean("noChat"), onCheckedChange = { restrict(JSONObject().put("noChat", it)) }) }
+        }
     }
 }

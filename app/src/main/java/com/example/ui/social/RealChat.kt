@@ -106,6 +106,9 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
     val token by produceState<String?>(null) { value = idToken() }
     var input by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("") }
+    var cs by remember { mutableStateOf<SocialRepo.ChatStatus?>(null) }
+    var csTick by remember { mutableStateOf(0) }
+    LaunchedEffect(chatId, csTick) { cs = SocialRepo.chatStatus(chatId) }
     val listState = rememberLazyListState()
     LaunchedEffect(messages.size) { if (messages.isNotEmpty()) { listState.animateScrollToItem(messages.size - 1); SocialRepo.markRead(chatId) } }
 
@@ -115,7 +118,7 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
             val size = runCatching { context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length } }.getOrNull() ?: 0L
             if (size > 10L * 1024 * 1024) { status = "รูปใหญ่เกิน 10MB"; return@rememberLauncherForActivityResult }
             status = "กำลังส่งรูป…"
-            scope.launch { status = if (SocialRepo.sendImage(chatId, uri, mime)) "" else "ส่งรูปไม่สำเร็จ" }
+            scope.launch { status = if (SocialRepo.sendImage(chatId, uri, mime)) "" else "ส่งรูปไม่สำเร็จ"; csTick++ }
         }
     }
 
@@ -128,6 +131,15 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                         Avatar(other?.avatar.orEmpty(), other?.displayName ?: "?", 36)
                         Spacer(Modifier.width(8.dp))
                         Text(other?.displayName ?: "…", color = White, fontWeight = FontWeight.Bold, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                        var menu by remember { mutableStateOf(false) }
+                        Box {
+                            TextButton(onClick = { menu = true }) { Text("⋮", color = White, fontSize = 18.sp) }
+                            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                                val c = cs
+                                if (c?.closed == true && c.closedByMe) DropdownMenuItem(text = { Text("🔓 เปิดแชทอีกครั้ง") }, onClick = { menu = false; scope.launch { status = SocialRepo.setClosed(chatId, false).orEmpty(); csTick++ } })
+                                else if (c?.closed != true) DropdownMenuItem(text = { Text("🔒 ปิดแชทนี้") }, onClick = { menu = false; scope.launch { status = SocialRepo.setClosed(chatId, true).orEmpty(); csTick++ } })
+                            }
+                        }
                     }
                 }
                 val shared by produceState<com.example.social.Similarity?>(null, otherUid) { if (otherUid.isNotBlank()) value = com.example.social.InterestsRepo.profile(otherUid)?.similarity }
@@ -152,7 +164,8 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                     }
                 }
                 if (status.isNotBlank()) Text(status, color = Amber400, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 12.dp))
-                Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                cs?.takeIf { !it.canSend }?.let { Surface(color = Slate800, modifier = Modifier.fillMaxWidth()) { Text("🚫 " + it.reason, color = Amber400, fontSize = 13.sp, modifier = Modifier.padding(12.dp)) } }
+                if (cs?.canSend != false) Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     TextButton(onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) { Text("📷", fontSize = 20.sp) }
                     OutlinedTextField(value = input, onValueChange = { if (it.length <= 2000) input = it }, modifier = Modifier.weight(1f),
                         placeholder = { Text("พิมพ์ข้อความ…", color = Slate400) }, maxLines = 4,
@@ -160,7 +173,7 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                     Spacer(Modifier.width(6.dp))
                     Button(enabled = input.isNotBlank(), colors = ButtonDefaults.buttonColors(containerColor = Pink500), onClick = {
                         val t = input; input = ""
-                        scope.launch { if (!SocialRepo.sendText(chatId, t)) { status = "ส่งไม่สำเร็จ (ยืนยันอีเมลแล้วหรือยัง?)"; input = t } else status = "" }
+                        scope.launch { if (!SocialRepo.sendText(chatId, t)) { input = t; cs = SocialRepo.chatStatus(chatId); status = if (cs?.canSend == false) "" else "ส่งไม่สำเร็จ (ยืนยันอีเมลแล้วหรือยัง?)" } else status = "" }
                     }) { Text("ส่ง") }
                 }
             }

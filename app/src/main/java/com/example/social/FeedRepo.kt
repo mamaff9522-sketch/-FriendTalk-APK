@@ -20,7 +20,7 @@ data class FeedPost(
     val id: String, val authorId: String, val authorName: String, val authorAvatar: String,
     val text: String, val imageUrls: List<String>, val createdAt: Long,
     val likeCount: Int, val commentCount: Int, val likedByMe: Boolean,
-    val hashtags: List<String> = emptyList(), val placeLabel: String = "", val visibility: String = "public"
+    val hashtags: List<String> = emptyList(), val placeLabel: String = "", val visibility: String = "public", val commentsOff: Boolean = false
 )
 data class FeedComment(val id: String, val authorId: String, val authorName: String, val authorAvatar: String,
                        val text: String, val parentId: String?, val createdAt: Long)
@@ -36,7 +36,7 @@ object FeedRepo {
             o.optString("text"), (0 until imgs.length()).mapNotNull { imgs.optJSONObject(it)?.optString("url") },
             o.optLong("createdAt"), o.optInt("likeCount"), o.optInt("commentCount"), o.optBoolean("likedByMe"),
             o.optJSONArray("hashtags")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
-            o.optJSONObject("place")?.optString("label").orEmpty(), o.optString("visibility", "public"))
+            o.optJSONObject("place")?.optString("label").orEmpty(), o.optString("visibility", "public"), o.optBoolean("commentsOff"))
     }
 
     suspend fun feed(cursor: String?, tag: String? = null, author: String? = null): Pair<List<FeedPost>, String?>? {
@@ -82,6 +82,8 @@ object FeedRepo {
         else Result.failure(Exception(r.json?.optString("error")?.ifBlank { null } ?: "โพสต์ไม่สำเร็จ (${r.code})"))
     }
 
+    suspend fun setCommentsOff(id: String, off: Boolean): Boolean = user()?.let { BrainApi.call(it, "PATCH", "/posts/$id", JSONObject().put("commentsOff", off)).code == 200 } ?: false
+    var lastCommentError = ""
     suspend fun setVisibility(id: String, v: String): Boolean = user()?.let { BrainApi.call(it, "PATCH", "/posts/$id", JSONObject().put("visibility", v)).code == 200 } ?: false
 
     suspend fun deletePost(id: String): Boolean = user()?.let { BrainApi.call(it, "DELETE", "/posts/$id").code == 200 } ?: false
@@ -108,6 +110,7 @@ object FeedRepo {
         val u = user() ?: return null
         val b = JSONObject().put("text", text.trim()); if (parentId != null) b.put("parentId", parentId)
         val r = BrainApi.call(u, "POST", "/posts/$postId/comments", b)
+        lastCommentError = r.json?.optString("error").orEmpty()
         return if (r.code == 200) r.json?.optInt("commentCount") else null
     }
 
