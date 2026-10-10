@@ -79,7 +79,7 @@
       }
     },
     "posts": {
-      ".read": "auth != null",
+      ".read": false,
       ".write": false
     },
     "postLikes": {
@@ -87,7 +87,7 @@
       ".write": false
     },
     "postComments": {
-      ".read": "auth != null",
+      ".read": false,
       ".write": false
     },
     "userFeeds": {
@@ -278,6 +278,36 @@
         ".read": "auth != null && auth.uid === $uid",
         ".write": false
       }
+    },
+    "usage": {
+      ".read": false,
+      ".write": false
+    },
+    "quotaBonus": {
+      ".read": false,
+      ".write": false
+    },
+    "adTx": {
+      ".read": false,
+      ".write": false
+    },
+    "adLast": {
+      ".read": false,
+      ".write": false
+    },
+    "vip": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": false
+      }
+    },
+    "hashtags": {
+      ".read": false,
+      ".write": false
+    },
+    "postBlocks": {
+      ".read": false,
+      ".write": false
     }
   }
 }

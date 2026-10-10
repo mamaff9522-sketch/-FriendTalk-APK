@@ -19,7 +19,8 @@ import kotlin.coroutines.resume
 data class FeedPost(
     val id: String, val authorId: String, val authorName: String, val authorAvatar: String,
     val text: String, val imageUrls: List<String>, val createdAt: Long,
-    val likeCount: Int, val commentCount: Int, val likedByMe: Boolean
+    val likeCount: Int, val commentCount: Int, val likedByMe: Boolean,
+    val hashtags: List<String> = emptyList(), val placeLabel: String = "", val visibility: String = "public"
 )
 data class FeedComment(val id: String, val authorId: String, val authorName: String, val authorAvatar: String,
                        val text: String, val parentId: String?, val createdAt: Long)
@@ -33,12 +34,14 @@ object FeedRepo {
         val imgs = o.optJSONArray("images") ?: JSONArray()
         return FeedPost(o.optString("id"), o.optString("authorId"), o.optString("authorName"), o.optString("authorAvatar"),
             o.optString("text"), (0 until imgs.length()).mapNotNull { imgs.optJSONObject(it)?.optString("url") },
-            o.optLong("createdAt"), o.optInt("likeCount"), o.optInt("commentCount"), o.optBoolean("likedByMe"))
+            o.optLong("createdAt"), o.optInt("likeCount"), o.optInt("commentCount"), o.optBoolean("likedByMe"),
+            o.optJSONArray("hashtags")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
+            o.optJSONObject("place")?.optString("label").orEmpty(), o.optString("visibility", "public"))
     }
 
-    suspend fun feed(cursor: String?): Pair<List<FeedPost>, String?>? {
+    suspend fun feed(cursor: String?, tag: String? = null): Pair<List<FeedPost>, String?>? {
         val u = user() ?: return null
-        val r = BrainApi.call(u, "GET", "/feed?limit=15" + (cursor?.let { "&cursor=$it" } ?: ""))
+        val r = BrainApi.call(u, "GET", "/feed?limit=20" + (cursor?.let { "&cursor=$it" } ?: "") + (tag?.let { "&tag=" + android.net.Uri.encode(it) } ?: ""))
         val j = r.json ?: return null
         if (r.code != 200) return null
         val arr = j.optJSONArray("posts") ?: JSONArray()
@@ -58,7 +61,7 @@ object FeedRepo {
         }.getOrNull()
     }
 
-    suspend fun createPost(ctx: Context, text: String, images: List<Uri>): Result<FeedPost> {
+    suspend fun createPost(ctx: Context, text: String, images: List<Uri>, place: String = "", lat: Double? = null, lng: Double? = null, visibility: String = "public"): Result<FeedPost> {
         val u = user() ?: return Result.failure(Exception("กรุณาเข้าสู่ระบบ"))
         val refs = JSONArray()
         for ((i, uri) in images.take(4).withIndex()) {
@@ -72,10 +75,14 @@ object FeedRepo {
             if (!ok) return Result.failure(Exception("อัปโหลดรูปไม่สำเร็จ (ยืนยันอีเมลแล้วหรือยัง?)"))
             refs.put(path)
         }
-        val r = BrainApi.call(u, "POST", "/posts", JSONObject().put("text", text.trim()).put("imageRefs", refs))
+        val body = JSONObject().put("text", text.trim()).put("imageRefs", refs).put("visibility", visibility)
+        if (place.isNotBlank()) { body.put("place", place.trim().take(80)); if (lat != null && lng != null) body.put("lat", lat).put("lng", lng) }
+        val r = BrainApi.call(u, "POST", "/posts", body)
         return if (r.code == 200 && r.json != null) Result.success(parsePost(r.json))
         else Result.failure(Exception(r.json?.optString("error")?.ifBlank { null } ?: "โพสต์ไม่สำเร็จ (${r.code})"))
     }
+
+    suspend fun setVisibility(id: String, v: String): Boolean = user()?.let { BrainApi.call(it, "PATCH", "/posts/$id", JSONObject().put("visibility", v)).code == 200 } ?: false
 
     suspend fun deletePost(id: String): Boolean = user()?.let { BrainApi.call(it, "DELETE", "/posts/$id").code == 200 } ?: false
 

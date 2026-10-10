@@ -1,1 +1,1 @@
-{"name":"friendtalk-brain","type":"module","main":"index.js","engines":{"node":">=22"},"scripts":{"start":"node index.js"},"dependencies":{"express":"^4.21.0","firebase-admin":"^12.7.0"}}
+{"name": "friendtalk-brain", "type": "module", "main": "index.js", "engines": {"node": ">=22"}, "scripts": {"start": "node index.js", "test": "node --test ssv.test.js"}, "dependencies": {"express": "^4.21.0", "firebase-admin": "^12.7.0"}}

@@ -85,7 +85,9 @@ object BrainApi {
                     .method(method, rb).build()
                 client.newCall(req).execute().use { resp ->
                     val text = resp.body?.string().orEmpty()
-                    ApiResponse(resp.code, runCatching { JSONObject(text) }.getOrNull())
+                    val j = runCatching { JSONObject(text) }.getOrNull()
+                    if (resp.code == 429 && j?.optString("code") == "quota") com.example.ads.AdRoom.quotaHit.value = j.optString("feature")
+                    ApiResponse(resp.code, j)
                 }
             } catch (e: Exception) { ApiResponse(0, null) }
         }
@@ -108,7 +110,7 @@ object BrainApi {
         return when (r.code) {
             200 -> r.json?.optString("reply").orEmpty()
             403 -> "!บอท AI ถูกปิดใช้งานอยู่"
-            429 -> "!ส่งข้อความถี่เกินไป ลองใหม่ภายหลัง"
+            429 -> if (r.json?.optString("code") == "quota") "!QUOTA" else "!ส่งข้อความถี่เกินไป ลองใหม่ภายหลัง"
             0 -> "!เชื่อมต่อเซิร์ฟเวอร์ไม่ได้"
             else -> "!เกิดข้อผิดพลาด (${r.code})"
         }

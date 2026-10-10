@@ -131,7 +131,8 @@ fun AdminDashboardDialog(
                     "💰 ถอนเงิน (${withdrawals.count { it.status == "PENDING" }})",
                     "📜 บันทึก",
                     "⚙️ เครื่องมือ",
-                    "🤖 บอท AI"
+                    "🤖 บอท AI",
+                    "📊 ตั้งค่าลิมิต"
                 )
 
                 LazyRow(
@@ -199,6 +200,7 @@ fun AdminDashboardDialog(
                             onOpenApkDownload = { onDismiss(); onOpenApkDownload() }
                         )
                         5 -> com.example.ui.ai.AdminBotsTab()
+                        6 -> AdminLimitsTab()
                     }
                 }
             }

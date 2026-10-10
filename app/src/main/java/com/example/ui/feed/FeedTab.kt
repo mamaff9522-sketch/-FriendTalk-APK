@@ -88,8 +88,10 @@ fun FeedTab(
     val homeLayout by com.example.service.UiLayoutRepository.home.collectAsState()
     val refreshScope = rememberCoroutineScope()
     var refreshing by remember { mutableStateOf(false) }
+    val showLegacyFab = false
     val realFeed = com.example.ui.social.rememberRealFeedState()
     com.example.ui.social.RealCommentsDialog(realFeed)
+    realFeed.openTag?.let { com.example.ui.social.TagFeedDialog(it) { realFeed.openTag = null } }
 
     PullToRefreshBox(
         isRefreshing = refreshing,
@@ -299,8 +301,8 @@ fun FeedTab(
             }
         }
 
-        // Floating Action Button to Create Post
-        FloatingActionButton(
+        // Old mock-post FAB hidden: real posts use the composer at the top of the feed
+        if (showLegacyFab) FloatingActionButton(
             onClick = { isCreatePostOpen = true },
             containerColor = Pink500,
             contentColor = White,
@@ -316,6 +318,7 @@ fun FeedTab(
                 modifier = Modifier.size(28.dp)
             )
         }
+        com.example.ads.FeedBanner(Modifier.align(Alignment.BottomCenter))
     }
 
     // Dialogs

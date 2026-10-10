@@ -130,6 +130,8 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                         Text(other?.displayName ?: "…", color = White, fontWeight = FontWeight.Bold, fontSize = 15.sp, modifier = Modifier.weight(1f))
                     }
                 }
+                val shared by produceState<com.example.social.Similarity?>(null, otherUid) { if (otherUid.isNotBlank()) value = com.example.social.InterestsRepo.profile(otherUid)?.similarity }
+                shared?.takeIf { it.shared.isNotEmpty() }?.let { Surface(color = Slate800, modifier = Modifier.fillMaxWidth()) { Box(Modifier.padding(10.dp)) { SharedInterests(it) } } }
                 LazyColumn(state = listState, modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
                     items(messages, key = { it.id }) { m ->

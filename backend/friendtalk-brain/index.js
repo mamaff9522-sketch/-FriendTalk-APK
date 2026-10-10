@@ -1,5 +1,7 @@
 import express from 'express';
 import admin from 'firebase-admin';
+import crypto from 'node:crypto';
+import { fetchKeys, verifySsv } from './ssv.js';
 admin.initializeApp({ databaseURL: process.env.DATABASE_URL || 'https://friendtalk-4e623-default-rtdb.asia-southeast1.firebasedatabase.app' });
 const dbProxy = () => admin.database();
 const db = { ref: p => dbProxy().ref(p) };
@@ -53,7 +55,7 @@ async function isSuper(req, res, next) {
   req.role = r; next();
 }
 const w = fn => (q, r, n) => fn(q, r, n).catch(e => { console.error(e.message); r.status(e.code === 404 ? 404 : 500).json({ error: e.code === 404 ? 'user not found' : 'internal' }); });
-app.use(['/coins', '/age', '/config', '/admin', '/superadmin', '/me', '/match', '/bot', '/ui', '/chats', '/swipe', '/posts', '/feed', '/friends', '/radar', '/shake'], w(auth));
+app.use(['/coins', '/age', '/config', '/admin', '/superadmin', '/me', '/match', '/bot', '/ui', '/chats', '/swipe', '/posts', '/feed', '/friends', '/radar', '/shake', '/limits', '/quota', '/search'], w(auth));
 app.get('/me', w(async (q, r) => {
   const role = await loadRole(q.uid);
   r.json({ uid: q.uid, role: role?.role || 'user', permissions: role?.permissions || {} });
@@ -130,8 +132,6 @@ app.delete('/superadmin/admins/:uid', w(notBanned), w(async (q, r) => {
 // ===== AI chat characters (clearly labeled AI; free; never take coins/gifts) =====
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
 const PROJECT = process.env.GOOGLE_CLOUD_PROJECT || 'friendtalk-4e623';
-const BOT_DAILY_LIMIT = parseInt(process.env.BOT_DAILY_LIMIT || '2000', 10);
-const BOT_HOURLY_PER_USER = parseInt(process.env.BOT_HOURLY_PER_USER || '30', 10);
 const QUEUE_TTL_MS = 60_000;
 const botsEnabled = async () => (await db.ref('appConfig/aiBotsEnabled').get()).val() === true;
 const publicBot = (id, b) => ({ id, name: b.name, avatarUrl: b.avatarUrl, bio: b.bio, interests: b.interests || [], enabled: b.enabled === true, isAI: true });
@@ -145,7 +145,251 @@ async function bump(path, limit) {
   await db.ref(path).transaction(c => { c = c || 0; if (c >= limit) { over = true; return; } return c + 1; });
   return !over;
 }
-app.post('/match', w(notBanned), w(async (q, r) => {
+// ===== Admin-configurable limits (appConfig/limits). Values here are ONLY the initial seed. =====
+const FEATURES = ['aiBotMessagesPerDay', 'radarPerDay', 'shakePerDay', 'randomMatchPerDay', 'searchPerDay', 'personalityMatchPerDay', 'chatMessagesPerDay'];
+const SEED_LIMITS = {
+  tiers: {
+    free: { aiBotMessagesPerDay: 20, radarPerDay: 50, shakePerDay: 50, randomMatchPerDay: 50, searchPerDay: 50, personalityMatchPerDay: 50, chatMessagesPerDay: 0, maxAdsPerDay: 5 },
+    vip: { aiBotMessagesPerDay: 300, radarPerDay: 500, shakePerDay: 500, randomMatchPerDay: 500, searchPerDay: 500, personalityMatchPerDay: 500, chatMessagesPerDay: 0, maxAdsPerDay: 0 }
+  },
+  // adBonus = extra quota granted per watched ad, per feature
+  adBonus: { aiBotMessagesPerDay: 10, radarPerDay: 10, shakePerDay: 10, randomMatchPerDay: 10, searchPerDay: 10, personalityMatchPerDay: 10, chatMessagesPerDay: 0 },
+  global: { botDailyLimit: parseInt(process.env.BOT_DAILY_LIMIT || '2000', 10), botHourlyPerUser: parseInt(process.env.BOT_HOURLY_PER_USER || '30', 10), adMinIntervalSec: 20 },
+  ads: { adsEnabled: true, rewardEnabled: true, bannerEnabled: true, interstitialEnabled: false, interstitialEverySwipes: 10, ssvRequired: false },
+  posting: { enabled: true, freeEnabled: true, vipEnabled: true, reason: '' }
+};
+let limitsCache = { at: 0, v: null };
+async function getLimits() {
+  if (limitsCache.v && Date.now() - limitsCache.at < 30000) return limitsCache.v;
+  const ref = db.ref('appConfig/limits');
+  let v = (await ref.get()).val();
+  if (!v) { await ref.transaction(c => c || SEED_LIMITS); v = (await ref.get()).val(); }
+  limitsCache = { at: Date.now(), v }; return v;
+}
+const dayKey = () => new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10).replace(/-/g, ''); // Bangkok day
+async function tierOf(uid) {
+  const v = (await db.ref(`vip/${uid}`).get()).val();
+  return v && v.until > Date.now() ? { tier: 'vip', vipUntil: v.until } : { tier: 'free', vipUntil: null };
+}
+const num = x => (Number.isInteger(x) ? x : 0);
+async function postingFor(uid, tier, L) {
+  const P = { ...SEED_LIMITS.posting, ...(L.posting || {}) };
+  const blk = (await db.ref(`postBlocks/${uid}`).get()).val();
+  if (blk && (!blk.until || blk.until > Date.now())) return { canPost: false, reason: String(blk.reason || 'บัญชีนี้ถูกระงับการโพสต์') };
+  if (!P.enabled) return { canPost: false, reason: P.reason || 'ปิดการโพสต์ชั่วคราว' };
+  if (!(tier === 'vip' ? P.vipEnabled : P.freeEnabled)) return { canPost: false, reason: P.reason || 'ระดับสมาชิกของคุณยังโพสต์ไม่ได้' };
+  return { canPost: true, reason: '' };
+}
+async function quotaInfo(uid, L) {
+  const { tier, vipUntil } = await tierOf(uid);
+  const t = L.tiers?.[tier] || {}, day = dayKey();
+  const [used, bonus] = await Promise.all([db.ref(`usage/${uid}/${day}`).get(), db.ref(`quotaBonus/${uid}/${day}`).get()]);
+  const u = used.val() || {}, b = bonus.val() || {};
+  const features = {};
+  for (const f of FEATURES) {
+    const base = num(t[f]), extra = num(b[f]), lim = base === 0 ? 0 : base + extra;
+    features[f] = { limit: lim, base, bonus: extra, used: num(u[f]), remaining: lim === 0 ? null : Math.max(0, lim - num(u[f])), unlimited: base === 0 };
+  }
+  const posting = await postingFor(uid, tier, L);
+  return { tier, vipUntil, day, features, posting, ads: { watched: num(u.ads), max: num(t.maxAdsPerDay), perAd: L.adBonus || {}, ...(L.ads || {}), showAds: tier !== 'vip' && L.ads?.adsEnabled === true } };
+}
+/** Atomically consume 1 unit of `feature`; returns null if OK, else the limit hit. 0 = unlimited. */
+async function consume(uid, feature) {
+  const L = await getLimits();
+  const { tier } = await tierOf(uid);
+  const base = num(L.tiers?.[tier]?.[feature]);
+  if (base === 0) return null;
+  const day = dayKey();
+  const lim = base + num((await db.ref(`quotaBonus/${uid}/${day}/${feature}`).get()).val());
+  let over = false;
+  await db.ref(`usage/${uid}/${day}/${feature}`).transaction(c => { c = c || 0; over = c >= lim; return over ? c : c + 1; });
+  return over ? lim : null;
+}
+const quota = feature => async (q, r, n) => {
+  const lim = await consume(q.uid, feature);
+  if (lim !== null) return r.status(429).json({ code: 'quota', feature, limit: lim, error: 'quota exceeded' });
+  n();
+};
+app.get('/limits', w(async (q, r) => r.json(await quotaInfo(q.uid, await getLimits()))));
+app.get('/admin/limits', perm('config_edit'), w(async (_q, r) => { limitsCache.at = 0; r.json(await getLimits()); }));
+app.put('/admin/limits', perm('config_edit'), w(notBanned), w(async (q, r) => {
+  const b = q.body || {}, cur = await getLimits(), out = JSON.parse(JSON.stringify(cur));
+  const int = (v, path) => { if (!Number.isInteger(v) || v < 0 || v > 100000) throw Object.assign(new Error(`${path} must be an integer 0..100000`), { status: 400 }); return v; };
+  try {
+    for (const tier of ['free', 'vip']) for (const [k, v] of Object.entries(b.tiers?.[tier] || {})) {
+      if (![...FEATURES, 'maxAdsPerDay'].includes(k)) return r.status(400).json({ error: `unknown field tiers.${tier}.${k}` });
+      out.tiers[tier][k] = int(v, `tiers.${tier}.${k}`);
+    }
+    for (const [k, v] of Object.entries(b.adBonus || {})) { if (!FEATURES.includes(k)) return r.status(400).json({ error: `unknown adBonus.${k}` }); out.adBonus[k] = int(v, `adBonus.${k}`); }
+    for (const [k, v] of Object.entries(b.global || {})) { if (!['botDailyLimit', 'botHourlyPerUser', 'adMinIntervalSec'].includes(k)) return r.status(400).json({ error: `unknown global.${k}` }); out.global[k] = int(v, `global.${k}`); }
+    for (const [k, v] of Object.entries(b.ads || {})) {
+      if (k === 'interstitialEverySwipes') { out.ads[k] = int(v, 'ads.interstitialEverySwipes'); continue; }
+      if (!['adsEnabled', 'rewardEnabled', 'bannerEnabled', 'interstitialEnabled', 'ssvRequired'].includes(k) || typeof v !== 'boolean') return r.status(400).json({ error: `bad ads.${k}` });
+      out.ads[k] = v;
+    }
+    out.posting = { ...SEED_LIMITS.posting, ...(out.posting || {}) };
+    for (const [k, v] of Object.entries(b.posting || {})) {
+      if (k === 'reason') { if (typeof v !== 'string' || v.length > 200) return r.status(400).json({ error: 'bad posting.reason' }); out.posting.reason = v; continue; }
+      if (!['enabled', 'freeEnabled', 'vipEnabled'].includes(k) || typeof v !== 'boolean') return r.status(400).json({ error: `bad posting.${k}` });
+      out.posting[k] = v;
+    }
+  } catch (e) { return r.status(e.status || 400).json({ error: e.message }); }
+  out.updatedAt = Date.now(); out.updatedBy = q.uid;
+  await db.ref('appConfig/limits').set(out);
+  limitsCache = { at: Date.now(), v: out };
+  r.json(out);
+}));
+app.put('/admin/post-block/:uid', perm('manage_content'), w(notBanned), w(async (q, r) => {
+  const uid = q.params.uid; if (!UID_RE.test(uid)) return r.status(400).json({ error: 'bad uid' });
+  if (q.body?.blocked === false) { await db.ref(`postBlocks/${uid}`).remove(); return r.json({ uid, blocked: false }); }
+  await db.ref(`postBlocks/${uid}`).set({ reason: String(q.body?.reason || '').slice(0, 200) || 'บัญชีนี้ถูกระงับการโพสต์', by: q.uid, at: Date.now() });
+  r.json({ uid, blocked: true });
+}));
+app.put('/admin/vip/:uid', perm('config_edit'), w(notBanned), w(async (q, r) => {
+  const uid = q.params.uid; if (!UID_RE.test(uid)) return r.status(400).json({ error: 'bad uid' });
+  const until = q.body?.until;
+  if (until === null) { await db.ref(`vip/${uid}`).remove(); return r.json({ uid, vip: false }); }
+  if (!Number.isInteger(until) || until < Date.now()) return r.status(400).json({ error: 'until must be a future ms timestamp or null' });
+  await db.ref(`vip/${uid}`).set({ until, by: q.uid, at: Date.now() });
+  r.json({ uid, vip: true, until });
+}));
+/** Credit one ad reward (shared by client path and SSV callback). */
+async function creditAd(uid, feature, txId) {
+  const L = await getLimits();
+  if (!(L.ads?.adsEnabled && L.ads?.rewardEnabled)) return { status: 403, body: { error: 'ad rewards disabled' } };
+  if (!FEATURES.includes(feature)) return { status: 400, body: { error: 'bad feature' } };
+  const { tier } = await tierOf(uid);
+  const max = num(L.tiers?.[tier]?.maxAdsPerDay), per = num(L.adBonus?.[feature]), day = dayKey();
+  if (txId) { const t = await db.ref(`adTx/${txId}`).transaction(c => c ? c : { uid, at: Date.now() }); if (t.snapshot.val()?.done) return { status: 200, body: { duplicate: true } }; }
+  const lastRef = db.ref(`adLast/${uid}`), minGap = num(L.global?.adMinIntervalSec) * 1000;
+  let tooSoon = false;
+  await lastRef.transaction(c => { tooSoon = !!c && Date.now() - c < minGap; return tooSoon ? c : Date.now(); });
+  if (tooSoon) return { status: 429, body: { code: 'ad_rate', error: 'wait before next ad' } };
+  let over = false;
+  await db.ref(`usage/${uid}/${day}/ads`).transaction(c => { c = c || 0; over = max > 0 && c >= max; return over ? c : c + 1; });
+  if (max === 0 || over) return { status: 429, body: { code: 'ad_cap', limit: max, error: 'daily ad limit reached' } };
+  await db.ref(`quotaBonus/${uid}/${day}/${feature}`).transaction(c => (c || 0) + per);
+  if (txId) await db.ref(`adTx/${txId}/done`).set(true);
+  return { status: 200, body: { credited: per, feature, ...(await quotaInfo(uid, L)) } };
+}
+app.post('/quota/ad-reward', w(notBanned), w(async (q, r) => {
+  const L = await getLimits();
+  const feature = q.body?.feature || 'aiBotMessagesPerDay';
+  if (L.ads?.ssvRequired) return r.status(202).json({ pending: true, note: 'credited by AdMob SSV callback' });
+  const x = await creditAd(q.uid, feature, null); r.status(x.status).json(x.body);
+}));
+// AdMob SSV callback (public; trust comes from Google's ECDSA signature).
+app.get('/admob/ssv', w(async (q, r) => {
+  const raw = q.originalUrl.split('?')[1] || '';
+  if (!raw) return r.status(200).send('ok'); // AdMob console "verify URL" ping
+  const v = verifySsv(raw, await fetchKeys());
+  if (!v.ok) return r.status(403).json({ error: v.reason });
+  const uid = v.params.user_id, feature = v.params.custom_data || 'aiBotMessagesPerDay', tx = String(v.params.transaction_id || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 100);
+  if (!UID_RE.test(uid || '') || !tx) return r.status(400).json({ error: 'missing user_id/transaction_id' });
+  const x = await creditAd(uid, feature, tx);
+  r.status(x.status === 429 ? 200 : x.status).json(x.body); // 200 so AdMob does not retry a capped reward
+}));
+// Simple real user search (by display name prefix), quota-limited.
+app.get('/search/users', w(notBanned), w(quota('searchPerDay')), w(async (q, r) => {
+  const term = String(q.query.q || '').trim().slice(0, 50);
+  if (term.length < 1) return r.status(400).json({ error: 'q required' });
+  const s = await db.ref('users').orderByChild('displayName').startAt(term).endAt(term + '\uf8ff').limitToFirst(20).get();
+  const out = []; s.forEach(c => { if (c.key !== q.uid && c.val()?.displayName) out.push(publicProfile(c.key, c.val())); });
+  r.json({ users: out });
+}));
+
+// ===== Interest profile + similarity (appConfig/interests; seed only) =====
+const SEED_INTERESTS = {
+  threshold: 0.15, minShared: 2, maxPerCategory: 10,
+  categories: {
+    lookingFor: { label: 'มองหา', weight: 3, options: ['เพื่อนคุย', 'เพื่อนเที่ยว', 'แฟน', 'คู่ชีวิต', 'เพื่อนเล่นเกม', 'เพื่อนออกกำลังกาย', 'เพื่อนเรียน', 'คอนเนกชันงาน'] },
+    personality: { label: 'นิสัย', weight: 3, options: ['อินโทรเวิร์ต', 'เอ็กซ์โทรเวิร์ต', 'ขี้เล่น', 'ใจเย็น', 'จริงจัง', 'ตลก', 'โรแมนติก', 'ชอบผจญภัย', 'รักสงบ', 'ช่างคุย', 'ฟังเก่ง', 'มีเหตุผล'] },
+    favoriteFoods: { label: 'อาหาร', weight: 1, options: ['อาหารไทย', 'อาหารญี่ปุ่น', 'อาหารเกาหลี', 'อาหารจีน', 'อาหารอิตาเลียน', 'ปิ้งย่าง', 'ชาบู', 'สตรีทฟู้ด', 'มังสวิรัติ', 'ขนมหวาน', 'กาแฟ', 'ชานม'] },
+    favoriteMovies: { label: 'หนัง', weight: 1, options: ['แอ็กชัน', 'ตลก', 'โรแมนติก', 'สยองขวัญ', 'ไซไฟ', 'แฟนตาซี', 'ดราม่า', 'สารคดี', 'อนิเมะ', 'ซีรีส์เกาหลี', 'ซีรีส์วาย', 'ระทึกขวัญ'] },
+    favoriteMusic: { label: 'เพลง', weight: 1, options: ['ป๊อป', 'ร็อก', 'ลูกทุ่ง', 'หมอลำ', 'ฮิปฮอป', 'อินดี้', 'แจ๊ส', 'คลาสสิก', 'EDM', 'เคป๊อป', 'อาร์แอนด์บี', 'เพื่อชีวิต'] },
+    hobbies: { label: 'งานอดิเรก', weight: 1.5, options: ['เล่นเกม', 'อ่านหนังสือ', 'ถ่ายรูป', 'ท่องเที่ยว', 'ทำอาหาร', 'วาดรูป', 'ร้องเพลง', 'เต้น', 'ปลูกต้นไม้', 'ช้อปปิ้ง', 'ดูบอล', 'ตั้งแคมป์'] },
+    lifestyle: { label: 'ไลฟ์สไตล์', weight: 1, options: ['รักสุนัข', 'รักแมว', 'ไม่ดื่ม', 'ดื่มบ้าง', 'ไม่สูบบุหรี่', 'ออกกำลังกายประจำ', 'ตื่นเช้า', 'นอนดึก', 'สายปาร์ตี้', 'ติดบ้าน'] },
+    languages: { label: 'ภาษา', weight: 0.5, options: ['ไทย', 'อังกฤษ', 'จีน', 'ญี่ปุ่น', 'เกาหลี', 'ลาว', 'พม่า', 'เวียดนาม'] }
+  }
+};
+let interestCache = { at: 0, v: null };
+async function getInterestCfg() {
+  if (interestCache.v && Date.now() - interestCache.at < 30000) return interestCache.v;
+  const ref = db.ref('appConfig/interests');
+  let v = (await ref.get()).val();
+  if (!v) { await ref.transaction(c => c || SEED_INTERESTS); v = (await ref.get()).val(); }
+  interestCache = { at: Date.now(), v }; return v;
+}
+const cleanTag = t => String(t || '').replace(/[.#$\[\]\/\u0000-\u001f]/g, '').trim().slice(0, 30);
+function sanitizeInterests(body, cfg) {
+  const out = {};
+  for (const [cat, c] of Object.entries(cfg.categories || {})) {
+    const arr = Array.isArray(body?.[cat]) ? body[cat] : [];
+    const seen = [];
+    for (const x of arr) { const t = cleanTag(x); if (t && !seen.includes(t)) seen.push(t); if (seen.length >= (cfg.maxPerCategory || 10)) break; }
+    if (seen.length) out[cat] = seen;
+  }
+  return out;
+}
+function similarity(a, b, cfg) {
+  let num = 0, den = 0, sharedCount = 0; const shared = {};
+  for (const [cat, c] of Object.entries(cfg.categories || {})) {
+    const A = new Set((a?.[cat] || []).map(x => String(x).toLowerCase())), B = new Set((b?.[cat] || []).map(x => String(x).toLowerCase()));
+    if (!A.size && !B.size) continue;
+    const w = Number(c.weight) || 1, inter = [...A].filter(x => B.has(x)), uni = new Set([...A, ...B]).size;
+    den += w; num += w * (uni ? inter.length / uni : 0);
+    if (inter.length) { shared[cat] = (a[cat] || []).filter(x => B.has(String(x).toLowerCase())); sharedCount += inter.length; }
+  }
+  const score = den ? num / den : 0;
+  return { score: Math.round(score * 100) / 100, percent: Math.round(score * 100), shared, sharedCount, isMatch: score >= (cfg.threshold ?? 0.15) || sharedCount >= (cfg.minShared ?? 2) };
+}
+const ipOf = async uid => (await db.ref(`users/${uid}/interestProfile`).get()).val() || {};
+app.get('/interests/config', w(async (_q, r) => r.json(await getInterestCfg())));
+app.put('/me/interests', w(notBanned), w(async (q, r) => {
+  const cfg = await getInterestCfg(), ip = sanitizeInterests(q.body || {}, cfg);
+  await db.ref(`users/${q.uid}/interestProfile`).set(Object.keys(ip).length ? ip : null);
+  r.json({ interestProfile: ip });
+}));
+app.put('/admin/interests', perm('config_edit'), w(notBanned), w(async (q, r) => {
+  const b = q.body || {}, cur = JSON.parse(JSON.stringify(await getInterestCfg()));
+  if (b.threshold !== undefined) { if (typeof b.threshold !== 'number' || b.threshold < 0 || b.threshold > 1) return r.status(400).json({ error: 'threshold 0..1' }); cur.threshold = b.threshold; }
+  if (b.minShared !== undefined) { if (!Number.isInteger(b.minShared) || b.minShared < 0 || b.minShared > 50) return r.status(400).json({ error: 'minShared 0..50' }); cur.minShared = b.minShared; }
+  for (const [cat, c] of Object.entries(b.categories || {})) {
+    if (!/^[A-Za-z]{2,30}$/.test(cat)) return r.status(400).json({ error: 'bad category key' });
+    const o = cur.categories[cat] || { label: cat, weight: 1, options: [] };
+    if (c.label !== undefined) o.label = cleanTag(c.label);
+    if (c.weight !== undefined) { if (typeof c.weight !== 'number' || c.weight < 0 || c.weight > 10) return r.status(400).json({ error: 'weight 0..10' }); o.weight = c.weight; }
+    if (c.options !== undefined) { if (!Array.isArray(c.options) || c.options.length > 60) return r.status(400).json({ error: 'options max 60' }); o.options = [...new Set(c.options.map(cleanTag).filter(Boolean))]; }
+    cur.categories[cat] = o;
+  }
+  await db.ref('appConfig/interests').set(cur); interestCache = { at: Date.now(), v: cur };
+  r.json(cur);
+}));
+// Another user's profile with interests + what the viewer shares with them.
+app.get('/users/:uid/profile', w(async (q, r) => {
+  const uid = q.params.uid; if (!UID_RE.test(uid)) return r.status(400).json({ error: 'bad uid' });
+  const u = (await db.ref(`users/${uid}`).get()).val();
+  if (!u || await isBanned(uid)) return r.status(404).json({ error: 'not found' });
+  const cfg = await getInterestCfg(), mine = await ipOf(q.uid);
+  r.json({ ...publicProfile(uid, u), interestProfile: u.interestProfile || {}, similarity: uid === q.uid ? null : similarity(mine, u.interestProfile || {}, cfg) });
+}));
+app.get('/match/personality', w(notBanned), w(quota('personalityMatchPerDay')), w(async (q, r) => {
+  const cfg = await getInterestCfg();
+  const [users, bans] = await Promise.all([db.ref('users').get(), db.ref('bans').get()]);
+  const all = users.val() || {}, b = bans.val() || {}, mine = all[q.uid]?.interestProfile || {}, now = Date.now();
+  if (!Object.keys(mine).length) return r.status(409).json({ code: 'no_interests', error: 'set your interests first' });
+  const out = [];
+  for (const [uid, u] of Object.entries(all)) {
+    if (uid === q.uid || !u?.displayName || !u.interestProfile) continue;
+    const ban = b[uid]; if (ban && (!ban.until || ban.until > now)) continue;
+    const sim = similarity(mine, u.interestProfile, cfg);
+    if (sim.isMatch) out.push({ ...publicProfile(uid, u), interestProfile: u.interestProfile, similarity: sim });
+  }
+  out.sort((x, y) => y.similarity.score - x.similarity.score || y.similarity.sharedCount - x.similarity.sharedCount);
+  r.json({ users: out.slice(0, 20) });
+}));
+
+app.post('/match', w(notBanned), w(quota('randomMatchPerDay')), w(async (q, r) => {
   const me = q.uid, t = Date.now(), qref = db.ref('matchQueue');
   let partner = null;
   await qref.transaction(all => {
@@ -176,8 +420,10 @@ app.post('/bot/chat', w(notBanned), w(async (q, r) => {
   const bot = (await db.ref(`aiBots/${botId}`).get()).val();
   if (!bot || bot.enabled !== true) return r.status(403).json({ error: 'bots disabled' });
   const d = new Date(), day = d.toISOString().slice(0, 10).replace(/-/g, ''), hour = day + String(d.getUTCHours()).padStart(2, '0');
-  if (!(await bump(`botRate/${q.uid}/${hour}`, BOT_HOURLY_PER_USER))) return r.status(429).json({ error: 'rate limit: try again later' });
-  if (!(await bump(`botDaily/${day}`, BOT_DAILY_LIMIT))) return r.status(429).json({ error: 'daily bot limit reached' });
+  const G = (await getLimits()).global || {};
+  if (!(await bump(`botRate/${q.uid}/${hour}`, num(G.botHourlyPerUser) || Infinity))) return r.status(429).json({ error: 'rate limit: try again later' });
+  if (!(await bump(`botDaily/${day}`, num(G.botDailyLimit) || Infinity))) return r.status(429).json({ error: 'daily bot limit reached' });
+  { const lim = await consume(q.uid, 'aiBotMessagesPerDay'); if (lim !== null) return r.status(429).json({ code: 'quota', feature: 'aiBotMessagesPerDay', limit: lim, error: 'quota exceeded' }); }
   const chatRef = db.ref(`botChats/${q.uid}/${botId}`);
   const hist = Object.values((await chatRef.orderByKey().limitToLast(10).get()).val() || {}).sort((a, b) => a.ts - b.ts);
   const system = [
@@ -335,13 +581,15 @@ app.get('/swipe/candidates', w(notBanned), w(async (q, r) => {
   const limit = Math.min(20, Math.max(1, parseInt(q.query.limit || '10', 10)));
   const [users, swiped, bans] = await Promise.all([db.ref('users').get(), db.ref(`swipes/${q.uid}`).get(), db.ref('bans').get()]);
   const s = swiped.val() || {}, b = bans.val() || {}, now = Date.now();
+  const icfg = await getInterestCfg(), mineIp = (users.val() || {})[q.uid]?.interestProfile || {};
   const out = [];
   for (const [uid, u] of Object.entries(users.val() || {})) {
     if (uid === q.uid || s[uid] || !u || !u.displayName) continue;
     const ban = b[uid]; if (ban && (!ban.until || ban.until > now)) continue;
-    out.push(publicProfile(uid, u)); if (out.length >= limit) break;
+    out.push({ ...publicProfile(uid, u), interestProfile: u.interestProfile || {}, similarity: similarity(mineIp, u.interestProfile || {}, icfg) });
   }
-  r.json({ candidates: out });
+  out.sort((x, y) => y.similarity.score - x.similarity.score);
+  r.json({ candidates: out.slice(0, limit) });
 }));
 app.post('/swipe', w(notBanned), w(async (q, r) => {
   const { targetUid, action } = q.body || {};
@@ -367,6 +615,26 @@ app.post('/swipe', w(notBanned), w(async (q, r) => {
 // Post images: Storage posts/{uid}/..., owner-only create, image/* <=10MB; read via the
 // Firebase download-token URL (unguessable; token set by the client SDK upload).
 const POST_ID_RE = /^-[A-Za-z0-9_-]{19}$/;
+const normTag = t => { const x = String(t).replace(/^#/, '').toLowerCase().normalize('NFC'); return /^[\p{L}\p{M}\p{N}_]{1,50}$/u.test(x) ? x : null; };
+const VIS = ['public', 'friends', 'only_me'];
+async function canView(viewer, post) {
+  if (!post) return false;
+  const v = post.visibility || 'public';
+  if (post.authorId === viewer || v === 'public') return true;
+  if (v === 'friends') return (await db.ref(`friends/${post.authorId}/${viewer}`).get()).exists();
+  return false;
+}
+/** 404 (not 403) when the caller may not see the post, so existence is not revealed. */
+async function visiblePost(q, r, id) {
+  const post = (await db.ref(`posts/${id}`).get()).val();
+  if (!(await canView(q.uid, post))) { r.status(404).json({ error: 'not found' }); return null; }
+  return post;
+}
+function parseHashtags(text) {
+  const out = [];
+  for (const m of String(text).matchAll(/#([\p{L}\p{M}\p{N}_]{1,50})/gu)) { const t = normTag(m[1]); if (t && !out.includes(t)) out.push(t); if (out.length >= 10) break; }
+  return out;
+}
 const cleanText = (t, max) => (typeof t === 'string' ? t.trim() : '').slice(0, max);
 async function postImageUrl(uid, path) {
   if (typeof path !== 'string' || !path.startsWith(`posts/${uid}/`) || path.includes('..') || path.length > 300) return null;
@@ -374,7 +642,7 @@ async function postImageUrl(uid, path) {
   const [m] = await f.getMetadata().catch(() => [null]);
   if (!m || !String(m.contentType || '').startsWith('image/') || Number(m.size) > 10 * 1024 * 1024) return null;
   let tok = (m.metadata?.firebaseStorageDownloadTokens || '').split(',')[0];
-  if (!tok) { tok = require('crypto').randomUUID(); await f.setMetadata({ metadata: { firebaseStorageDownloadTokens: tok } }); }
+  if (!tok) { tok = crypto.randomUUID(); await f.setMetadata({ metadata: { firebaseStorageDownloadTokens: tok } }); }
   return `https://firebasestorage.googleapis.com/v0/b/${STORAGE_BUCKET}/o/${encodeURIComponent(path)}?alt=media&token=${tok}`;
 }
 async function authorInfo(uid) {
@@ -382,15 +650,27 @@ async function authorInfo(uid) {
   return { authorName: String(u.displayName || 'ผู้ใช้').slice(0, 50), authorAvatar: String(u.avatar || '').slice(0, 500) };
 }
 app.post('/posts', w(notBanned), w(async (q, r) => {
+  { const pf = await postingFor(q.uid, (await tierOf(q.uid)).tier, await getLimits()); if (!pf.canPost) return r.status(403).json({ code: 'posting_disabled', error: pf.reason }); }
   const text = cleanText(q.body?.text, 2000);
   const refs = Array.isArray(q.body?.imageRefs) ? q.body.imageRefs : [];
   if (refs.length > 4) return r.status(400).json({ error: 'max 4 images' });
   const images = [];
   for (const p of refs) { const u = await postImageUrl(q.uid, p); if (!u) return r.status(400).json({ error: 'invalid image' }); images.push({ path: p, url: u }); }
   if (!text && !images.length) return r.status(400).json({ error: 'text or image required' });
+  const hashtags = parseHashtags(text);
+  const label = cleanText(q.body?.place, 80).replace(/[\u0000-\u001f]/g, '');
+  let place = null;
+  if (label) {
+    place = { label };
+    const { lat, lng } = q.body || {};
+    if (validLatLng(lat, lng)) { place.lat = Math.round(lat * 100) / 100; place.lng = Math.round(lng * 100) / 100; } // ~1 km
+  }
   const ref = db.ref('posts').push();
-  const post = { authorId: q.uid, ...(await authorInfo(q.uid)), text, images, createdAt: Date.now(), likeCount: 0, commentCount: 0 };
-  await ref.set(post);
+  const visibility = VIS.includes(q.body?.visibility) ? q.body.visibility : 'public';
+  const post = { authorId: q.uid, ...(await authorInfo(q.uid)), text, images, hashtags, place, visibility, createdAt: Date.now(), likeCount: 0, commentCount: 0 };
+  const upd = { [`posts/${ref.key}`]: post };
+  for (const t of hashtags) upd[`hashtags/${t}/${ref.key}`] = post.createdAt;
+  await db.ref().update(upd);
   r.json({ id: ref.key, ...post });
 }));
 async function canManage(q, post) { return post.authorId === q.uid || can(await loadRole(q.uid), 'manage_content'); }
@@ -398,26 +678,51 @@ app.delete('/posts/:id', w(async (q, r) => {
   const id = q.params.id; if (!POST_ID_RE.test(id)) return r.status(400).json({ error: 'bad id' });
   const post = (await db.ref(`posts/${id}`).get()).val(); if (!post) return r.status(404).json({ error: 'not found' });
   if (!(await canManage(q, post))) return r.status(403).json({ error: 'not allowed' });
-  await db.ref().update({ [`posts/${id}`]: null, [`postLikes/${id}`]: null, [`postComments/${id}`]: null });
+  const del = { [`posts/${id}`]: null, [`postLikes/${id}`]: null, [`postComments/${id}`]: null };
+  for (const t of post.hashtags || []) del[`hashtags/${t}/${id}`] = null;
+  await db.ref().update(del);
   for (const im of post.images || []) await admin.storage().bucket(STORAGE_BUCKET).file(im.path).delete().catch(() => {});
   r.json({ ok: true });
 }));
+app.patch('/posts/:id', w(notBanned), w(async (q, r) => {
+  const id = q.params.id; if (!POST_ID_RE.test(id)) return r.status(400).json({ error: 'bad id' });
+  const post = (await db.ref(`posts/${id}`).get()).val();
+  if (!post || post.authorId !== q.uid) return r.status(404).json({ error: 'not found' });
+  if (!VIS.includes(q.body?.visibility)) return r.status(400).json({ error: 'visibility must be public|friends|only_me' });
+  await db.ref(`posts/${id}/visibility`).set(q.body.visibility);
+  r.json({ id, visibility: q.body.visibility });
+}));
 app.get('/feed', w(async (q, r) => {
-  const limit = Math.min(30, Math.max(1, parseInt(q.query.limit || '15', 10)));
+  const limit = Math.min(30, Math.max(1, parseInt(q.query.limit || '20', 10)));
   let qq = db.ref('posts').orderByKey();
   const cursor = String(q.query.cursor || '');
   if (cursor) { if (!POST_ID_RE.test(cursor)) return r.status(400).json({ error: 'bad cursor' }); qq = qq.endBefore(cursor); }
-  const snap = await qq.limitToLast(limit).get();
-  const posts = [];
-  snap.forEach(c => { posts.push({ id: c.key, ...c.val() }); });
+  const posts = [], rawKeys = [];
+  const tag = q.query.tag ? normTag(String(q.query.tag)) : null;
+  if (q.query.tag && !tag) return r.status(400).json({ error: 'bad tag' });
+  if (tag) {
+    let tq = db.ref(`hashtags/${tag}`).orderByKey();
+    if (cursor) tq = tq.endBefore(cursor);
+    const ids = []; (await tq.limitToLast(limit).get()).forEach(c => { ids.push(c.key); });
+    rawKeys.push(...ids);
+    const snaps = await Promise.all(ids.map(i => db.ref(`posts/${i}`).get()));
+    snaps.forEach(c => { if (c.exists()) posts.push({ id: c.key, ...c.val() }); });
+  } else {
+    const snap = await qq.limitToLast(limit).get();
+    snap.forEach(c => { rawKeys.push(c.key); posts.push({ id: c.key, ...c.val() }); });
+  }
   posts.reverse();
+  const vis = await Promise.all(posts.map(p => canView(q.uid, p)));
+  const rawCount = rawKeys.length, oldest = rawKeys.sort()[0];
+  posts.splice(0, posts.length, ...posts.filter((_, i) => vis[i]));
   const liked = await Promise.all(posts.map(p => db.ref(`postLikes/${p.id}/${q.uid}`).get()));
   posts.forEach((p, i) => { p.likedByMe = liked[i].exists(); p.images = p.images || []; });
-  r.json({ posts, nextCursor: posts.length === limit ? posts[posts.length - 1].id : null });
+  posts.forEach(p => { p.visibility = p.visibility || 'public'; if (p.authorId !== q.uid) delete p.place?.lat, delete p.place?.lng; });
+  r.json({ posts, nextCursor: rawCount === limit ? oldest : null });
 }));
 async function setLike(q, r, on) {
   const id = q.params.id; if (!POST_ID_RE.test(id)) return r.status(400).json({ error: 'bad id' });
-  if (!(await db.ref(`posts/${id}/authorId`).get()).exists()) return r.status(404).json({ error: 'not found' });
+  if (!(await visiblePost(q, r, id))) return;
   let changed = false;
   // Never abort: the first run sees a null local cache; returning a value lets RTDB retry with the server value.
   await db.ref(`postLikes/${id}/${q.uid}`).transaction(cur => {
@@ -436,7 +741,7 @@ app.delete('/posts/:id/like', w(notBanned), w((q, r) => setLike(q, r, false)));
 app.post('/posts/:id/comments', w(notBanned), w(async (q, r) => {
   const id = q.params.id; if (!POST_ID_RE.test(id)) return r.status(400).json({ error: 'bad id' });
   const text = cleanText(q.body?.text, 1000); if (!text) return r.status(400).json({ error: 'text required' });
-  if (!(await db.ref(`posts/${id}/authorId`).get()).exists()) return r.status(404).json({ error: 'not found' });
+  if (!(await visiblePost(q, r, id))) return;
   let parentId = q.body?.parentId || null;
   if (parentId) {
     if (!POST_ID_RE.test(parentId)) return r.status(400).json({ error: 'bad parentId' });
@@ -452,6 +757,7 @@ app.post('/posts/:id/comments', w(notBanned), w(async (q, r) => {
 }));
 app.get('/posts/:id/comments', w(async (q, r) => {
   const id = q.params.id; if (!POST_ID_RE.test(id)) return r.status(400).json({ error: 'bad id' });
+  if (!(await visiblePost(q, r, id))) return;
   const limit = Math.min(100, Math.max(1, parseInt(q.query.limit || '50', 10)));
   let qq = db.ref(`postComments/${id}`).orderByKey();
   const cursor = String(q.query.cursor || '');
@@ -519,8 +825,9 @@ app.post('/friends/request', w(notBanned), w(async (q, r) => {
     await db.ref().update({ [`friends/${q.uid}/${to}`]: t, [`friends/${to}/${q.uid}`]: t, [`friendRequests/${q.uid}/${to}`]: null });
     return r.json({ status: 'friends', chatId });
   }
-  await db.ref(`friendRequests/${to}/${q.uid}`).set({ at: Date.now() });
-  r.json({ status: 'requested' });
+  const sim = similarity(await ipOf(q.uid), await ipOf(to), await getInterestCfg());
+  await db.ref(`friendRequests/${to}/${q.uid}`).set({ at: Date.now(), similarity: sim.percent, shared: sim.shared });
+  r.json({ status: 'requested', similarity: sim });
 }));
 app.post('/friends/respond', w(notBanned), w(async (q, r) => {
   const from = q.body?.fromUid, accept = q.body?.accept === true;
@@ -539,7 +846,7 @@ app.get('/friends', w(async (q, r) => {
 app.get('/friends/requests', w(async (q, r) => {
   const reqs = (await db.ref(`friendRequests/${q.uid}`).get()).val() || {};
   const out = [];
-  for (const [uid, v] of Object.entries(reqs).slice(0, 200)) { const p = await summary(uid); if (p) out.push({ ...p, at: v.at || 0 }); }
+  for (const [uid, v] of Object.entries(reqs).slice(0, 200)) { const p = await summary(uid); if (p) out.push({ ...p, at: v.at || 0, similarity: v.similarity ?? null, shared: v.shared || {} }); }
   r.json({ requests: out });
 }));
 // --- radar (coarse only: 3 decimals ~110 m + geohash7; never returned to clients)
@@ -551,7 +858,7 @@ app.post('/radar/location', w(notBanned), w(async (q, r) => {
   r.json({ ok: true, visible: true });
 }));
 app.delete('/radar/location', w(async (q, r) => { await db.ref(`radar/${q.uid}`).remove(); r.json({ ok: true, visible: false }); }));
-app.get('/radar/nearby', w(notBanned), w(async (q, r) => {
+app.get('/radar/nearby', w(notBanned), w(quota('radarPerDay')), w(async (q, r) => {
   const radius = pickRadius(q.query.radiusKm);
   const me = (await db.ref(`radar/${q.uid}`).get()).val();
   if (!me) return r.status(409).json({ error: 'location not shared' });
@@ -583,7 +890,7 @@ app.get('/radar/nearby', w(notBanned), w(async (q, r) => {
 // --- shake (15 s window)
 const SHAKE_MS = 15000;
 
-app.post('/shake', w(notBanned), w(async (q, r) => {
+app.post('/shake', w(notBanned), w(quota('shakePerDay')), w(async (q, r) => {
   const { lat, lng } = q.body || {};
   const radiusKm = pickRadius(q.body?.radiusKm);
   const hasLoc = validLatLng(lat, lng);

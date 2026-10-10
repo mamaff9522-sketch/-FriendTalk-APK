@@ -17,6 +17,12 @@ android {
     minSdk = 24
     targetSdk = 36
     versionCode = (System.getenv("VERSION_CODE") ?: "4").toInt()
+    // AdMob: Google's official TEST ids by default; real ids come from GitHub secrets (env) at build time.
+    fun envOr(k: String, d: String) = System.getenv(k)?.takeIf { it.isNotBlank() } ?: d
+    manifestPlaceholders["admobAppId"] = envOr("ADMOB_APP_ID", "ca-app-pub-3940256099942544~3347511713")
+    buildConfigField("String", "ADMOB_REWARDED_ID", "\"" + envOr("ADMOB_REWARDED_ID", "ca-app-pub-3940256099942544/5224354917") + "\"")
+    buildConfigField("String", "ADMOB_BANNER_ID", "\"" + envOr("ADMOB_BANNER_ID", "ca-app-pub-3940256099942544/6300978111") + "\"")
+    buildConfigField("String", "ADMOB_INTERSTITIAL_ID", "\"" + envOr("ADMOB_INTERSTITIAL_ID", "ca-app-pub-3940256099942544/1033173712") + "\"")
     versionName = "1.2.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -73,6 +79,8 @@ implementation("com.google.firebase:firebase-auth")
 implementation("com.google.firebase:firebase-firestore")
 implementation("com.google.firebase:firebase-storage")
 implementation("com.google.firebase:firebase-database")
+implementation("com.google.android.gms:play-services-ads:23.6.0")
+implementation("com.google.android.ump:user-messaging-platform:3.1.0")
   implementation(libs.androidx.activity.compose)
   implementation(libs.androidx.compose.material.icons.core)
   implementation(libs.androidx.compose.material.icons.extended)

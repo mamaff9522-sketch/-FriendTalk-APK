@@ -120,6 +120,7 @@ fun BotChatScreen(bot: BrainApi.AiBot, onEnd: () -> Unit, onSkip: () -> Unit) {
                     }
                     Text("ตัวละคร AI · ฟรี", fontSize = 10.sp, color = Slate400)
                 }
+                com.example.ads.QuotaChip("aiBotMessagesPerDay")
                 TextButton(onClick = onSkip) { Text("ข้าม", color = Slate300) }
                 TextButton(onClick = onEnd) { Text("จบแชท", color = Rose500) }
             }
@@ -147,7 +148,10 @@ fun BotChatScreen(bot: BrainApi.AiBot, onEnd: () -> Unit, onSkip: () -> Unit) {
                 scope.launch {
                     val reply = BrainApi.botChat(fu, bot.id, text)
                     sending = false
-                    if (reply.startsWith("!")) messages.add(BotMsg(true, reply.drop(1), isError = true))
+                    if (reply == "!QUOTA") {
+                        // Quota used up: put the unsent text back so the user can tap send after topping up
+                        messages.removeAt(messages.lastIndex); input = text
+                    } else if (reply.startsWith("!")) messages.add(BotMsg(true, reply.drop(1), isError = true))
                     else messages.add(BotMsg(true, reply))
                 }
             }) { Text(if (sending) "…" else "ส่ง") }

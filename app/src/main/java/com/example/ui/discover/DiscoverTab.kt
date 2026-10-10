@@ -52,7 +52,8 @@ fun DiscoverTab(
                 "nearby" to "ใกล้เคียง 📍",
                 "swipe" to "ปัดหาคู่ 💘",
                 "shake" to "เขย่าเจอ 📱",
-                "random" to "สุ่มคุย 🎲"
+                "random" to "สุ่มคุย 🎲",
+                "similar" to "คล้ายคุณ 🧩"
             ).forEach { (key, label) ->
                 val isSel = subTab == key
                 Surface(
@@ -77,6 +78,7 @@ fun DiscoverTab(
             "radar" -> com.example.ui.social.RealRadarView() // real radar (old mock RadarView kept in code, not shown)
             "nearby" -> com.example.ui.social.RealRadarView()
             "swipe" -> com.example.ui.social.RealSwipeView()
+            "similar" -> com.example.ui.social.PersonalityMatchView()
             "shake" -> com.example.ui.social.RealShakeView()
             "random" -> com.example.ui.ai.RandomMatchView(users = users.filter { it.id != currentUser.id }, onStartChatWithUser = onStartChat)
         }

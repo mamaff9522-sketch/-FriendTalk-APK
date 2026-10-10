@@ -49,12 +49,12 @@ import kotlin.coroutines.resume
 import kotlin.math.cos
 import kotlin.math.sin
 
-private fun hasLocPerm(ctx: Context) =
+internal fun hasLocPerm(ctx: Context) =
     ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
     ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
 @SuppressLint("MissingPermission")
-private suspend fun currentLocation(ctx: Context): Location? {
+internal suspend fun currentLocation(ctx: Context): Location? {
     if (!hasLocPerm(ctx)) return null
     val lm = ctx.getSystemService(Context.LOCATION_SERVICE) as LocationManager
     val provider = listOf(LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER).firstOrNull { runCatching { lm.isProviderEnabled(it) }.getOrDefault(false) } ?: return null
@@ -140,7 +140,10 @@ fun FriendRequestsCard() {
             reqs.forEach { r ->
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 6.dp)) {
                     Avatar(r.profile.avatar, r.profile.displayName, 32); Spacer(Modifier.width(8.dp))
-                    Text(r.profile.displayName, color = White, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    Column(Modifier.weight(1f)) {
+                        Text(r.profile.displayName, color = White, fontSize = 13.sp)
+                        r.similarity?.let { SharedInterests(it) }
+                    }
                     TextButton(onClick = { scope.launch { val c = NearbyRepo.respond(r.profile.uid, true); reqs = NearbyRepo.requests(); if (!c.isNullOrBlank()) SocialRepo.openChat.value = c } }) { Text("ยอมรับ", color = Emerald400) }
                     TextButton(onClick = { scope.launch { NearbyRepo.respond(r.profile.uid, false); reqs = NearbyRepo.requests() } }) { Text("ปฏิเสธ", color = Slate400) }
                 }
@@ -204,7 +207,7 @@ fun RealRadarView() {
             }
         }
     }
-    selected?.let { ProfileDialog(it.profile, it.distance) { selected = null } }
+    selected?.let { UserProfileDialog(it.profile.uid, it.distance) { selected = null } }
 }
 
 @Composable
@@ -317,7 +320,7 @@ fun RealShakeView() {
                     TextButton(onClick = { showProfile = true }) { Text("ดูโปรไฟล์ / เพิ่มเพื่อน / เริ่มแชท", color = Pink400) }
                 }
             }
-            if (showProfile) ProfileDialog(p, null) { showProfile = false }
+            if (showProfile) UserProfileDialog(p.uid, null) { showProfile = false }
         }
     }
 }

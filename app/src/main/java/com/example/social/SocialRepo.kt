@@ -22,7 +22,8 @@ import kotlin.coroutines.resume
 data class RealProfile(
     val uid: String, val displayName: String, val username: String = "", val avatar: String = "",
     val bio: String = "", val age: Int? = null, val gender: String = "", val interests: List<String> = emptyList(),
-    val lastActive: Long = 0
+    val lastActive: Long = 0,
+    val similarity: Similarity? = null
 )
 data class ChatSummary(val chatId: String, val otherUid: String, val lastMessage: String, val lastAt: Long)
 data class ChatMessage(val id: String, val senderUid: String, val text: String?, val imagePath: String?, val at: Long)
@@ -58,17 +59,19 @@ object SocialRepo {
     }
 
     /** On sign-in: create users/{uid} if missing, otherwise just bump lastActive. Errors are ignored (e.g. unverified email). */
-    suspend fun upsertOnSignIn(user: FirebaseUser) {
+    /** @return true if the profile was newly created (first sign-in). */
+    suspend fun upsertOnSignIn(user: FirebaseUser): Boolean {
         val ref = db.getReference("users/${user.uid}")
         val snap = get("users/${user.uid}")
         val now = System.currentTimeMillis()
         if (snap != null && snap.exists() && snap.hasChild("displayName")) {
             ref.child("lastActive").setValue(now).awaitOk()
+            return false
         } else {
             val name = (user.displayName?.ifBlank { null } ?: user.email?.substringBefore("@") ?: "ผู้ใช้ FriendTalk").take(50)
             val photo = user.photoUrl?.toString()?.takeIf { it.startsWith("https://") && it.length <= 500 } ?: ""
             val uname = (user.email?.substringBefore("@") ?: "user_${user.uid.take(6)}").lowercase().replace(Regex("[^a-z0-9_]"), "_").take(30)
-            ref.setValue(mapOf("displayName" to name, "username" to uname, "avatar" to photo, "bio" to "", "createdAt" to now, "lastActive" to now)).awaitOk()
+            return ref.setValue(mapOf("displayName" to name, "username" to uname, "avatar" to photo, "bio" to "", "createdAt" to now, "lastActive" to now)).awaitOk()
         }
     }
 
@@ -187,7 +190,8 @@ object SocialRepo {
             val ints = o.optJSONArray("interests")
             RealProfile(o.optString("uid"), o.optString("displayName"), o.optString("username"), o.optString("avatar"),
                 o.optString("bio"), if (o.isNull("age")) null else o.optInt("age"), o.optString("gender"),
-                if (ints == null) emptyList() else (0 until ints.length()).map { ints.optString(it) })
+                if (ints == null) emptyList() else (0 until ints.length()).map { ints.optString(it) },
+                similarity = InterestsRepo.parseSim(o.optJSONObject("similarity")))
         }
     }
 

@@ -31,14 +31,29 @@ fun ProfileTab(
     onOpenCreatorStudio: () -> Unit,
     onOpenCoins: () -> Unit,
     onOpenPermissions: () -> Unit,
-    onOpenCompanionApply: () -> Unit
+    onOpenCompanionApply: () -> Unit,
+    onLogout: () -> Unit = {}
 ) {
+    var editInterests by remember { mutableStateOf(false) }
+    if (editInterests) com.example.ui.social.InterestsEditorDialog(onDismiss = { editInterests = false })
+    var confirmLogout by remember { mutableStateOf(false) }
+    if (confirmLogout) AlertDialog(onDismissRequest = { confirmLogout = false }, title = { Text("ออกจากระบบ?") },
+        text = { Text("คุณต้องการออกจากบัญชีนี้ใช่ไหม") },
+        confirmButton = { TextButton(onClick = { confirmLogout = false; onLogout() }) { Text("ออกจากระบบ", color = Rose500) } },
+        dismissButton = { TextButton(onClick = { confirmLogout = false }) { Text("ยกเลิก") } })
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
         contentPadding = PaddingValues(bottom = 80.dp)
     ) {
+        item(key = "logout_row") {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.End) {
+                OutlinedButton(onClick = { editInterests = true }) { Text("🧩 ความสนใจ", color = Pink400, fontSize = 13.sp) }
+                Spacer(Modifier.width(8.dp))
+                OutlinedButton(onClick = { confirmLogout = true }) { Text("🚪 ออกจากระบบ", color = Rose500, fontSize = 13.sp) }
+            }
+        }
         // Cover Photo & Avatar
         item {
             Box(

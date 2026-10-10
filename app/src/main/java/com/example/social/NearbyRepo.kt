@@ -8,7 +8,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 data class NearbyUser(val profile: RealProfile, val distance: String)
-data class FriendRequest(val profile: RealProfile, val at: Long)
+data class FriendRequest(val profile: RealProfile, val at: Long, val similarity: Similarity? = null)
 
 /** Friends, radar and shake via friendtalk-brain. Exact coordinates never leave the server. */
 object NearbyRepo {
@@ -59,7 +59,8 @@ object NearbyRepo {
     }
     suspend fun requests(): List<FriendRequest> {
         val u = user() ?: return emptyList()
-        return arr(BrainApi.call(u, "GET", "/friends/requests").json?.optJSONArray("requests")).map { FriendRequest(parseProfile(it), it.optLong("at")) }
+        return arr(BrainApi.call(u, "GET", "/friends/requests").json?.optJSONArray("requests")).map { FriendRequest(parseProfile(it), it.optLong("at"),
+            if (it.isNull("similarity")) null else Similarity(it.optInt("similarity"), InterestsRepo.strMap(it.optJSONObject("shared")), true)) }
     }
     suspend fun friends(): List<RealProfile> {
         val u = user() ?: return emptyList()

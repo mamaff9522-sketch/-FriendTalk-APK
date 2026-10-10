@@ -91,7 +91,7 @@ fun FriendTalkRoot(
         Log.i("MainActivity", "[AUTH_FLOW_DEBUG_STEP_8_NAV] LaunchedEffect(firebaseUser) observed: uid=${firebaseUser?.uid ?: "null"}")
         firebaseUser?.let { user ->
             viewModel.syncFirebaseUser(user)
-            com.example.social.SocialRepo.upsertOnSignIn(user)
+            if (com.example.social.SocialRepo.upsertOnSignIn(user)) com.example.ui.social.InterestsPrompt.show.value = true
             com.example.service.UiLayoutRepository.refreshHome()
         }
     }
@@ -121,7 +121,25 @@ fun FriendTalkRoot(
                 viewModel = viewModel,
                 currentUserFirebase = firebaseUser,
                 onSignOut = {
-                    authService.signOut(context, coroutineScope) {}
+                    coroutineScope.launch {
+                        // Mark inactive + hide from radar, then sign out (Firebase + Credential Manager)
+                        runCatching {
+                            com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.let { u ->
+                                com.google.firebase.database.FirebaseDatabase.getInstance(com.example.social.SocialRepo.DB_URL)
+                                    .getReference("users/${u.uid}/lastActive").setValue(System.currentTimeMillis())
+                                com.example.network.BrainApi.call(u, "DELETE", "/radar/location")
+                            }
+                        }
+                        com.example.social.SocialRepo.openChat.value = null
+                        com.example.ads.AdRoom.open.value = null; com.example.ads.AdRoom.quotaHit.value = null; com.example.ads.AdRoom.limits.value = null
+                        authService.signOut(context, coroutineScope) {
+                            // Restart with a cleared back stack: drops all ViewModel/cached role state and listeners
+                            val act = context as? android.app.Activity
+                            val i = android.content.Intent(context, MainActivity::class.java)
+                                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                            context.startActivity(i); act?.finish()
+                        }
+                    }
                 }
             )
         }
@@ -283,7 +301,8 @@ fun FriendTalkApp(
                         onOpenCreatorStudio = { isCreatorStudioOpen = true },
                         onOpenCoins = { isCoinsOpen = true },
                         onOpenPermissions = { isPermissionsOpen = true },
-                        onOpenCompanionApply = { isCompanionApplyOpen = true }
+                        onOpenCompanionApply = { isCompanionApplyOpen = true },
+                        onLogout = onSignOut
                     )
                 }
 
@@ -482,6 +501,10 @@ fun FriendTalkApp(
 
     val openChatId by com.example.social.SocialRepo.openChat.collectAsStateWithLifecycle()
     openChatId?.let { id -> com.example.ui.social.RealChatRoomDialog(chatId = id, onClose = { com.example.social.SocialRepo.openChat.value = null }) }
+
+    com.example.ads.AdRoomHost()
+    val askInterests by com.example.ui.social.InterestsPrompt.show.collectAsStateWithLifecycle()
+    if (askInterests) com.example.ui.social.InterestsEditorDialog(onDismiss = { com.example.ui.social.InterestsPrompt.show.value = false }, skippable = true)
 
     if (isEditProfileOpen) {
         EditProfileDialog(

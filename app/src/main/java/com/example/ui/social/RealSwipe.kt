@@ -29,6 +29,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun RealSwipeView() {
     val scope = rememberCoroutineScope()
+    val activity = androidx.compose.ui.platform.LocalContext.current as? android.app.Activity
     var cards by remember { mutableStateOf<List<RealProfile>?>(null) }
     var matched by remember { mutableStateOf<Pair<RealProfile, String?>?>(null) }
     var msg by remember { mutableStateOf("") }
@@ -40,6 +41,7 @@ fun RealSwipeView() {
     fun act(p: RealProfile, action: String) {
         scope.launch {
             val r = SocialRepo.swipe(p.uid, action)
+            com.example.ads.AdsManager.onSwipe(activity)
             offsetX.snapTo(0f)
             cards = cards?.drop(1)
             if (!r.ok) msg = "บันทึกไม่สำเร็จ ลองใหม่"
@@ -116,6 +118,7 @@ private fun SwipeCard(p: RealProfile, modifier: Modifier) {
             Text(p.displayName + (p.age?.let { ", $it" } ?: ""), color = White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             if (p.bio.isNotBlank()) Text(p.bio, color = Slate300, fontSize = 13.sp, maxLines = 3)
             if (p.interests.isNotEmpty()) Text(p.interests.joinToString(" · "), color = Pink400, fontSize = 12.sp)
+            p.similarity?.let { SharedInterests(it) }
         }
     }
 }
