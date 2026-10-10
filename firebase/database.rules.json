@@ -318,6 +318,15 @@
         ".read": "auth != null && auth.uid === $uid",
         ".write": "auth != null && auth.uid === $uid",
         ".validate": "newData.hasChildren(['day','n','last']) && newData.child('day').isNumber() && newData.child('n').isNumber() && newData.child('last').isString() && newData.child('last').val().length <= 40 && newData.child('day').val() * 86400000 - 25200000 <= now && now < newData.child('day').val() * 86400000 + 61200000 && ((data.child('day').val() === newData.child('day').val() && newData.child('n').val() === data.child('n').val() + 1) || (data.child('day').val() !== newData.child('day').val() && newData.child('n').val() === 1)) && (!((root.child('vip').child(auth.uid).child('until').isNumber() && root.child('vip').child(auth.uid).child('until').val() > now) && (root.child('appConfig').child('limits').child('tiers').child('vip').child('chatMessagesPerDay').isNumber() && root.child('appConfig').child('limits').child('tiers').child('vip').child('chatMessagesPerDay').val() > 0)) || newData.child('n').val() <= root.child('appConfig').child('limits').child('tiers').child('vip').child('chatMessagesPerDay').val()) && (!(!(root.child('vip').child(auth.uid).child('until').isNumber() && root.child('vip').child(auth.uid).child('until').val() > now) && (root.child('appConfig').child('limits').child('tiers').child('free').child('chatMessagesPerDay').isNumber() && root.child('appConfig').child('limits').child('tiers').child('free').child('chatMessagesPerDay').val() > 0)) || newData.child('n').val() <= root.child('appConfig').child('limits').child('tiers').child('free').child('chatMessagesPerDay').val())",
+        "day": {
+          ".validate": "newData.isNumber()"
+        },
+        "n": {
+          ".validate": "newData.isNumber()"
+        },
+        "last": {
+          ".validate": "newData.isString()"
+        },
         "$other": {
           ".validate": false
         }
