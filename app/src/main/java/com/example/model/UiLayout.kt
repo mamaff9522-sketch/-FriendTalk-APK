@@ -77,6 +77,6 @@ data class UiLayout(val screen: String = "home", val blocks: List<UiBlock> = emp
         }
 
         /** Same order as the built-in Home screen; starting point for the editor. */
-        fun defaultHome() = UiLayout("home", UiBlock.SECTIONS.map { sectionBlock(it) })
+        fun defaultHome() = UiLayout("home", UiBlock.SECTIONS.map { UiBlock.sectionBlock(it) })
     }
 }

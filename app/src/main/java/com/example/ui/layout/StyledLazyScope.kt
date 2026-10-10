@@ -34,7 +34,8 @@ fun SectionStyleBox(style: UiBlock, content: @Composable () -> Unit) {
 @OptIn(ExperimentalFoundationApi::class)
 class StyledLazyScope(private val base: LazyListScope, private val style: UiBlock) : LazyListScope {
     override fun item(key: Any?, contentType: Any?, content: @Composable LazyItemScope.() -> Unit) {
-        base.item(key, contentType) { SectionStyleBox(style) { content() } }
+        val st = style
+        base.item(key, contentType) { SectionStyleBox(st) { content() } }
     }
 
     override fun items(
@@ -43,11 +44,13 @@ class StyledLazyScope(private val base: LazyListScope, private val style: UiBloc
         contentType: (index: Int) -> Any?,
         itemContent: @Composable LazyItemScope.(index: Int) -> Unit
     ) {
-        base.items(count, key, contentType) { i -> SectionStyleBox(style) { itemContent(i) } }
+        val st = style
+        base.items(count, key, contentType) { i -> SectionStyleBox(st) { itemContent(i) } }
     }
 
     @ExperimentalFoundationApi
     override fun stickyHeader(key: Any?, contentType: Any?, content: @Composable LazyItemScope.() -> Unit) {
-        base.stickyHeader(key, contentType) { SectionStyleBox(style) { content() } }
+        val st = style
+        base.stickyHeader(key, contentType) { SectionStyleBox(st) { content() } }
     }
 }
