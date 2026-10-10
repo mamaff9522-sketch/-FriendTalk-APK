@@ -55,7 +55,34 @@ data class AppUiConfig(
     val bottomNav: BottomNavConfig = BottomNavConfig(),
     val isCompanionFeatureEnabled: Boolean = true,
     val isMovieFeatureEnabled: Boolean = true,
-    val isLiveStreamingEnabled: Boolean = true
+    val isLiveStreamingEnabled: Boolean = true,
+    val appName: String = "FriendTalk",
+    val apiEndpoint: String = "",
+    val maintenanceMode: Boolean = false,
+    val maintenanceMessage: String = "ระบบกำลังปิดปรับปรุงชั่วคราว กรุณากลับมาใหม่ภายหลัง",
+    val banners: List<UiBannerItem> = emptyList(),
+    val serverDrivenComponents: List<ServerDrivenComponent> = emptyList()
+)
+
+data class UiBannerItem(
+    val id: String = "banner_main",
+    val title: String = "",
+    val subtitle: String = "",
+    val backgroundColorHex: String = "#DB2777",
+    val isVisible: Boolean = false
+)
+
+data class ServerDrivenComponent(
+    val id: String = "",
+    val title: String = "",
+    val text: String = "",
+    val backgroundColorHex: String = "#1E293B",
+    val textColorHex: String = "#FFFFFF",
+    val cornerRadiusDp: Int = 16,
+    val marginDp: Int = 16,
+    val paddingDp: Int = 14,
+    val order: Int = 0,
+    val isVisible: Boolean = true
 )
 
 data class ConfigVersionRecord(

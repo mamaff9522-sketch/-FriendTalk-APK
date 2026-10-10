@@ -16,3 +16,4 @@ debug.keystore
 *.jks
 *.keystore
 .build-outputs/
+app/google-services.json
