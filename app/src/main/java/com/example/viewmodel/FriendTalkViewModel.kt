@@ -663,13 +663,13 @@ class FriendTalkViewModel : ViewModel() {
     }
 
     // --- Wallet & Coins ---
-    fun buyCoins(coinsAmount: Int, bahtPrice: Double) {
-        val updatedUser = _uiState.value.currentUser.copy(coins = _uiState.value.currentUser.coins + coinsAmount)
-        SoundService.playGift()
-        _uiState.value = _uiState.value.copy(
-            currentUser = updatedUser,
-            users = _uiState.value.users.map { if (it.id == updatedUser.id) updatedUser else it }
-        )
+    /**
+     * ยังไม่มีระบบชำระเงินจริง จึงห้ามเพิ่มเหรียญให้ผู้ใช้ทุกกรณี
+     * คืนข้อความแจ้งเตือนให้หน้าจอแสดงแทน (ยอดเหรียญไม่เปลี่ยน)
+     */
+    @Suppress("UNUSED_PARAMETER")
+    fun buyCoins(coinsAmount: Int, bahtPrice: Double): String {
+        return COIN_PURCHASE_DISABLED_MESSAGE
     }
 
     // --- Companion 18+ Actions ---
@@ -785,3 +785,5 @@ class FriendTalkViewModel : ViewModel() {
         )
     }
 }
+
+const val COIN_PURCHASE_DISABLED_MESSAGE = "ยังไม่เปิดซื้อเหรียญ ต้องชำระเงินจริงก่อน"

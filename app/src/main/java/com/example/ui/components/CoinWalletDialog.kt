@@ -14,6 +14,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
+import android.widget.Toast
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -29,8 +31,9 @@ data class CoinPackage(val coins: Int, val priceBaht: Double, val bonusCoins: In
 fun CoinWalletDialog(
     currentUser: User,
     onDismiss: () -> Unit,
-    onBuyCoins: (coins: Int, baht: Double) -> Unit
+    onBuyCoins: (coins: Int, baht: Double) -> String
 ) {
+    val context = LocalContext.current
     val packages = listOf(
         CoinPackage(100, 35.0),
         CoinPackage(300, 99.0, 30),
@@ -133,8 +136,9 @@ fun CoinWalletDialog(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(14.dp))
                                 .clickable {
-                                    onBuyCoins(pkg.coins + pkg.bonusCoins, pkg.priceBaht)
-                                    onDismiss()
+                                    // ไม่เพิ่มเหรียญ: แสดงข้อความว่ายังไม่เปิดซื้อเหรียญ
+                                    val message = onBuyCoins(pkg.coins + pkg.bonusCoins, pkg.priceBaht)
+                                    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
                                 }
                         ) {
                             Column(
