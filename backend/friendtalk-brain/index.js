@@ -670,6 +670,7 @@ app.post('/posts', w(notBanned), w(async (q, r) => {
   const post = { authorId: q.uid, ...(await authorInfo(q.uid)), text, images, hashtags, place, visibility, createdAt: Date.now(), likeCount: 0, commentCount: 0 };
   const upd = { [`posts/${ref.key}`]: post };
   for (const t of hashtags) upd[`hashtags/${t}/${ref.key}`] = post.createdAt;
+  upd[`authorPosts/${q.uid}/${ref.key}`] = post.createdAt;
   await db.ref().update(upd);
   r.json({ id: ref.key, ...post });
 }));
@@ -680,6 +681,7 @@ app.delete('/posts/:id', w(async (q, r) => {
   if (!(await canManage(q, post))) return r.status(403).json({ error: 'not allowed' });
   const del = { [`posts/${id}`]: null, [`postLikes/${id}`]: null, [`postComments/${id}`]: null };
   for (const t of post.hashtags || []) del[`hashtags/${t}/${id}`] = null;
+  del[`authorPosts/${post.authorId}/${id}`] = null;
   await db.ref().update(del);
   for (const im of post.images || []) await admin.storage().bucket(STORAGE_BUCKET).file(im.path).delete().catch(() => {});
   r.json({ ok: true });
@@ -700,8 +702,10 @@ app.get('/feed', w(async (q, r) => {
   const posts = [], rawKeys = [];
   const tag = q.query.tag ? normTag(String(q.query.tag)) : null;
   if (q.query.tag && !tag) return r.status(400).json({ error: 'bad tag' });
-  if (tag) {
-    let tq = db.ref(`hashtags/${tag}`).orderByKey();
+  const author = q.query.author ? String(q.query.author) : null;
+  if (author && !UID_RE.test(author)) return r.status(400).json({ error: 'bad author' });
+  if (tag || author) {
+    let tq = db.ref(tag ? `hashtags/${tag}` : `authorPosts/${author}`).orderByKey();
     if (cursor) tq = tq.endBefore(cursor);
     const ids = []; (await tq.limitToLast(limit).get()).forEach(c => { ids.push(c.key); });
     rawKeys.push(...ids);

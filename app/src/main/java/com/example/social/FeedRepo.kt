@@ -39,9 +39,9 @@ object FeedRepo {
             o.optJSONObject("place")?.optString("label").orEmpty(), o.optString("visibility", "public"))
     }
 
-    suspend fun feed(cursor: String?, tag: String? = null): Pair<List<FeedPost>, String?>? {
+    suspend fun feed(cursor: String?, tag: String? = null, author: String? = null): Pair<List<FeedPost>, String?>? {
         val u = user() ?: return null
-        val r = BrainApi.call(u, "GET", "/feed?limit=20" + (cursor?.let { "&cursor=$it" } ?: "") + (tag?.let { "&tag=" + android.net.Uri.encode(it) } ?: ""))
+        val r = BrainApi.call(u, "GET", "/feed?limit=20" + (cursor?.let { "&cursor=$it" } ?: "") + (tag?.let { "&tag=" + android.net.Uri.encode(it) } ?: "") + (author?.let { "&author=$it" } ?: ""))
         val j = r.json ?: return null
         if (r.code != 200) return null
         val arr = j.optJSONArray("posts") ?: JSONArray()

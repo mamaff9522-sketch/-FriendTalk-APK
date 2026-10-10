@@ -3,6 +3,7 @@ package com.example.ui.profile
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,6 +36,8 @@ fun ProfileTab(
     onLogout: () -> Unit = {}
 ) {
     var editInterests by remember { mutableStateOf(false) }
+    var myPosts by remember { mutableStateOf(false) }
+    if (myPosts) com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.let { u -> com.example.ui.social.AuthorFeedDialog(u.uid, "ฉัน") { myPosts = false } }
     if (editInterests) com.example.ui.social.InterestsEditorDialog(onDismiss = { editInterests = false })
     var confirmLogout by remember { mutableStateOf(false) }
     if (confirmLogout) AlertDialog(onDismissRequest = { confirmLogout = false }, title = { Text("ออกจากระบบ?") },
@@ -48,7 +51,9 @@ fun ProfileTab(
         contentPadding = PaddingValues(bottom = 80.dp)
     ) {
         item(key = "logout_row") {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.End) {
+            Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.End) {
+                OutlinedButton(onClick = { myPosts = true }) { Text("📝 โพสต์ของฉัน", color = White, fontSize = 13.sp) }
+                Spacer(Modifier.width(8.dp))
                 OutlinedButton(onClick = { editInterests = true }) { Text("🧩 ความสนใจ", color = Pink400, fontSize = 13.sp) }
                 Spacer(Modifier.width(8.dp))
                 OutlinedButton(onClick = { confirmLogout = true }) { Text("🚪 ออกจากระบบ", color = Rose500, fontSize = 13.sp) }

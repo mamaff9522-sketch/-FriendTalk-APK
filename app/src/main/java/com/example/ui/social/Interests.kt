@@ -109,6 +109,7 @@ fun UserProfileDialog(uid: String, distance: String? = null, onDismiss: () -> Un
     var fp by remember { mutableStateOf<FullProfile?>(null) }
     var sent by remember { mutableStateOf<InterestsRepo.FriendResult?>(null) }
     var msg by remember { mutableStateOf("") }
+    var showPosts by remember { mutableStateOf(false) }
     LaunchedEffect(uid) { InterestsRepo.config(); fp = InterestsRepo.profile(uid) }
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(20.dp), color = Slate900, modifier = Modifier.heightIn(max = 640.dp)) {
@@ -140,10 +141,12 @@ fun UserProfileDialog(uid: String, distance: String? = null, onDismiss: () -> Un
                     } }, colors = ButtonDefaults.buttonColors(containerColor = Pink500)) { Text("เริ่มแชท") }
                 }
                 if (msg.isNotBlank()) Text(msg, color = Amber400, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+                OutlinedButton(onClick = { showPosts = true }) { Text("📝 ดูโพสต์ทั้งหมด", color = White) }
                 TextButton(onClick = onDismiss) { Text("ปิด", color = Slate400) }
             }
         }
     }
+    if (showPosts) AuthorFeedDialog(uid, fp?.profile?.displayName ?: "") { showPosts = false }
     sent?.let { r -> FriendSentDialog(r) { sent = null } }
 }
 

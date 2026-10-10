@@ -37,7 +37,7 @@ import java.util.Date
 import java.util.Locale
 
 /** State for the real post feed (paged, newest first). */
-class RealFeedState(private val scope: CoroutineScope, val tag: String? = null) {
+class RealFeedState(private val scope: CoroutineScope, val tag: String? = null, val author: String? = null) {
     val posts = mutableStateListOf<FeedPost>()
     var cursor by mutableStateOf<String?>(null)
     var loading by mutableStateOf(false)
@@ -49,7 +49,7 @@ class RealFeedState(private val scope: CoroutineScope, val tag: String? = null) 
 
     suspend fun refresh() {
         loading = true
-        val r = FeedRepo.feed(null, tag)
+        val r = FeedRepo.feed(null, tag, author)
         if (r != null) { posts.clear(); posts.addAll(r.first); cursor = r.second; error = "" } else error = "โหลดฟีดไม่สำเร็จ"
         loading = false; loaded = true
     }
@@ -58,7 +58,7 @@ class RealFeedState(private val scope: CoroutineScope, val tag: String? = null) 
         if (loading) return
         loading = true
         scope.launch {
-            FeedRepo.feed(c, tag)?.let { (p, n) -> posts.addAll(p.filter { np -> posts.none { it.id == np.id } }); cursor = n }
+            FeedRepo.feed(c, tag, author)?.let { (p, n) -> posts.addAll(p.filter { np -> posts.none { it.id == np.id } }); cursor = n }
             loading = false
         }
     }
@@ -85,7 +85,7 @@ fun rememberRealFeedState(): RealFeedState {
 
 /** Feed section content (composer + real posts). Used by the Home layout's "feed" section. */
 fun LazyListScope.realFeedItems(state: RealFeedState) {
-    if (state.tag == null) item(key = "real_composer") { PostComposer(onPosted = { state.posts.add(0, it) }) }
+    if (state.tag == null && state.author == null) item(key = "real_composer") { PostComposer(onPosted = { state.posts.add(0, it) }) }
     if (state.error.isNotBlank()) item(key = "real_err") { Text(state.error, color = Amber400, fontSize = 12.sp, modifier = Modifier.padding(16.dp)) }
     if (state.loaded && state.posts.isEmpty()) item(key = "real_empty") {
         Box(Modifier.fillMaxWidth().padding(vertical = 40.dp), contentAlignment = Alignment.Center) {
@@ -292,15 +292,22 @@ private fun CommentRow(c: FeedComment, isReply: Boolean, mine: Boolean, onReply:
 
 /** Posts with one hashtag (paged, visibility-filtered by the server). */
 @Composable
-fun TagFeedDialog(tag: String, onClose: () -> Unit) {
+fun TagFeedDialog(tag: String, onClose: () -> Unit) = FilteredFeedDialog("#$tag", tag, null, onClose)
+
+/** Full post timeline of one user (newest first, infinite scroll to the first post; server applies visibility). */
+@Composable
+fun AuthorFeedDialog(uid: String, name: String, onClose: () -> Unit) = FilteredFeedDialog("โพสต์ของ $name", null, uid, onClose)
+
+@Composable
+fun FilteredFeedDialog(title: String, tag: String?, author: String?, onClose: () -> Unit) {
     val scope = rememberCoroutineScope()
-    val st = remember(tag) { RealFeedState(scope, tag) }
-    LaunchedEffect(tag) { st.refresh() }
+    val st = remember(tag, author) { RealFeedState(scope, tag, author) }
+    LaunchedEffect(tag, author) { st.refresh() }
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize(), color = Slate950) {
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(12.dp)) {
-                    Text("#$tag", color = White, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.weight(1f))
+                    Text(title, color = White, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.weight(1f))
                     TextButton(onClick = onClose) { Text("ปิด", color = Slate300) }
                 }
                 LazyColumn(Modifier.weight(1f)) { realFeedItems(st) }

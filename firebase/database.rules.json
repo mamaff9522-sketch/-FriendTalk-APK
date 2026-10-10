@@ -308,6 +308,10 @@
     "postBlocks": {
       ".read": false,
       ".write": false
+    },
+    "authorPosts": {
+      ".read": false,
+      ".write": false
     }
   }
 }
