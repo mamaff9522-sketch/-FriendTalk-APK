@@ -5,7 +5,7 @@ enum class Gender {
 }
 
 enum class UserRole {
-    USER, CREATOR, MODERATOR, SUPERADMIN
+    USER, CREATOR, MODERATOR, ADMIN, SUPERADMIN
 }
 
 data class UserLocation(
@@ -19,6 +19,10 @@ data class User(
     val username: String,
     val displayName: String,
     val avatar: String,
+    val email: String = "",
+    val phoneNumber: String = "",
+    val linkedProviders: List<String> = emptyList(),
+    val backendRoleStatus: String = "",
     val coverPhoto: String = "",
     val age: Int = 20,
     val gender: Gender = Gender.OTHER,
@@ -38,5 +42,7 @@ data class User(
     val photos: List<String> = emptyList(),
     val badges: List<String> = emptyList(),
     val interests: List<String> = emptyList(),
-    val giftsReceivedTotal: Int = 0
+    val giftsReceivedTotal: Int = 0,
+    val isBanned: Boolean = false,
+    val banReason: String = ""
 )

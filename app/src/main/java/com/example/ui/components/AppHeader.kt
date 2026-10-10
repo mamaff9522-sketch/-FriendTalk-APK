@@ -77,7 +77,6 @@ fun AppHeader(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .clip(RoundedCornerShape(12.dp))
-                        .clickable { onOpenAuth() }
                         .padding(4.dp)
                 ) {
                     Box(
@@ -205,28 +204,29 @@ fun AppHeader(
                         }
                     }
 
-                    // Admin Quick Tools (If Admin)
-                    if (currentUser.role == UserRole.SUPERADMIN || currentUser.role == UserRole.MODERATOR) {
+                    // Admin Quick Tools (If Admin/SuperAdmin/Moderator)
+                    if (currentUser.role == UserRole.SUPERADMIN || currentUser.role == UserRole.ADMIN || currentUser.role == UserRole.MODERATOR) {
+                        val isSuperAdmin = currentUser.role == UserRole.SUPERADMIN
                         IconButton(
                             onClick = onOpenAdminDashboard,
                             modifier = Modifier
                                 .size(40.dp)
                                 .clip(CircleShape)
-                                .background(Purple500.copy(alpha = 0.2f))
+                                .background(if (isSuperAdmin) Amber500.copy(alpha = 0.25f) else Purple500.copy(alpha = 0.2f))
                         ) {
                             Icon(
-                                imageVector = Icons.Default.AdminPanelSettings,
-                                contentDescription = "Admin",
-                                tint = Purple400,
+                                imageVector = if (isSuperAdmin) Icons.Default.Shield else Icons.Default.AdminPanelSettings,
+                                contentDescription = if (isSuperAdmin) "Super Admin Console" else "Admin",
+                                tint = if (isSuperAdmin) Amber400 else Purple400,
                                 modifier = Modifier.size(20.dp)
                             )
                         }
                     }
 
-                    // Avatar / Switch Profile
+                    // User Avatar / Account Details
                     AsyncImage(
                         model = currentUser.avatar,
-                        contentDescription = "Profile",
+                        contentDescription = "Account Details",
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
                             .size(36.dp)

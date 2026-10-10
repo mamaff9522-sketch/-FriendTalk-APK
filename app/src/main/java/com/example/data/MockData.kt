@@ -5,60 +5,6 @@ import com.example.model.*
 object MockData {
     val initialUsers = listOf(
         User(
-            id = "user_me",
-            username = "tonkla_tk",
-            displayName = "ต้นกล้า (Tonkla)",
-            avatar = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80",
-            coverPhoto = "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&auto=format&fit=crop&q=80",
-            age = 24,
-            gender = Gender.MALE,
-            bio = "ชอบท่องเที่ยว ฟังเพลง ถ่ายรูปคาเฟ่ มาทำความรู้จักกันได้ครับ ☕✈️",
-            role = UserRole.USER,
-            isCreator = false,
-            isVerified = true,
-            isOnline = true,
-            lastActive = "ออนไลน์ขณะนี้",
-            coins = 1500,
-            diamonds = 320,
-            followersCount = 342,
-            followingCount = 180,
-            friendsCount = 64,
-            likesCount = 1450,
-            location = UserLocation("กรุงเทพมหานคร", 0.0, true),
-            photos = listOf(
-                "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500&auto=format&fit=crop&q=80",
-                "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=500&auto=format&fit=crop&q=80"
-            ),
-            badges = listOf("ผู้ใช้ดาวรุ่ง ⭐", "สายคาเฟ่ ☕"),
-            interests = listOf("ท่องเที่ยว", "ฟังเพลง", "ถ่ายภาพ", "กาแฟ", "ซีรีส์"),
-            giftsReceivedTotal = 120
-        ),
-        User(
-            id = "user_admin",
-            username = "admin_official",
-            displayName = "ณัฐพงษ์ (Official Admin)",
-            avatar = "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&auto=format&fit=crop&q=80",
-            coverPhoto = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&auto=format&fit=crop&q=80",
-            age = 30,
-            gender = Gender.MALE,
-            bio = "เจ้าหน้าที่ดูแลระบบ FriendTalk ตรวจสอบความปลอดภัยและให้บริการผู้ใช้ 24 ชม. 🛡️",
-            role = UserRole.SUPERADMIN,
-            isCreator = false,
-            isVerified = true,
-            isOnline = true,
-            lastActive = "ออนไลน์ขณะนี้",
-            coins = 99999,
-            diamonds = 50000,
-            followersCount = 15400,
-            followingCount = 50,
-            friendsCount = 200,
-            likesCount = 98000,
-            location = UserLocation("กรุงเทพมหานคร", 2.1, true),
-            badges = listOf("👑 Super Admin", "🛡️ ฝ่ายความปลอดภัย"),
-            interests = listOf("เทคโนโลยี", "ระบบความปลอดภัย", "การพัฒนา"),
-            giftsReceivedTotal = 500
-        ),
-        User(
             id = "user_linlin",
             username = "linlin_cute",
             displayName = "หลินหลิน 🌸",
@@ -137,15 +83,6 @@ object MockData {
 
     val initialStories = listOf(
         Story(
-            id = "story_me",
-            userId = "user_me",
-            userName = "เรื่องราวของคุณ",
-            userAvatar = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80",
-            imageUrl = "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&auto=format&fit=crop&q=80",
-            timestamp = "เมื่อสักครู่",
-            isViewed = false
-        ),
-        Story(
             id = "story_linlin",
             userId = "user_linlin",
             userName = "หลินหลิน 🌸",
@@ -197,7 +134,7 @@ object MockData {
             sharesCount = 18,
             isLiked = true,
             comments = listOf(
-                PostComment("c1", "post_1", "user_me", "ต้นกล้า", "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80", "กำลังเข้าไปดูเลยครับบ ร้องเพราะมาก!", "5 นาทีที่แล้ว", 3, true),
+                PostComment("c1", "post_1", "user_bank", "แบงค์ (Bank)", "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop&q=80", "กำลังเข้าไปดูเลยครับบ ร้องเพราะมาก!", "5 นาทีที่แล้ว", 3, true),
                 PostComment("c2", "post_1", "user_fah", "ฟ้าใส", "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=400&auto=format&fit=crop&q=80", "สวยมากก เพลงเพราะฟินสุดๆ 💕", "2 นาทีที่แล้ว", 1, false)
             ),
             tags = listOf("ไลฟ์สด", "ร้องเพลง", "หาเพื่อนคุย")
@@ -248,10 +185,10 @@ object MockData {
         ),
         Post(
             id = "post_4",
-            authorId = "user_me",
-            authorName = "ต้นกล้า (Tonkla)",
-            authorAvatar = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80",
-            authorUsername = "tonkla_tk",
+            authorId = "user_bank",
+            authorName = "แบงค์ (Bank)",
+            authorAvatar = "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop&q=80",
+            authorUsername = "bank_dev",
             authorIsVerified = true,
             authorBadges = listOf("ผู้ใช้ดาวรุ่ง ⭐"),
             location = "สยามสแควร์",
@@ -262,7 +199,7 @@ object MockData {
             likesCount = 142,
             commentsCount = 12,
             sharesCount = 3,
-            isLiked = true,
+            isLiked = false,
             tags = listOf("สยาม", "หาเพื่อน", "ดนตรีเปิดหมวก")
         ),
         Post(
@@ -318,11 +255,11 @@ object MockData {
                 timeLeftSeconds = 120
             ),
             recentComments = listOf(
-                LiveComment("lc1", "user_me", "ต้นกล้า", "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80", "เสียงเพราะมากก สู้ๆ ครับ!"),
+                LiveComment("lc1", "user_bank", "แบงค์ (Bank)", "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop&q=80", "เสียงเพราะมากก สู้ๆ ครับ!"),
                 LiveComment("lc2", "user_fah", "ฟ้าใส", "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=400&auto=format&fit=crop&q=80", "ส่งหัวใจให้รัวๆ 💕", isGift = true, giftIcon = "💖")
             ),
             topGifters = listOf(
-                TopGifterRecord(1, "user_me", "ต้นกล้า", "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80", 500),
+                TopGifterRecord(1, "user_bank", "แบงค์ (Bank)", "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop&q=80", 500),
                 TopGifterRecord(2, "user_fah", "ฟ้าใส", "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=400&auto=format&fit=crop&q=80", 250)
             )
         )
@@ -332,18 +269,18 @@ object MockData {
         Conversation(
             id = "conv_linlin",
             isGroup = false,
-            participantIds = listOf("user_me", "user_linlin"),
+            participantIds = listOf("user_fah", "user_linlin"),
             lastMessage = "ขอบคุณที่แวะมาดูไลฟ์นะค้าบบ 🌸",
             lastMessageTimestamp = "10:15",
-            unreadCounts = mapOf("user_me" to 1)
+            unreadCounts = mapOf("user_fah" to 1)
         ),
         Conversation(
             id = "conv_fah",
             isGroup = false,
-            participantIds = listOf("user_me", "user_fah"),
+            participantIds = listOf("user_bank", "user_fah"),
             lastMessage = "พรุ่งนี้เจอกันที่คาเฟ่นะคะ ☕",
             lastMessageTimestamp = "เมื่อวาน",
-            unreadCounts = mapOf("user_me" to 0)
+            unreadCounts = mapOf("user_bank" to 0)
         )
     )
 
@@ -354,7 +291,7 @@ object MockData {
             senderName = "หลินหลิน",
             senderAvatar = "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400&auto=format&fit=crop&q=80",
             conversationId = "conv_linlin",
-            text = "สวัสดีค่ะคุณต้นกล้า ดีใจที่ได้คุยกันนะคะ!",
+            text = "สวัสดีค่ะ ดีใจที่ได้คุยกันนะคะ!",
             timestamp = "10:12"
         ),
         ChatMessage(
@@ -395,8 +332,8 @@ object MockData {
         ForumTopic(
             id = "ft_1",
             clubId = "club_cafe",
-            authorName = "ต้นกล้า",
-            authorAvatar = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80",
+            authorName = "แบงค์",
+            authorAvatar = "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop&q=80",
             title = "แนะนำคาเฟ่เปิดใหม่แถวอารีย์ แสงสวย กาแฟดีมาก!",
             preview = "เมื่อวานไปเจอร้านนี้มา บรรยากาศชิลล์มาก...",
             repliesCount = 8
@@ -435,7 +372,7 @@ object MockData {
     val initialAdminLogs = listOf(
         AdminLog(
             id = "log_1",
-            adminName = "ณัฐพงษ์ (Official Admin)",
+            adminName = "ผู้ดูแลระบบ (System Admin)",
             action = "อนุมัติผู้ใช้ยืนยันตัวตน (KYC)",
             details = "อนุมัติ KYC สำหรับบัญชี user_linlin",
             timestamp = "05/10/2026 14:20"

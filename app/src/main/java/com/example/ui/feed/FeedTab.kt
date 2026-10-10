@@ -95,6 +95,49 @@ fun FeedTab(
                 }
             }
 
+            // Remote Banners & SDUI Announcements
+            val visibleBanners = uiConfig.banners.filter { it.isVisible }
+            if (visibleBanners.isNotEmpty()) {
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        visibleBanners.forEach { banner ->
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = parseHexColor(banner.backgroundColorHex, Pink600),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = banner.title,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp,
+                                            color = White
+                                        )
+                                        if (banner.subtitle.isNotBlank()) {
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(
+                                                text = banner.subtitle,
+                                                fontSize = 12.sp,
+                                                color = White.copy(alpha = 0.85f)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // 2. Story / Quick Access Row
             if (feedConfig.showStoryRow) {
                 item {
@@ -120,6 +163,41 @@ fun FeedTab(
             if (feedConfig.showClubsSnippet && clubs.isNotEmpty() && selectedCategory == "ทั้งหมด" && searchQuery.isBlank()) {
                 item {
                     ClubsSnippetRow(clubs = clubs, onClubClick = {})
+                }
+            }
+
+            // 3.5 Server-Driven UI Dynamic Components (Real Native Rendering)
+            val activeSdc = uiConfig.serverDrivenComponents.filter { it.isVisible }.sortedBy { it.order }
+            if (activeSdc.isNotEmpty() && selectedCategory == "ทั้งหมด" && searchQuery.isBlank()) {
+                items(activeSdc, key = { it.id }) { sdc ->
+                    val sdcBg = parseHexColor(sdc.backgroundColorHex, Slate800)
+                    val sdcText = parseHexColor(sdc.textColorHex, White)
+                    Surface(
+                        shape = RoundedCornerShape(sdc.cornerRadiusDp.dp),
+                        color = sdcBg,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = sdc.marginDp.dp, vertical = 4.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(sdc.paddingDp.dp)) {
+                            if (sdc.title.isNotBlank()) {
+                                Text(
+                                    text = sdc.title,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    color = sdcText
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                            }
+                            if (sdc.text.isNotBlank()) {
+                                Text(
+                                    text = sdc.text,
+                                    fontSize = 12.sp,
+                                    color = sdcText.copy(alpha = 0.85f)
+                                )
+                            }
+                        }
+                    }
                 }
             }
 

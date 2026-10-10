@@ -21,11 +21,23 @@ import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential.Companion.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
 import com.google.firebase.Firebase
 import com.google.firebase.FirebaseApp
+import com.google.firebase.FirebaseException
+import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
+import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
+import com.google.firebase.auth.FirebaseAuthInvalidUserException
+import com.google.firebase.auth.FirebaseAuthUserCollisionException
+import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
+import com.google.firebase.auth.PhoneAuthCredential
+import com.google.firebase.auth.PhoneAuthOptions
+import com.google.firebase.auth.PhoneAuthProvider
+import com.google.firebase.auth.UserProfileChangeRequest
 import com.google.firebase.auth.auth
+import com.google.firebase.firestore.FirebaseFirestore
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -715,6 +727,326 @@ class AuthService private constructor() {
         }
     }
 
+    // ==========================================
+    // 1. Email / Password Authentication (Firebase Real)
+    // ==========================================
+    fun signInWithEmail(
+        email: String,
+        password: String,
+        scope: CoroutineScope? = null,
+        onSuccess: (FirebaseUser) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        clearError()
+        val auth = firebaseAuth ?: Firebase.auth
+        if (email.isBlank() || password.isBlank()) {
+            val err = "กรุณากรอกอีเมลและรหัสผ่านให้ครบถ้วน"
+            _authError.value = err
+            onError(err)
+            return
+        }
+        auth.signInWithEmailAndPassword(email.trim(), password)
+            .addOnSuccessListener { result ->
+                val user = result.user
+                if (user != null) {
+                    _currentUser.value = user
+                    onSuccess(user)
+                } else {
+                    val err = "ไม่พบข้อมูลผู้ใช้หลังเข้าสู่ระบบ"
+                    _authError.value = err
+                    onError(err)
+                }
+            }
+            .addOnFailureListener { e ->
+                val err = when (e) {
+                    is FirebaseAuthInvalidUserException -> "ไม่พบบัญชีผู้ใช้นี้ในระบบ กรุณาสมัครสมาชิกใหม่"
+                    is FirebaseAuthInvalidCredentialsException -> "อีเมลหรือรหัสผ่านไม่ถูกต้อง"
+                    else -> "เข้าสู่ระบบด้วยอีเมลไม่สำเร็จ: ${e.localizedMessage}"
+                }
+                _authError.value = err
+                onError(err)
+            }
+    }
+
+    fun signUpWithEmail(
+        email: String,
+        password: String,
+        displayName: String,
+        scope: CoroutineScope? = null,
+        onSuccess: (FirebaseUser) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        clearError()
+        val auth = firebaseAuth ?: Firebase.auth
+        if (email.isBlank() || password.isBlank()) {
+            val err = "กรุณากรอกอีเมลและรหัสผ่านให้ครบถ้วน"
+            _authError.value = err
+            onError(err)
+            return
+        }
+        if (password.length < 6) {
+            val err = "รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร"
+            _authError.value = err
+            onError(err)
+            return
+        }
+        auth.createUserWithEmailAndPassword(email.trim(), password)
+            .addOnSuccessListener { result ->
+                val user = result.user
+                if (user != null) {
+                    if (displayName.isNotBlank()) {
+                        val profileUpdates = UserProfileChangeRequest.Builder()
+                            .setDisplayName(displayName.trim())
+                            .build()
+                        user.updateProfile(profileUpdates).addOnCompleteListener {
+                            _currentUser.value = user
+                            onSuccess(user)
+                        }
+                    } else {
+                        _currentUser.value = user
+                        onSuccess(user)
+                    }
+                } else {
+                    val err = "สมัครสมาชิกสำเร็จ แต่ไม่พบข้อมูลผู้ใช้"
+                    _authError.value = err
+                    onError(err)
+                }
+            }
+            .addOnFailureListener { e ->
+                val err = when (e) {
+                    is FirebaseAuthUserCollisionException -> "อีเมลนี้มีบัญชีในระบบแล้ว กรุณาเข้าสู่ระบบแทน"
+                    is FirebaseAuthWeakPasswordException -> "รหัสผ่านไม่ปลอดภัยพอ กรุณาตั้งรหัสผ่านที่มีตัวเลขและตัวอักษร"
+                    else -> "สมัครสมาชิกไม่สำเร็จ: ${e.localizedMessage}"
+                }
+                _authError.value = err
+                onError(err)
+            }
+    }
+
+    fun sendPasswordReset(
+        email: String,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit
+    ) {
+        clearError()
+        val auth = firebaseAuth ?: Firebase.auth
+        if (email.isBlank()) {
+            val err = "กรุณากรอกอีเมลเพื่อส่งลิงก์รีเซ็ตรหัสผ่าน"
+            _authError.value = err
+            onError(err)
+            return
+        }
+        auth.sendPasswordResetEmail(email.trim())
+            .addOnSuccessListener {
+                onSuccess()
+            }
+            .addOnFailureListener { e ->
+                val err = "ส่งอีเมลรีเซ็ตรหัสผ่านไม่สำเร็จ: ${e.localizedMessage}"
+                _authError.value = err
+                onError(err)
+            }
+    }
+
+    // ==========================================
+    // 2. Phone Number / OTP Authentication (Firebase Real)
+    // ==========================================
+    fun sendPhoneOtp(
+        activity: Activity,
+        phoneNumber: String,
+        onCodeSent: (verificationId: String) -> Unit,
+        onAutoVerified: (FirebaseUser) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        clearError()
+        val auth = firebaseAuth ?: Firebase.auth
+        val cleanPhone = phoneNumber.trim().replace(" ", "").replace("-", "")
+        if (cleanPhone.isBlank()) {
+            val err = "กรุณาระบุหมายเลขโทรศัพท์ (รวมรหัสประเทศ เช่น +66812345678)"
+            _authError.value = err
+            onError(err)
+            return
+        }
+
+        val callbacks = object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
+            override fun onVerificationCompleted(credential: PhoneAuthCredential) {
+                auth.signInWithCredential(credential)
+                    .addOnSuccessListener { res ->
+                        val user = res.user
+                        if (user != null) {
+                            _currentUser.value = user
+                            onAutoVerified(user)
+                        }
+                    }
+                    .addOnFailureListener { e ->
+                        val err = e.localizedMessage ?: "ยืนยันหมายเลขโทรศัพท์อัตโนมัติไม่สำเร็จ"
+                        _authError.value = err
+                        onError(err)
+                    }
+            }
+
+            override fun onVerificationFailed(e: FirebaseException) {
+                Log.e(TAG, "Phone verification failed", e)
+                val err = "การยืนยันเบอร์โทรศัพท์ล้มเหลว: ${e.localizedMessage} (ต้องเปิดใช้ Phone Provider ใน Firebase Console)"
+                _authError.value = err
+                onError(err)
+            }
+
+            override fun onCodeSent(
+                verificationId: String,
+                token: PhoneAuthProvider.ForceResendingToken
+            ) {
+                Log.d(TAG, "OTP Code sent to $cleanPhone, verificationId=$verificationId")
+                onCodeSent(verificationId)
+            }
+        }
+
+        val options = PhoneAuthOptions.newBuilder(auth)
+            .setPhoneNumber(cleanPhone)
+            .setTimeout(60L, TimeUnit.SECONDS)
+            .setActivity(activity)
+            .setCallbacks(callbacks)
+            .build()
+
+        PhoneAuthProvider.verifyPhoneNumber(options)
+    }
+
+    fun verifyPhoneOtpAndSignIn(
+        verificationId: String,
+        otpCode: String,
+        onSuccess: (FirebaseUser) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        clearError()
+        val auth = firebaseAuth ?: Firebase.auth
+        if (verificationId.isBlank() || otpCode.isBlank()) {
+            val err = "กรุณากรอกรหัส OTP 6 หลัก"
+            _authError.value = err
+            onError(err)
+            return
+        }
+        val credential = PhoneAuthProvider.getCredential(verificationId, otpCode.trim())
+        auth.signInWithCredential(credential)
+            .addOnSuccessListener { res ->
+                val user = res.user
+                if (user != null) {
+                    _currentUser.value = user
+                    onSuccess(user)
+                } else {
+                    val err = "ยืนยัน OTP สำเร็จ แต่ไม่พบข้อมูลผู้ใช้"
+                    _authError.value = err
+                    onError(err)
+                }
+            }
+            .addOnFailureListener { e ->
+                val err = "รหัส OTP ไม่ถูกต้องหรือหมดอายุ: ${e.localizedMessage}"
+                _authError.value = err
+                onError(err)
+            }
+    }
+
+    // ==========================================
+    // 3. Firebase Account Linking (Single UID Protection)
+    // ==========================================
+    fun linkWithEmailCredential(
+        email: String,
+        password: String,
+        onSuccess: (FirebaseUser) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        clearError()
+        val user = firebaseAuth?.currentUser ?: run {
+            onError("กรุณาเข้าสู่ระบบก่อนเชื่อมต่อบัญชี")
+            return
+        }
+        if (email.isBlank() || password.isBlank()) {
+            onError("กรุณากรอกอีเมลและรหัสผ่านให้ครบถ้วน")
+            return
+        }
+        val credential = EmailAuthProvider.getCredential(email.trim(), password)
+        user.linkWithCredential(credential)
+            .addOnSuccessListener { res ->
+                val updatedUser = res.user ?: user
+                _currentUser.value = updatedUser
+                onSuccess(updatedUser)
+            }
+            .addOnFailureListener { e ->
+                val err = if (e is FirebaseAuthUserCollisionException) {
+                    "อีเมลนี้ถูกเชื่อมโยงกับบัญชีผู้ใช้อื่นในระบบแล้ว ไม่สามารถเชื่อมซ้ำได้ (UID แยกต่างหาก ห้ามรวมบัญชีอัตโนมัติ)"
+                } else {
+                    "การเชื่อมต่ออีเมลล้มเหลว: ${e.localizedMessage}"
+                }
+                _authError.value = err
+                onError(err)
+            }
+    }
+
+    fun linkWithPhoneCredential(
+        verificationId: String,
+        otpCode: String,
+        onSuccess: (FirebaseUser) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        clearError()
+        val user = firebaseAuth?.currentUser ?: run {
+            onError("กรุณาเข้าสู่ระบบก่อนเชื่อมต่อบัญชี")
+            return
+        }
+        if (verificationId.isBlank() || otpCode.isBlank()) {
+            onError("กรุณากรอกรหัส OTP ให้ครบถ้วน")
+            return
+        }
+        val credential = PhoneAuthProvider.getCredential(verificationId, otpCode.trim())
+        user.linkWithCredential(credential)
+            .addOnSuccessListener { res ->
+                val updatedUser = res.user ?: user
+                _currentUser.value = updatedUser
+                onSuccess(updatedUser)
+            }
+            .addOnFailureListener { e ->
+                val err = if (e is FirebaseAuthUserCollisionException) {
+                    "เบอร์โทรศัพท์นี้ถูกเชื่อมโยงกับบัญชีผู้ใช้อื่นในระบบแล้ว ไม่สามารถเชื่อมซ้ำได้ (UID แยกต่างหาก ห้ามรวมบัญชีอัตโนมัติ)"
+                } else {
+                    "การเชื่อมต่อเบอร์โทรศัพท์ล้มเหลว: ${e.localizedMessage}"
+                }
+                _authError.value = err
+                onError(err)
+            }
+    }
+
+    fun getLinkedProviders(user: FirebaseUser): List<String> {
+        return user.providerData.map { it.providerId }
+    }
+
+    // ==========================================
+    // 4. Backend Super Admin Role Check (No Client Mock)
+    // ==========================================
+    fun checkBackendSuperAdminRole(
+        uid: String,
+        onResult: (isSuperAdmin: Boolean, backendStatus: String) -> Unit
+    ) {
+        try {
+            val db = FirebaseFirestore.getInstance()
+            db.collection("system_roles").document(uid).get()
+                .addOnSuccessListener { doc ->
+                    if (doc != null && doc.exists()) {
+                        val role = doc.getString("role")
+                        if (role.equals("SUPERADMIN", ignoreCase = true)) {
+                            onResult(true, "ยืนยันสิทธิ์ SUPER ADMIN สำเร็จผ่าน Backend Firestore (system_roles/$uid)")
+                        } else {
+                            onResult(false, "สิทธิ์ที่ระบุใน Backend คือ: $role")
+                        }
+                    } else {
+                        onResult(false, "ยังไม่มี Document สิทธิ์ใน Backend Firestore (system_roles/$uid) - ต้องแต่งตั้งผ่าน Backend เท่านั้น")
+                    }
+                }
+                .addOnFailureListener { e ->
+                    onResult(false, "ยังไม่สามารถตรวจสอบ Backend ได้: ${e.localizedMessage}")
+                }
+        } catch (e: Exception) {
+            onResult(false, "Backend Firestore ยังไม่ได้เตรียมการ: ${e.localizedMessage}")
+        }
+    }
+
     fun mapFirebaseUserToFriendTalkUser(
         firebaseUser: FirebaseUser
     ): User {
@@ -738,16 +1070,42 @@ class AuthService private constructor() {
                 ?.toString()
                 ?: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80"
 
+        val email = firebaseUser.email.orEmpty().trim()
+        val phone = firebaseUser.phoneNumber.orEmpty()
+        val linkedProviders = firebaseUser.providerData.map { it.providerId }
+
+        // ตามข้อกำหนด 6: ห้ามกำหนดสิทธิ์ Super Admin จากอีเมลใน Client
+        // กำหนดเป็น USER เริ่มต้น และรอการยืนยันจาก Backend ที่เชื่อถือได้
+        val role = UserRole.USER
+        val isMamaTarget = email.equals("mama.ff9522@gmail.com", ignoreCase = true)
+        val backendStatus = if (isMamaTarget) {
+            "รอการยืนยันและแต่งตั้งสิทธิ์ผ่าน Backend ที่เชื่อถือได้ (UID: ${firebaseUser.uid})"
+        } else {
+            "บัญชีผู้ใช้งานทั่วไป (UID: ${firebaseUser.uid})"
+        }
+
+        val badges = if (isMamaTarget) {
+            listOf("รอการยืนยันสิทธิ์ Backend ⏳", "ยืนยันตัวตนแล้ว 🛡️")
+        } else {
+            listOf("ยืนยันตัวตนแล้ว 🛡️")
+        }
+
+        val bio = "สมาชิก FriendTalk (UID: ${firebaseUser.uid})"
+
         return User(
             id = firebaseUser.uid,
             username = username,
             displayName = displayName,
             avatar = avatar,
+            email = email,
+            phoneNumber = phone,
+            linkedProviders = linkedProviders,
+            backendRoleStatus = backendStatus,
             coverPhoto = "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&auto=format&fit=crop&q=80",
             age = 22,
             gender = Gender.OTHER,
-            bio = "สมาชิก FriendTalk (เข้าสู่ระบบผ่าน Google Firebase)",
-            role = UserRole.USER,
+            bio = bio,
+            role = role,
             isCreator = false,
             isVerified = true,
             isOnline = true,
@@ -763,9 +1121,7 @@ class AuthService private constructor() {
                 0.0,
                 true
             ),
-            badges = listOf(
-                "ยืนยันตัวตนแล้ว 🛡️"
-            ),
+            badges = badges,
             interests = listOf(
                 "หาเพื่อน",
                 "พูดคุย",

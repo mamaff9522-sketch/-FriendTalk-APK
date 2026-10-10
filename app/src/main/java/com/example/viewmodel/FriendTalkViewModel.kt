@@ -153,50 +153,266 @@ class FriendTalkViewModel : ViewModel() {
     // --- User & Profile ---
     fun syncFirebaseUser(firebaseUser: com.google.firebase.auth.FirebaseUser) {
         val mappedUser = com.example.service.AuthService.getInstance().mapFirebaseUserToFriendTalkUser(firebaseUser)
-        val existingIndex = _uiState.value.users.indexOfFirst { it.id == firebaseUser.uid }
-        val updatedUsers = if (existingIndex >= 0) {
-            _uiState.value.users.map { if (it.id == firebaseUser.uid) mappedUser else it }
+        val existingIndex = _uiState.value.users.indexOfFirst {
+            it.id == firebaseUser.uid
+        }
+
+        val updatedUser = if (existingIndex >= 0) {
+            val existing = _uiState.value.users[existingIndex]
+            mappedUser.copy(
+                role = existing.role,
+                coins = existing.coins,
+                diamonds = existing.diamonds,
+                isBanned = existing.isBanned,
+                banReason = existing.banReason,
+                backendRoleStatus = existing.backendRoleStatus.ifBlank { mappedUser.backendRoleStatus }
+            )
         } else {
-            listOf(mappedUser) + _uiState.value.users
+            mappedUser
+        }
+
+        val updatedUsers = if (existingIndex >= 0) {
+            _uiState.value.users.mapIndexed { index, u -> if (index == existingIndex) updatedUser else u }
+        } else {
+            listOf(updatedUser) + _uiState.value.users
         }
         _uiState.value = _uiState.value.copy(
-            currentUser = mappedUser,
+            currentUser = updatedUser,
             users = updatedUsers
         )
+
+        // ตรวจสอบสิทธิ์ผ่าน Backend จริง (Requirement 6 & 7)
+        com.example.service.AuthService.getInstance().checkBackendSuperAdminRole(firebaseUser.uid) { isSuperAdmin, statusMessage ->
+            if (isSuperAdmin) {
+                val superAdminUser = _uiState.value.currentUser.copy(
+                    role = UserRole.SUPERADMIN,
+                    backendRoleStatus = statusMessage,
+                    badges = listOf("👑 SUPER ADMIN (Backend Verified)", "ยืนยันตัวตนแล้ว 🛡️")
+                )
+                _uiState.value = _uiState.value.copy(
+                    currentUser = superAdminUser,
+                    users = _uiState.value.users.map { if (it.id == firebaseUser.uid) superAdminUser else it }
+                )
+            } else {
+                _uiState.value = _uiState.value.copy(
+                    currentUser = _uiState.value.currentUser.copy(backendRoleStatus = statusMessage)
+                )
+            }
+        }
+    }
+
+    // --- Admin & Roles Management (RBAC) ---
+    fun updateUserRole(targetUserId: String, newRole: UserRole): Boolean {
+        val currentAdmin = _uiState.value.currentUser
+        // เฉพาะ SUPERADMIN เท่านั้นที่สามารถเปลี่ยนบทบาทผู้ใช้ได้
+        if (currentAdmin.role != UserRole.SUPERADMIN) {
+            return false
+        }
+        val targetUser = _uiState.value.users.firstOrNull { it.id == targetUserId } ?: return false
+
+        // ป้องกันบัญชี SUPER ADMIN (เจ้าของแอป) ไม่ให้ถูกแก้ไขหรือลดระดับ
+        if (targetUser.email.equals("mama.ff9522@gmail.com", ignoreCase = true) ||
+            targetUser.username.equals("mama", ignoreCase = true)) {
+            return false
+        }
+
+        val updatedUsers = _uiState.value.users.map { u ->
+            if (u.id == targetUserId) u.copy(role = newRole) else u
+        }
+        val log = AdminLog(
+            id = "log_${System.currentTimeMillis()}",
+            adminName = currentAdmin.displayName,
+            action = "เปลี่ยนระดับสิทธิ์ (Role Changed)",
+            details = "เปลี่ยนสิทธิ์ของ ${targetUser.displayName} เป็น $newRole",
+            timestamp = "ขณะนี้"
+        )
+        _uiState.value = _uiState.value.copy(
+            users = updatedUsers,
+            currentUser = if (_uiState.value.currentUser.id == targetUserId) _uiState.value.currentUser.copy(role = newRole) else _uiState.value.currentUser,
+            adminLogs = listOf(log) + _uiState.value.adminLogs
+        )
+        SoundService.playPop()
+        return true
+    }
+
+    fun banUser(targetUserId: String, reason: String): Boolean {
+        val currentAdmin = _uiState.value.currentUser
+        if (currentAdmin.role != UserRole.SUPERADMIN && currentAdmin.role != UserRole.ADMIN) {
+            return false
+        }
+        val targetUser = _uiState.value.users.firstOrNull { it.id == targetUserId } ?: return false
+
+        // บัญชี SUPER ADMIN ห้ามถูกแบนเด็ดขาด
+        if (targetUser.role == UserRole.SUPERADMIN ||
+            targetUser.email.equals("mama.ff9522@gmail.com", ignoreCase = true)) {
+            return false
+        }
+
+        val effectiveReason = reason.ifBlank { "ละเมิดข้อกำหนดการใช้งานชุมชน" }
+        val updatedUsers = _uiState.value.users.map { u ->
+            if (u.id == targetUserId) u.copy(isBanned = true, banReason = effectiveReason) else u
+        }
+        val log = AdminLog(
+            id = "log_${System.currentTimeMillis()}",
+            adminName = currentAdmin.displayName,
+            action = "ระงับการใช้งาน (Ban User)",
+            details = "ระงับบัญชี ${targetUser.displayName} เหตุผล: $effectiveReason",
+            timestamp = "ขณะนี้"
+        )
+        _uiState.value = _uiState.value.copy(
+            users = updatedUsers,
+            currentUser = if (_uiState.value.currentUser.id == targetUserId) _uiState.value.currentUser.copy(isBanned = true, banReason = effectiveReason) else _uiState.value.currentUser,
+            adminLogs = listOf(log) + _uiState.value.adminLogs
+        )
+        SoundService.playPop()
+        return true
+    }
+
+    fun unbanUser(targetUserId: String): Boolean {
+        val currentAdmin = _uiState.value.currentUser
+        if (currentAdmin.role != UserRole.SUPERADMIN && currentAdmin.role != UserRole.ADMIN) {
+            return false
+        }
+        val targetUser = _uiState.value.users.firstOrNull { it.id == targetUserId } ?: return false
+
+        val updatedUsers = _uiState.value.users.map { u ->
+            if (u.id == targetUserId) u.copy(isBanned = false, banReason = "") else u
+        }
+        val log = AdminLog(
+            id = "log_${System.currentTimeMillis()}",
+            adminName = currentAdmin.displayName,
+            action = "ปลดระงับการใช้งาน (Unban User)",
+            details = "ปลดระงับบัญชี ${targetUser.displayName}",
+            timestamp = "ขณะนี้"
+        )
+        _uiState.value = _uiState.value.copy(
+            users = updatedUsers,
+            currentUser = if (_uiState.value.currentUser.id == targetUserId) _uiState.value.currentUser.copy(isBanned = false, banReason = "") else _uiState.value.currentUser,
+            adminLogs = listOf(log) + _uiState.value.adminLogs
+        )
+        SoundService.playPop()
+        return true
+    }
+
+    fun adjustUserWallet(targetUserId: String, deltaCoins: Int, deltaDiamonds: Int): Boolean {
+        val currentAdmin = _uiState.value.currentUser
+        // เฉพาะ SUPERADMIN เท่านั้นที่สามารถเพิ่ม/ลดเหรียญเพชรได้โดยตรง
+        if (currentAdmin.role != UserRole.SUPERADMIN) {
+            return false
+        }
+        val targetUser = _uiState.value.users.firstOrNull { it.id == targetUserId } ?: return false
+
+        val updatedUsers = _uiState.value.users.map { u ->
+            if (u.id == targetUserId) {
+                u.copy(
+                    coins = (u.coins + deltaCoins).coerceAtLeast(0),
+                    diamonds = (u.diamonds + deltaDiamonds).coerceAtLeast(0)
+                )
+            } else u
+        }
+        val log = AdminLog(
+            id = "log_${System.currentTimeMillis()}",
+            adminName = currentAdmin.displayName,
+            action = "ปรับยอดเงินกระเป๋า (Wallet Adjustment)",
+            details = "ปรับเหรียญ (${if (deltaCoins >= 0) "+$deltaCoins" else "$deltaCoins"}) และเพชร (${if (deltaDiamonds >= 0) "+$deltaDiamonds" else "$deltaDiamonds"}) ให้แก่ ${targetUser.displayName}",
+            timestamp = "ขณะนี้"
+        )
+        _uiState.value = _uiState.value.copy(
+            users = updatedUsers,
+            currentUser = if (_uiState.value.currentUser.id == targetUserId) {
+                _uiState.value.currentUser.copy(
+                    coins = (_uiState.value.currentUser.coins + deltaCoins).coerceAtLeast(0),
+                    diamonds = (_uiState.value.currentUser.diamonds + deltaDiamonds).coerceAtLeast(0)
+                )
+            } else _uiState.value.currentUser,
+            adminLogs = listOf(log) + _uiState.value.adminLogs
+        )
+        SoundService.playPop()
+        return true
+    }
+
+    fun updateReportStatus(reportId: String, newStatus: ReportStatus): Boolean {
+        val currentAdmin = _uiState.value.currentUser
+        if (currentAdmin.role != UserRole.SUPERADMIN && currentAdmin.role != UserRole.ADMIN && currentAdmin.role != UserRole.MODERATOR) {
+            return false
+        }
+        val rep = _uiState.value.reports.firstOrNull { it.id == reportId } ?: return false
+
+        val updatedReports = _uiState.value.reports.map { r ->
+            if (r.id == reportId) r.copy(status = newStatus) else r
+        }
+        val log = AdminLog(
+            id = "log_${System.currentTimeMillis()}",
+            adminName = currentAdmin.displayName,
+            action = "อัปเดตสถานะรายงาน (Report Status)",
+            details = "เปลี่ยนสถานะรายงาน #${reportId.takeLast(6)} (${rep.targetName}) เป็น $newStatus",
+            timestamp = "ขณะนี้"
+        )
+        _uiState.value = _uiState.value.copy(
+            reports = updatedReports,
+            adminLogs = listOf(log) + _uiState.value.adminLogs
+        )
+        SoundService.playPop()
+        return true
+    }
+
+    fun approveWithdrawal(withdrawalId: String): Boolean {
+        val currentAdmin = _uiState.value.currentUser
+        if (currentAdmin.role != UserRole.SUPERADMIN && currentAdmin.role != UserRole.ADMIN) {
+            return false
+        }
+        val wd = _uiState.value.withdrawals.firstOrNull { it.id == withdrawalId } ?: return false
+
+        val updatedWds = _uiState.value.withdrawals.map { w ->
+            if (w.id == withdrawalId) w.copy(status = "APPROVED") else w
+        }
+        val log = AdminLog(
+            id = "log_${System.currentTimeMillis()}",
+            adminName = currentAdmin.displayName,
+            action = "อนุมัติการถอนเงิน (Withdrawal Approved)",
+            details = "อนุมัติการถอนเงิน ${wd.amountBaht} บาท (${wd.amountDiamonds} เพชร) ของ ${wd.userName} (${wd.bankName})",
+            timestamp = "ขณะนี้"
+        )
+        _uiState.value = _uiState.value.copy(
+            withdrawals = updatedWds,
+            adminLogs = listOf(log) + _uiState.value.adminLogs
+        )
+        SoundService.playPop()
+        return true
+    }
+
+    fun rejectWithdrawal(withdrawalId: String, reason: String): Boolean {
+        val currentAdmin = _uiState.value.currentUser
+        if (currentAdmin.role != UserRole.SUPERADMIN && currentAdmin.role != UserRole.ADMIN) {
+            return false
+        }
+        val wd = _uiState.value.withdrawals.firstOrNull { it.id == withdrawalId } ?: return false
+
+        val effectiveReason = reason.ifBlank { "ข้อมูลบัญชีไม่ถูกต้อง หรือไม่ผ่านเกณฑ์การตรวจสอบ" }
+        val updatedWds = _uiState.value.withdrawals.map { w ->
+            if (w.id == withdrawalId) w.copy(status = "REJECTED") else w
+        }
+        val log = AdminLog(
+            id = "log_${System.currentTimeMillis()}",
+            adminName = currentAdmin.displayName,
+            action = "ปฏิเสธการถอนเงิน (Withdrawal Rejected)",
+            details = "ปฏิเสธคำขอถอนเงิน ${wd.amountBaht} บาท ของ ${wd.userName} เหตุผล: $effectiveReason",
+            timestamp = "ขณะนี้"
+        )
+        _uiState.value = _uiState.value.copy(
+            withdrawals = updatedWds,
+            adminLogs = listOf(log) + _uiState.value.adminLogs
+        )
+        SoundService.playPop()
+        return true
     }
 
     fun switchUser(userId: String) {
-        val user = _uiState.value.users.find { it.id == userId }
-        if (user != null) {
-            SoundService.playPop()
-            _uiState.value = _uiState.value.copy(currentUser = user)
-        }
+        // ระบบสลับบัญชีจำลองถูกลบแล้ว - บังคับใช้ Firebase Authentication เท่านั้น
     }
 
     fun registerUser(displayName: String, username: String, age: Int, gender: Gender) {
-        val newUser = User(
-            id = "user_${System.currentTimeMillis()}",
-            username = username.lowercase().replace(" ", "_"),
-            displayName = displayName,
-            avatar = if (gender == Gender.FEMALE)
-                "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80"
-            else
-                "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop&q=80",
-            coverPhoto = "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&auto=format&fit=crop&q=80",
-            age = age,
-            gender = gender,
-            bio = "สมาชิกใหม่ FriendTalk ยินดีที่ได้รู้จักทุกคนครับ/ค่ะ ✨",
-            role = UserRole.USER,
-            coins = 500,
-            location = UserLocation("กรุงเทพมหานคร", 0.5, true),
-            interests = listOf("หาเพื่อน", "แชต", "ดนตรี"),
-            badges = listOf("สมาชิกใหม่ 🌱")
-        )
-        SoundService.playMatch()
-        _uiState.value = _uiState.value.copy(
-            users = listOf(newUser) + _uiState.value.users,
-            currentUser = newUser
-        )
+        // ระบบสร้างบัญชีจำลองถูกลบแล้ว - บังคับใช้ Firebase Authentication และ Google Sign-In เท่านั้น
     }
 
     fun updateProfile(displayName: String, bio: String, age: Int, gender: Gender, province: String, interests: List<String>) {

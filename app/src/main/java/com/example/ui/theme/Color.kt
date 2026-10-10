@@ -11,7 +11,12 @@ val Purple400 = Color(0xFFC084FC)
 val Indigo500 = Color(0xFF6366F1)
 val Cyan400 = Color(0xFF22D3EE)
 val Amber400 = Color(0xFFFBBF24)
+val Amber500 = Color(0xFFF59E0B)
+val Amber300 = Color(0xFFFCD34D)
 val Emerald400 = Color(0xFF34D399)
+val Emerald500 = Color(0xFF10B981)
+val Blue500 = Color(0xFF3B82F6)
+val Blue400 = Color(0xFF60A5FA)
 val Rose500 = Color(0xFFF43F5E)
 
 // Dark Palette

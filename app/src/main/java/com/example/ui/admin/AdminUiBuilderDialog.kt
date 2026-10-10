@@ -82,29 +82,32 @@ fun AdminUiBuilderDialog(
                 // Builder Category Tabs
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     listOf(
-                        "feed" to "จัดหน้า Feed 📰",
-                        "theme" to "ธีม & สี 🎨",
-                        "history" to "ประวัติเวอร์ชัน ⏳"
+                        "visual_dnd" to "ลากวาง UI 🎨",
+                        "feed" to "จัด Feed 📰",
+                        "theme" to "ธีม & สี 🌈",
+                        "remote" to "Config ⚙️",
+                        "preview" to "ตัวอย่าง 📱",
+                        "history" to "ประวัติ ⏳"
                     ).forEach { (key, label) ->
                         val isSel = selectedBuilderTab == key
                         Surface(
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(8.dp),
                             color = if (isSel) Pink500 else Slate800,
                             modifier = Modifier
                                 .weight(1f)
-                                .clip(RoundedCornerShape(12.dp))
+                                .clip(RoundedCornerShape(8.dp))
                                 .clickable { selectedBuilderTab = key }
                         ) {
                             Text(
                                 text = label,
-                                fontSize = 12.sp,
+                                fontSize = 10.sp,
                                 fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
                                 color = if (isSel) White else Slate300,
                                 modifier = Modifier
-                                    .padding(vertical = 8.dp)
+                                    .padding(vertical = 6.dp)
                                     .wrapContentWidth(Alignment.CenterHorizontally)
                             )
                         }
@@ -116,6 +119,12 @@ fun AdminUiBuilderDialog(
                 // Content area
                 Box(modifier = Modifier.weight(1f)) {
                     when (selectedBuilderTab) {
+                        "visual_dnd" -> VisualDragAndDropLayoutEditor(
+                            draftConfig = draftConfig,
+                            onUpdateConfig = { updated ->
+                                draftConfig = updated
+                            }
+                        )
                         "feed" -> FeedLayoutBuilder(
                             feedConfig = draftConfig.feed,
                             onUpdateFeedConfig = { updatedFeed ->
@@ -127,6 +136,15 @@ fun AdminUiBuilderDialog(
                             onUpdateThemeConfig = { updatedTheme ->
                                 draftConfig = draftConfig.copy(theme = updatedTheme)
                             }
+                        )
+                        "remote" -> RemoteConfigBuilder(
+                            draftConfig = draftConfig,
+                            onUpdateConfig = { updated ->
+                                draftConfig = updated
+                            }
+                        )
+                        "preview" -> DeviceLivePreview(
+                            draftConfig = draftConfig
                         )
                         "history" -> VersionHistoryView(
                             history = versionHistory,
@@ -395,6 +413,310 @@ fun VersionHistoryView(
                     Text(text = record.notes, fontSize = 12.sp, color = Slate300)
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(text = "เผยแพร่โดย: ${record.publishedBy} • ${record.publishedAt}", fontSize = 10.sp, color = Slate500)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun RemoteConfigBuilder(
+    draftConfig: AppUiConfig,
+    onUpdateConfig: (AppUiConfig) -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        item {
+            Text(text = "1. ชื่อแอปพลิเคชัน & API กลาง (Branding & Core API):", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Pink400)
+            Spacer(modifier = Modifier.height(8.dp))
+            Surface(shape = RoundedCornerShape(14.dp), color = Slate900, modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = draftConfig.appName,
+                        onValueChange = { onUpdateConfig(draftConfig.copy(appName = it)) },
+                        label = { Text("ชื่อแอป (App Name)", color = Slate400, fontSize = 12.sp) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = White,
+                            unfocusedTextColor = White,
+                            focusedBorderColor = Pink500,
+                            unfocusedBorderColor = Slate700
+                        )
+                    )
+                    OutlinedTextField(
+                        value = draftConfig.apiEndpoint,
+                        onValueChange = { onUpdateConfig(draftConfig.copy(apiEndpoint = it)) },
+                        label = { Text("API Gateway / Remote Endpoint", color = Slate400, fontSize = 12.sp) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = White,
+                            unfocusedTextColor = White,
+                            focusedBorderColor = Pink500,
+                            unfocusedBorderColor = Slate700
+                        )
+                    )
+                }
+            }
+        }
+
+        item {
+            Text(text = "2. โหมดปิดปรับปรุงเซิร์ฟเวอร์ (Maintenance Mode):", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Pink400)
+            Spacer(modifier = Modifier.height(8.dp))
+            Surface(shape = RoundedCornerShape(14.dp), color = Slate900, modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SettingToggleRow(
+                        title = "เปิดใช้งานโหมดปิดปรับปรุง (Maintenance)",
+                        checked = draftConfig.maintenanceMode,
+                        onCheckedChange = { onUpdateConfig(draftConfig.copy(maintenanceMode = it)) }
+                    )
+                    if (draftConfig.maintenanceMode) {
+                        OutlinedTextField(
+                            value = draftConfig.maintenanceMessage,
+                            onValueChange = { onUpdateConfig(draftConfig.copy(maintenanceMessage = it)) },
+                            label = { Text("ข้อความแจ้งเตือนผู้ใช้", color = Slate400, fontSize = 12.sp) },
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 2,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = White,
+                                unfocusedTextColor = White,
+                                focusedBorderColor = Amber400,
+                                unfocusedBorderColor = Slate700
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+        item {
+            Text(text = "3. แบนเนอร์ประกาศและกิจกรรม (Announcements & Banners):", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Pink400)
+            Spacer(modifier = Modifier.height(8.dp))
+            Surface(shape = RoundedCornerShape(14.dp), color = Slate900, modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    val activeBanner = draftConfig.banners.firstOrNull() ?: UiBannerItem()
+                    SettingToggleRow(
+                        title = "แสดงแบนเนอร์ด้านบนของ Feed",
+                        checked = activeBanner.isVisible,
+                        onCheckedChange = { isVis ->
+                            val updatedBanners = listOf(activeBanner.copy(isVisible = isVis))
+                            onUpdateConfig(draftConfig.copy(banners = updatedBanners))
+                        }
+                    )
+                    OutlinedTextField(
+                        value = activeBanner.title,
+                        onValueChange = { newTitle ->
+                            val updatedBanners = listOf(activeBanner.copy(title = newTitle))
+                            onUpdateConfig(draftConfig.copy(banners = updatedBanners))
+                        },
+                        label = { Text("หัวข้อแบนเนอร์", color = Slate400, fontSize = 12.sp) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = White,
+                            unfocusedTextColor = White,
+                            focusedBorderColor = Pink500,
+                            unfocusedBorderColor = Slate700
+                        )
+                    )
+                    OutlinedTextField(
+                        value = activeBanner.subtitle,
+                        onValueChange = { newSub ->
+                            val updatedBanners = listOf(activeBanner.copy(subtitle = newSub))
+                            onUpdateConfig(draftConfig.copy(banners = updatedBanners))
+                        },
+                        label = { Text("คำอธิบายรอง", color = Slate400, fontSize = 12.sp) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = White,
+                            unfocusedTextColor = White,
+                            focusedBorderColor = Pink500,
+                            unfocusedBorderColor = Slate700
+                        )
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun DeviceLivePreview(
+    draftConfig: AppUiConfig
+) {
+    val bgCol = parseHexColor(draftConfig.theme.backgroundColorHex, Slate950)
+    val cardCol = parseHexColor(draftConfig.theme.cardColorHex, Slate900)
+    val primaryCol = parseHexColor(draftConfig.theme.primaryColorHex, Pink500)
+
+    MobileDevicePreviewContainer {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(bgCol)
+                .padding(12.dp)
+        ) {
+            // Simulated Mini Header
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(26.dp)
+                            .clip(CircleShape)
+                            .background(primaryCol),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("FT", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = White)
+                    }
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = draftConfig.appName.ifBlank { "FriendTalk" },
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = White
+                    )
+                }
+                Surface(
+                    shape = CircleShape,
+                    color = primaryCol.copy(alpha = 0.2f),
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("🔴", fontSize = 8.sp)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            if (draftConfig.maintenanceMode) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Surface(shape = RoundedCornerShape(16.dp), color = cardCol, modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("🛠️", fontSize = 28.sp)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("ระบบปิดปรับปรุง", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = White)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = draftConfig.maintenanceMessage,
+                                fontSize = 11.sp,
+                                color = Slate400,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
+                    }
+                }
+            } else {
+                // Category Tabs Mock
+                if (draftConfig.feed.showCategoryTabs) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf("ทั้งหมด", "คนใกล้เคียง", "ออนไลน์").forEachIndexed { idx, tab ->
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (idx == 0) primaryCol else cardCol,
+                                modifier = Modifier.padding(vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = tab,
+                                    fontSize = 10.sp,
+                                    color = if (idx == 0) White else Slate400,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                // Banner Mock
+                val banner = draftConfig.banners.firstOrNull { it.isVisible }
+                if (banner != null) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = parseHexColor(banner.backgroundColorHex, primaryCol),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Text(banner.title, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = White)
+                            if (banner.subtitle.isNotBlank()) {
+                                Text(banner.subtitle, fontSize = 10.sp, color = White.copy(alpha = 0.8f))
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                // Story Row Mock
+                if (draftConfig.feed.showStoryRow) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        repeat(4) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(cardCol),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("👤", fontSize = 12.sp)
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+
+                // Post Card Mock
+                Surface(
+                    shape = RoundedCornerShape(draftConfig.feed.cardCornerRadiusDp.dp),
+                    color = cardCol,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .clip(CircleShape)
+                                    .background(primaryCol)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("LinLin Live 🎉", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = White)
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "สวัสดีเพื่อนๆ FriendTalk ทุกคน วันนี้มีไลฟ์แจกของขวัญและ PK สดนะคะ 💖",
+                            fontSize = 11.sp,
+                            color = Slate300
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("❤️ 128", fontSize = 10.sp, color = Pink400)
+                            Text("💬 34", fontSize = 10.sp, color = Slate400)
+                            Text("🎁 12", fontSize = 10.sp, color = Amber400)
+                        }
+                    }
                 }
             }
         }
