@@ -72,30 +72,15 @@
     },
     "posts": {
       ".read": "auth != null",
-      ".indexOn": [
-        "createdAt",
-        "authorUid",
-        "clubId"
-      ],
-      "$postId": {
-        ".write": "auth != null && !root.child('bans').child(auth.uid).exists() && ((!data.exists() && newData.child('authorUid').val() === auth.uid) || (data.exists() && data.child('authorUid').val() === auth.uid))"
-      }
+      ".write": false
     },
     "postLikes": {
-      ".read": "auth != null",
-      "$postId": {
-        "$uid": {
-          ".write": "auth != null && auth.uid === $uid && !root.child('bans').child(auth.uid).exists()"
-        }
-      }
+      ".read": false,
+      ".write": false
     },
     "postComments": {
       ".read": "auth != null",
-      "$postId": {
-        "$cid": {
-          ".write": "auth != null && !root.child('bans').child(auth.uid).exists() && ((!data.exists() && newData.child('authorUid').val() === auth.uid) || (data.exists() && data.child('authorUid').val() === auth.uid))"
-        }
-      }
+      ".write": false
     },
     "userFeeds": {
       "$uid": {

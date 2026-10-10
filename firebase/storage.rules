@@ -12,6 +12,16 @@ service firebase.storage {
         && request.resource.contentType.matches('image/.*');
       allow update, delete: if false;
     }
+    // Post images: owner writes own folder; served via Firebase download-token URL returned by brain.
+    match /posts/{uid}/{fileName} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.auth.uid == uid
+        && (request.auth.token.email_verified == true || request.auth.token.firebase.sign_in_provider != 'password')
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      allow update, delete: if false;
+    }
     match /{allPaths=**} {
       allow read, write: if false;
     }

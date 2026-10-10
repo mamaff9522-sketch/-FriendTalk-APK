@@ -53,7 +53,7 @@ async function isSuper(req, res, next) {
   req.role = r; next();
 }
 const w = fn => (q, r, n) => fn(q, r, n).catch(e => { console.error(e.message); r.status(e.code === 404 ? 404 : 500).json({ error: e.code === 404 ? 'user not found' : 'internal' }); });
-app.use(['/coins', '/age', '/config', '/admin', '/superadmin', '/me', '/match', '/bot', '/ui', '/chats', '/swipe'], w(auth));
+app.use(['/coins', '/age', '/config', '/admin', '/superadmin', '/me', '/match', '/bot', '/ui', '/chats', '/swipe', '/posts', '/feed'], w(auth));
 app.get('/me', w(async (q, r) => {
   const role = await loadRole(q.uid);
   r.json({ uid: q.uid, role: role?.role || 'user', permissions: role?.permissions || {} });
@@ -361,6 +361,114 @@ app.post('/swipe', w(notBanned), w(async (q, r) => {
     [`matchNotifications/${targetUid}/${pairId}`]: { otherUid: q.uid, chatId, at: t, seen: false }
   });
   r.json({ matched: true, pairId, chatId });
+}));
+// ===== Phase 2: social feed (text + images, likes, comments) =====
+// Posts/likes/comments are written only here (RTDB rules: client write false).
+// Post images: Storage posts/{uid}/..., owner-only create, image/* <=10MB; read via the
+// Firebase download-token URL (unguessable; token set by the client SDK upload).
+const POST_ID_RE = /^-[A-Za-z0-9_-]{19}$/;
+const cleanText = (t, max) => (typeof t === 'string' ? t.trim() : '').slice(0, max);
+async function postImageUrl(uid, path) {
+  if (typeof path !== 'string' || !path.startsWith(`posts/${uid}/`) || path.includes('..') || path.length > 300) return null;
+  const f = admin.storage().bucket(STORAGE_BUCKET).file(path);
+  const [m] = await f.getMetadata().catch(() => [null]);
+  if (!m || !String(m.contentType || '').startsWith('image/') || Number(m.size) > 10 * 1024 * 1024) return null;
+  let tok = (m.metadata?.firebaseStorageDownloadTokens || '').split(',')[0];
+  if (!tok) { tok = require('crypto').randomUUID(); await f.setMetadata({ metadata: { firebaseStorageDownloadTokens: tok } }); }
+  return `https://firebasestorage.googleapis.com/v0/b/${STORAGE_BUCKET}/o/${encodeURIComponent(path)}?alt=media&token=${tok}`;
+}
+async function authorInfo(uid) {
+  const u = (await db.ref(`users/${uid}`).get()).val() || {};
+  return { authorName: String(u.displayName || 'ผู้ใช้').slice(0, 50), authorAvatar: String(u.avatar || '').slice(0, 500) };
+}
+app.post('/posts', w(notBanned), w(async (q, r) => {
+  const text = cleanText(q.body?.text, 2000);
+  const refs = Array.isArray(q.body?.imageRefs) ? q.body.imageRefs : [];
+  if (refs.length > 4) return r.status(400).json({ error: 'max 4 images' });
+  const images = [];
+  for (const p of refs) { const u = await postImageUrl(q.uid, p); if (!u) return r.status(400).json({ error: 'invalid image' }); images.push({ path: p, url: u }); }
+  if (!text && !images.length) return r.status(400).json({ error: 'text or image required' });
+  const ref = db.ref('posts').push();
+  const post = { authorId: q.uid, ...(await authorInfo(q.uid)), text, images, createdAt: Date.now(), likeCount: 0, commentCount: 0 };
+  await ref.set(post);
+  r.json({ id: ref.key, ...post });
+}));
+async function canManage(q, post) { return post.authorId === q.uid || can(await loadRole(q.uid), 'manage_content'); }
+app.delete('/posts/:id', w(async (q, r) => {
+  const id = q.params.id; if (!POST_ID_RE.test(id)) return r.status(400).json({ error: 'bad id' });
+  const post = (await db.ref(`posts/${id}`).get()).val(); if (!post) return r.status(404).json({ error: 'not found' });
+  if (!(await canManage(q, post))) return r.status(403).json({ error: 'not allowed' });
+  await db.ref().update({ [`posts/${id}`]: null, [`postLikes/${id}`]: null, [`postComments/${id}`]: null });
+  for (const im of post.images || []) await admin.storage().bucket(STORAGE_BUCKET).file(im.path).delete().catch(() => {});
+  r.json({ ok: true });
+}));
+app.get('/feed', w(async (q, r) => {
+  const limit = Math.min(30, Math.max(1, parseInt(q.query.limit || '15', 10)));
+  let qq = db.ref('posts').orderByKey();
+  const cursor = String(q.query.cursor || '');
+  if (cursor) { if (!POST_ID_RE.test(cursor)) return r.status(400).json({ error: 'bad cursor' }); qq = qq.endBefore(cursor); }
+  const snap = await qq.limitToLast(limit).get();
+  const posts = [];
+  snap.forEach(c => { posts.push({ id: c.key, ...c.val() }); });
+  posts.reverse();
+  const liked = await Promise.all(posts.map(p => db.ref(`postLikes/${p.id}/${q.uid}`).get()));
+  posts.forEach((p, i) => { p.likedByMe = liked[i].exists(); p.images = p.images || []; });
+  r.json({ posts, nextCursor: posts.length === limit ? posts[posts.length - 1].id : null });
+}));
+async function setLike(q, r, on) {
+  const id = q.params.id; if (!POST_ID_RE.test(id)) return r.status(400).json({ error: 'bad id' });
+  if (!(await db.ref(`posts/${id}/authorId`).get()).exists()) return r.status(404).json({ error: 'not found' });
+  let changed = false;
+  await db.ref(`postLikes/${id}/${q.uid}`).transaction(cur => {
+    if (on) { if (cur) { changed = false; return; } changed = true; return Date.now(); }
+    if (!cur) { changed = false; return; } changed = true; return null;
+  });
+  let count;
+  if (changed) {
+    const t = await db.ref(`posts/${id}/likeCount`).transaction(c => Math.max(0, (c || 0) + (on ? 1 : -1)));
+    count = t.snapshot.val();
+  } else count = (await db.ref(`posts/${id}/likeCount`).get()).val() || 0;
+  r.json({ liked: on, likeCount: count });
+}
+app.post('/posts/:id/like', w(notBanned), w((q, r) => setLike(q, r, true)));
+app.delete('/posts/:id/like', w(notBanned), w((q, r) => setLike(q, r, false)));
+app.post('/posts/:id/comments', w(notBanned), w(async (q, r) => {
+  const id = q.params.id; if (!POST_ID_RE.test(id)) return r.status(400).json({ error: 'bad id' });
+  const text = cleanText(q.body?.text, 1000); if (!text) return r.status(400).json({ error: 'text required' });
+  if (!(await db.ref(`posts/${id}/authorId`).get()).exists()) return r.status(404).json({ error: 'not found' });
+  let parentId = q.body?.parentId || null;
+  if (parentId) {
+    if (!POST_ID_RE.test(parentId)) return r.status(400).json({ error: 'bad parentId' });
+    const parent = (await db.ref(`postComments/${id}/${parentId}`).get()).val();
+    if (!parent) return r.status(404).json({ error: 'parent not found' });
+    if (parent.parentId) parentId = parent.parentId; // one level of replies
+  }
+  const ref = db.ref(`postComments/${id}`).push();
+  const c = { authorId: q.uid, ...(await authorInfo(q.uid)), text, parentId, createdAt: Date.now() };
+  await ref.set(c);
+  const t = await db.ref(`posts/${id}/commentCount`).transaction(n => (n || 0) + 1);
+  r.json({ id: ref.key, ...c, commentCount: t.snapshot.val() });
+}));
+app.get('/posts/:id/comments', w(async (q, r) => {
+  const id = q.params.id; if (!POST_ID_RE.test(id)) return r.status(400).json({ error: 'bad id' });
+  const limit = Math.min(100, Math.max(1, parseInt(q.query.limit || '50', 10)));
+  let qq = db.ref(`postComments/${id}`).orderByKey();
+  const cursor = String(q.query.cursor || '');
+  if (cursor) { if (!POST_ID_RE.test(cursor)) return r.status(400).json({ error: 'bad cursor' }); qq = qq.startAfter(cursor); }
+  const snap = await qq.limitToFirst(limit).get();
+  const comments = []; snap.forEach(c => { comments.push({ id: c.key, ...c.val() }); });
+  r.json({ comments, nextCursor: comments.length === limit ? comments[comments.length - 1].id : null });
+}));
+app.delete('/posts/:id/comments/:cid', w(async (q, r) => {
+  const { id, cid } = q.params; if (!POST_ID_RE.test(id) || !POST_ID_RE.test(cid)) return r.status(400).json({ error: 'bad id' });
+  const c = (await db.ref(`postComments/${id}/${cid}`).get()).val(); if (!c) return r.status(404).json({ error: 'not found' });
+  if (c.authorId !== q.uid && !can(await loadRole(q.uid), 'manage_content')) return r.status(403).json({ error: 'not allowed' });
+  const all = (await db.ref(`postComments/${id}`).get()).val() || {};
+  const upd = { [`postComments/${id}/${cid}`]: null }; let n = 1;
+  if (!c.parentId) for (const [k, v] of Object.entries(all)) if (v.parentId === cid) { upd[`postComments/${id}/${k}`] = null; n++; }
+  await db.ref().update(upd);
+  const t = await db.ref(`posts/${id}/commentCount`).transaction(x => Math.max(0, (x || 0) - n));
+  r.json({ ok: true, commentCount: t.snapshot.val() });
 }));
 app.use((e, _q, r, _n) => {
   if (e.type === 'entity.too.large') return r.status(413).json({ error: 'request too large' });

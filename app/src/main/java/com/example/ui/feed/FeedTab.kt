@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.WifiTethering
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import com.example.ui.social.realFeedItems
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -87,12 +88,14 @@ fun FeedTab(
     val homeLayout by com.example.service.UiLayoutRepository.home.collectAsState()
     val refreshScope = rememberCoroutineScope()
     var refreshing by remember { mutableStateOf(false) }
+    val realFeed = com.example.ui.social.rememberRealFeedState()
+    com.example.ui.social.RealCommentsDialog(realFeed)
 
     PullToRefreshBox(
         isRefreshing = refreshing,
         onRefresh = {
             refreshing = true
-            refreshScope.launch { com.example.service.UiLayoutRepository.refreshHome(); refreshing = false }
+            refreshScope.launch { com.example.service.UiLayoutRepository.refreshHome(); realFeed.refresh(); refreshing = false }
         },
         modifier = Modifier.fillMaxSize()
     ) {
@@ -227,7 +230,9 @@ fun FeedTab(
             }
             }
 
-            val secFeed: LazyListScope.() -> Unit = {
+            // Real posts from friendtalk-brain (mock posts are no longer shown as real)
+            val secFeed: LazyListScope.() -> Unit = { realFeedItems(realFeed) }
+            @Suppress("UNUSED_VARIABLE") val secFeedLegacyMock: LazyListScope.() -> Unit = {
             // 4. Post Feed List
             if (filteredPosts.isEmpty()) {
                 item {
