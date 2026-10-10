@@ -2,6 +2,8 @@ package com.example.ui.admin
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -33,7 +35,7 @@ fun AdminUiBuilderDialog(
     onRestoreDefault: () -> Unit
 ) {
     var draftConfig by remember { mutableStateOf(currentConfig.copy()) }
-    var selectedBuilderTab by remember { mutableStateOf("feed") } // feed, theme, history
+    var selectedBuilderTab by remember { mutableStateOf("visual_dnd") } // visual_dnd (default), feed, theme, remote, preview, history
     var releaseNotes by remember { mutableStateOf("ปรับแต่งหน้า Feed และระบบ UI") }
 
     Dialog(
@@ -43,7 +45,7 @@ fun AdminUiBuilderDialog(
         Surface(
             modifier = Modifier
                 .fillMaxWidth(0.95f)
-                .fillMaxHeight(0.9f),
+                .fillMaxHeight(0.95f),
             shape = RoundedCornerShape(24.dp),
             color = Slate950,
             tonalElevation = 8.dp
@@ -81,8 +83,8 @@ fun AdminUiBuilderDialog(
 
                 // Builder Category Tabs
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     listOf(
                         "visual_dnd" to "ลากวาง UI 🎨",
@@ -97,17 +99,16 @@ fun AdminUiBuilderDialog(
                             shape = RoundedCornerShape(8.dp),
                             color = if (isSel) Pink500 else Slate800,
                             modifier = Modifier
-                                .weight(1f)
                                 .clip(RoundedCornerShape(8.dp))
                                 .clickable { selectedBuilderTab = key }
                         ) {
                             Text(
                                 text = label,
-                                fontSize = 10.sp,
+                                fontSize = 12.sp,
                                 fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
                                 color = if (isSel) White else Slate300,
                                 modifier = Modifier
-                                    .padding(vertical = 6.dp)
+                                    .padding(horizontal = 12.dp, vertical = 8.dp)
                                     .wrapContentWidth(Alignment.CenterHorizontally)
                             )
                         }
@@ -148,6 +149,7 @@ fun AdminUiBuilderDialog(
                     }
                 }
 
+                if (selectedBuilderTab != "visual_dnd") {
                 Spacer(modifier = Modifier.height(12.dp))
                 Divider(color = Slate800)
                 Spacer(modifier = Modifier.height(8.dp))
@@ -178,6 +180,7 @@ fun AdminUiBuilderDialog(
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("เผยแพร่ UI เวอร์ชันใหม่", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     }
+                }
                 }
             }
         }

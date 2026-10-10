@@ -202,6 +202,10 @@ fun HomeLayoutEditor() {
                                     val i = layout.blocks.indexOfFirst { it.id == b.id }
                                     move(i, i + dir)
                                 },
+                                onStep = { dir ->
+                                    val i = layout.blocks.indexOfFirst { it.id == b.id }
+                                    if (i + dir in layout.blocks.indices) { undo.add(layout); move(i, i + dir) }
+                                },
                                 onResize = { dx, dy ->
                                     updateBlock(b.id, recordUndo = false) {
                                         val w = (it.widthFraction + dx / canvasWidthPx).coerceIn(0.2f, 1f)
@@ -264,6 +268,7 @@ private fun EditableBlock(
     onSelect: () -> Unit,
     onDragStart: () -> Unit,
     onDragSwap: (Int) -> Unit,
+    onStep: (Int) -> Unit,
     onResize: (Float, Float) -> Unit
 ) {
     var dragY by remember { mutableStateOf(0f) }
@@ -291,7 +296,17 @@ private fun EditableBlock(
             }
             .clickable { onSelect() }
     ) {
-        if (block.type == "section") SectionPlaceholder(block, editing = true) else LayoutBlockView(block, interactive = false)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // Always-visible drag handle (long-press + drag anywhere on the block also works)
+            Text("≡", color = Slate300, fontSize = 22.sp, modifier = Modifier.padding(start = 6.dp))
+            Box(Modifier.weight(1f)) {
+                if (block.type == "section") SectionPlaceholder(block, editing = true) else LayoutBlockView(block, interactive = false)
+            }
+            Column {
+                Text("▲", color = Slate300, fontSize = 14.sp, modifier = Modifier.clickable { onStep(-1) }.padding(horizontal = 8.dp, vertical = 2.dp))
+                Text("▼", color = Slate300, fontSize = 14.sp, modifier = Modifier.clickable { onStep(1) }.padding(horizontal = 8.dp, vertical = 2.dp))
+            }
+        }
         if (selected && block.type != "section") {
             Box(
                 Modifier.align(Alignment.BottomEnd).padding(end = 10.dp, bottom = 2.dp).size(22.dp)
@@ -306,7 +321,7 @@ private fun EditableBlock(
 
 @Composable
 private fun PropertiesPanel(block: UiBlock, onChange: ((UiBlock) -> UiBlock) -> Unit, onDelete: () -> Unit, onMove: (Int) -> Unit) {
-    Surface(color = Slate900, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth().heightIn(max = 260.dp).padding(top = 6.dp)) {
+    Surface(color = Slate900, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth().heightIn(max = 220.dp).padding(top = 6.dp)) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(if (block.type == "section") "ส่วนเดิม: ${SECTION_LABELS[block.section]}" else "บล็อก: ${block.type}",
