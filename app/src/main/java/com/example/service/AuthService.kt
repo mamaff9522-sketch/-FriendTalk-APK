@@ -450,9 +450,33 @@ class AuthService private constructor() {
 
             Log.e(
                 TAG,
-                "No Google credential",
+                "No Google credential from bottom sheet; falling back to Sign in with Google button flow",
                 e
             )
+            // GetGoogleIdOption throws NoCredentialException when the One Tap sheet is in its
+            // cooldown (after dismissals) or the device's accounts aren't offered. The explicit
+            // button flow always shows the full Google account picker (incl. "add account").
+            try {
+                val buttonRequest = GetCredentialRequest.Builder()
+                    .addCredentialOption(
+                        com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption.Builder(clientId).build()
+                    )
+                    .build()
+                val result = credentialManager.getCredential(activity, buttonRequest)
+                handleCredential(
+                    context = activity,
+                    credential = result.credential,
+                    auth = auth,
+                    onSuccess = onSuccess,
+                    onError = onError
+                )
+                return
+            } catch (c: GetCredentialCancellationException) {
+                onCancelled("ยกเลิกการเข้าสู่ระบบ")
+                return
+            } catch (e2: Exception) {
+                Log.e(TAG, "Sign in with Google button flow failed", e2)
+            }
 
             val error =
                 "ไม่พบบัญชี Google ที่สามารถใช้เข้าสู่ระบบได้"
