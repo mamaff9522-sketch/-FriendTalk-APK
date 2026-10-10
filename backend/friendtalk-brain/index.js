@@ -53,7 +53,7 @@ async function isSuper(req, res, next) {
   req.role = r; next();
 }
 const w = fn => (q, r, n) => fn(q, r, n).catch(e => { console.error(e.message); r.status(e.code === 404 ? 404 : 500).json({ error: e.code === 404 ? 'user not found' : 'internal' }); });
-app.use(['/coins', '/age', '/config', '/admin', '/superadmin', '/me', '/match', '/bot'], w(auth));
+app.use(['/coins', '/age', '/config', '/admin', '/superadmin', '/me', '/match', '/bot', '/ui'], w(auth));
 app.get('/me', w(async (q, r) => {
   const role = await loadRole(q.uid);
   r.json({ uid: q.uid, role: role?.role || 'user', permissions: role?.permissions || {} });
@@ -226,6 +226,71 @@ app.put('/admin/bots/:botId', perm('config_edit'), w(notBanned), w(async (q, r) 
   const ref = db.ref(`aiBots/${id}`);
   if (!(await ref.get()).exists() && !u.name) return r.status(404).json({ error: 'bot not found' });
   await ref.update(u); r.json({ id, ...u });
+}));
+// ===== Server-driven UI layouts (admin UI Builder) =====
+const UI_SCREENS = ['home'];
+const BLOCK_TYPES = ['image', 'frame', 'text', 'button', 'banner', 'spacer', 'section'];
+const SECTIONS = ['tabs', 'banners', 'stories', 'clubs', 'sdc', 'feed'];
+const HEX = /^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})?$/;
+function validateLayout(screen, layout) {
+  if (!layout || typeof layout !== 'object' || !Array.isArray(layout.blocks)) return 'layout.blocks array required';
+  if (Buffer.byteLength(JSON.stringify(layout)) > 100 * 1024) return 'layout too large (max 100KB)';
+  if (layout.blocks.length === 0 || layout.blocks.length > 100) return '1-100 blocks required';
+  const ids = new Set(), out = [];
+  for (const b of layout.blocks) {
+    if (!b || typeof b !== 'object') return 'invalid block';
+    if (typeof b.id !== 'string' || !/^[A-Za-z0-9_-]{1,40}$/.test(b.id) || ids.has(b.id)) return 'block id invalid or duplicate';
+    ids.add(b.id);
+    if (!BLOCK_TYPES.includes(b.type)) return `bad type ${b.type}`;
+    if (b.type === 'section' && !SECTIONS.includes(b.section)) return `bad section ${b.section}`;
+    for (const k of ['imageUrl', 'linkUrl']) if (b[k] && (typeof b[k] !== 'string' || !/^https:\/\/[^\s]{1,1000}$/.test(b[k]))) return `${k} must be https://`;
+    for (const k of ['bgColorHex', 'textColorHex']) if (b[k] && (typeof b[k] !== 'string' || !HEX.test(b[k]))) return `${k} must be #RRGGBB`;
+    if (b.text && (typeof b.text !== 'string' || b.text.length > 500)) return 'text max 500 chars';
+    const num = (v, lo, hi, d) => (typeof v === 'number' && isFinite(v)) ? Math.min(hi, Math.max(lo, v)) : d;
+    out.push({
+      id: b.id, type: b.type, section: b.type === 'section' ? b.section : '', visible: b.visible !== false,
+      widthFraction: num(b.widthFraction, 0.2, 1, 1), heightDp: Math.round(num(b.heightDp, 0, 800, 0)),
+      cornerRadiusDp: Math.round(num(b.cornerRadiusDp, 0, 64, 12)), bgColorHex: b.bgColorHex || '', textColorHex: b.textColorHex || '#FFFFFF',
+      text: b.text || '', fontSizeSp: Math.round(num(b.fontSizeSp, 8, 48, 14)), paddingDp: Math.round(num(b.paddingDp, 0, 48, 12)),
+      imageUrl: b.imageUrl || '', linkUrl: b.linkUrl || ''
+    });
+  }
+  return { screen, blocks: out };
+}
+const screenOk = (q, r) => UI_SCREENS.includes(q.params.screen) || (r.status(404).json({ error: 'unknown screen' }), false);
+app.get('/ui/layout/:screen', w(async (q, r) => {
+  if (!screenOk(q, r)) return;
+  const cur = (await db.ref(`uiLayouts/${q.params.screen}/current`).get()).val();
+  if (!cur) return r.status(404).json({ error: 'no layout published' });
+  r.json({ layout: cur.layout, publishedAt: cur.publishedAt, versionId: cur.versionId });
+}));
+app.get('/admin/ui/layout/:screen', perm('config_edit'), w(async (q, r) => {
+  if (!screenOk(q, r)) return;
+  const v = (await db.ref(`uiLayouts/${q.params.screen}`).get()).val() || {};
+  const versions = Object.entries(v.versions || {}).map(([id, x]) => ({ id, savedAt: x.savedAt, savedBy: x.savedBy, blockCount: x.layout?.blocks?.length || 0 })).sort((a, b) => b.savedAt - a.savedAt);
+  r.json({ current: v.current?.layout || null, draft: v.draft?.layout || null, versions });
+}));
+app.put('/admin/ui/layout/:screen', perm('config_edit'), w(notBanned), w(async (q, r) => {
+  if (!screenOk(q, r)) return;
+  const screen = q.params.screen, res = validateLayout(screen, q.body?.layout);
+  if (typeof res === 'string') return r.status(400).json({ error: res });
+  const t = Date.now(), base = db.ref(`uiLayouts/${screen}`);
+  if (q.body?.publish !== true) { await base.child('draft').set({ layout: res, savedAt: t, savedBy: q.uid }); return r.json({ saved: 'draft', savedAt: t }); }
+  const id = String(t);
+  await base.update({ current: { layout: res, publishedAt: t, publishedBy: q.uid, versionId: id }, [`versions/${id}`]: { layout: res, savedAt: t, savedBy: q.uid }, draft: null });
+  const vs = Object.keys((await base.child('versions').get()).val() || {}).sort();
+  if (vs.length > 10) await Promise.all(vs.slice(0, vs.length - 10).map(k => base.child(`versions/${k}`).remove()));
+  r.json({ published: id, blocks: res.blocks.length });
+}));
+app.post('/admin/ui/layout/:screen/revert', perm('config_edit'), w(notBanned), w(async (q, r) => {
+  if (!screenOk(q, r)) return;
+  const vid = q.body?.versionId;
+  if (typeof vid !== 'string' || !/^\d{1,20}$/.test(vid)) return r.status(400).json({ error: 'versionId required' });
+  const base = db.ref(`uiLayouts/${q.params.screen}`), v = (await base.child(`versions/${vid}`).get()).val();
+  if (!v) return r.status(404).json({ error: 'version not found' });
+  const t = Date.now();
+  await base.update({ current: { layout: v.layout, publishedAt: t, publishedBy: q.uid, versionId: vid, revertedFrom: vid }, draft: null });
+  r.json({ reverted: vid });
 }));
 app.use((e, _q, r, _n) => r.status(e.code === 404 ? 404 : 500).json({ error: e.code === 404 ? 'user not found' : 'internal' }));
 app.listen(process.env.PORT || 8080);

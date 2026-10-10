@@ -119,12 +119,7 @@ fun AdminUiBuilderDialog(
                 // Content area
                 Box(modifier = Modifier.weight(1f)) {
                     when (selectedBuilderTab) {
-                        "visual_dnd" -> VisualDragAndDropLayoutEditor(
-                            draftConfig = draftConfig,
-                            onUpdateConfig = { updated ->
-                                draftConfig = updated
-                            }
-                        )
+                        "visual_dnd" -> com.example.ui.layout.HomeLayoutEditor()
                         "feed" -> FeedLayoutBuilder(
                             feedConfig = draftConfig.feed,
                             onUpdateFeedConfig = { updatedFeed ->
@@ -723,41 +718,3 @@ fun DeviceLivePreview(
     }
 }
 
-@Composable
-fun VisualDragAndDropLayoutEditor(
-    draftConfig: AppUiConfig,
-    onUpdateConfig: (AppUiConfig) -> Unit
-) {
-    val order = draftConfig.feed.sectionOrder
-    fun move(from: Int, to: Int) {
-        if (to !in order.indices) return
-        val list = order.toMutableList()
-        val item = list.removeAt(from)
-        list.add(to, item)
-        onUpdateConfig(draftConfig.copy(feed = draftConfig.feed.copy(sectionOrder = list)))
-    }
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        item {
-            Text(text = "จัดลำดับส่วนต่างๆ ของหน้า Feed", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Pink400)
-        }
-        items(order.size) { index ->
-            Surface(shape = RoundedCornerShape(12.dp), color = Slate900, modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(text = "${index + 1}. ${order[index]}", color = White, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                    IconButton(onClick = { move(index, index - 1) }, enabled = index > 0) {
-                        Icon(Icons.Default.KeyboardArrowUp, contentDescription = "เลื่อนขึ้น", tint = White)
-                    }
-                    IconButton(onClick = { move(index, index + 1) }, enabled = index < order.size - 1) {
-                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = "เลื่อนลง", tint = White)
-                    }
-                }
-            }
-        }
-    }
-}

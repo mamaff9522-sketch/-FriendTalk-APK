@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -25,9 +26,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.*
+import kotlinx.coroutines.launch
 import com.example.ui.components.ReportDialog
 import com.example.ui.theme.*
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FeedTab(
     posts: List<Post>,
@@ -79,11 +82,23 @@ fun FeedTab(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    val homeLayout by com.example.service.UiLayoutRepository.home.collectAsState()
+    val refreshScope = rememberCoroutineScope()
+    var refreshing by remember { mutableStateOf(false) }
+
+    PullToRefreshBox(
+        isRefreshing = refreshing,
+        onRefresh = {
+            refreshing = true
+            refreshScope.launch { com.example.service.UiLayoutRepository.refreshHome(); refreshing = false }
+        },
+        modifier = Modifier.fillMaxSize()
+    ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 88.dp)
         ) {
+            val secTabs: LazyListScope.() -> Unit = {
             // 1. Category Tabs Bar
             if (feedConfig.showCategoryTabs) {
                 item {
@@ -94,7 +109,9 @@ fun FeedTab(
                     )
                 }
             }
+            }
 
+            val secBanners: LazyListScope.() -> Unit = {
             // Remote Banners & SDUI Announcements
             val visibleBanners = uiConfig.banners.filter { it.isVisible }
             if (visibleBanners.isNotEmpty()) {
@@ -137,7 +154,9 @@ fun FeedTab(
                     }
                 }
             }
+            }
 
+            val secStories: LazyListScope.() -> Unit = {
             // 2. Story / Quick Access Row
             if (feedConfig.showStoryRow) {
                 item {
@@ -158,14 +177,18 @@ fun FeedTab(
                     )
                 }
             }
+            }
 
+            val secClubs: LazyListScope.() -> Unit = {
             // 3. Optional Clubs Snippet (if enabled in UI config)
             if (feedConfig.showClubsSnippet && clubs.isNotEmpty() && selectedCategory == "ทั้งหมด" && searchQuery.isBlank()) {
                 item {
                     ClubsSnippetRow(clubs = clubs, onClubClick = {})
                 }
             }
+            }
 
+            val secSdc: LazyListScope.() -> Unit = {
             // 3.5 Server-Driven UI Dynamic Components (Real Native Rendering)
             val activeSdc = uiConfig.serverDrivenComponents.filter { it.isVisible }.sortedBy { it.order }
             if (activeSdc.isNotEmpty() && selectedCategory == "ทั้งหมด" && searchQuery.isBlank()) {
@@ -200,7 +223,9 @@ fun FeedTab(
                     }
                 }
             }
+            }
 
+            val secFeed: LazyListScope.() -> Unit = {
             // 4. Post Feed List
             if (filteredPosts.isEmpty()) {
                 item {
@@ -238,6 +263,29 @@ fun FeedTab(
                         onLiveClick = { liveRoomId -> onEnterLiveRoom(liveRoomId) }
                     )
                 }
+            }
+            }
+
+            // Server-driven Home layout (UI Builder). Falls back to the built-in order when none/invalid.
+            val layout = homeLayout
+            if (layout == null) {
+                secTabs(); secBanners(); secStories(); secClubs(); secSdc(); secFeed()
+            } else {
+                var feedShown = false
+                layout.blocks.filter { it.visible }.forEach { b ->
+                    when (b.type) {
+                        "section" -> when (b.section) {
+                            "tabs" -> secTabs()
+                            "banners" -> secBanners()
+                            "stories" -> secStories()
+                            "clubs" -> secClubs()
+                            "sdc" -> secSdc()
+                            "feed" -> { if (!feedShown) { feedShown = true; secFeed() } }
+                        }
+                        else -> item(key = "ui_" + b.id) { com.example.ui.layout.LayoutBlockView(b) }
+                    }
+                }
+                if (!feedShown) secFeed() // the post feed is always kept
             }
         }
 
