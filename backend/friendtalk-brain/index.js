@@ -53,7 +53,11 @@ async function isSuper(req, res, next) {
   req.role = r; next();
 }
 const w = fn => (q, r, n) => fn(q, r, n).catch(e => { console.error(e.message); r.status(e.code === 404 ? 404 : 500).json({ error: e.code === 404 ? 'user not found' : 'internal' }); });
-app.use(['/coins', '/age', '/config', '/admin', '/superadmin'], w(auth));
+app.use(['/coins', '/age', '/config', '/admin', '/superadmin', '/me'], w(auth));
+app.get('/me', w(async (q, r) => {
+  const role = await loadRole(q.uid);
+  r.json({ uid: q.uid, role: role?.role || 'user', permissions: role?.permissions || {} });
+}));
 app.use('/admin', w(isAdmin));
 app.use('/superadmin', w(isSuper));
 app.post('/coins/purchase', w(notBanned), w(async (q, r) => {

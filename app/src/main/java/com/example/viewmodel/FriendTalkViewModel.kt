@@ -181,23 +181,22 @@ class FriendTalkViewModel : ViewModel() {
             users = updatedUsers
         )
 
-        // ตรวจสอบสิทธิ์ผ่าน Backend จริง (Requirement 6 & 7)
-        com.example.service.AuthService.getInstance().checkBackendSuperAdminRole(firebaseUser.uid) { isSuperAdmin, statusMessage ->
-            if (isSuperAdmin) {
-                val superAdminUser = _uiState.value.currentUser.copy(
-                    role = UserRole.SUPERADMIN,
-                    backendRoleStatus = statusMessage,
-                    badges = listOf("👑 SUPER ADMIN (Backend Verified)", "ยืนยันตัวตนแล้ว 🛡️")
-                )
-                _uiState.value = _uiState.value.copy(
-                    currentUser = superAdminUser,
-                    users = _uiState.value.users.map { if (it.id == firebaseUser.uid) superAdminUser else it }
-                )
-            } else {
-                _uiState.value = _uiState.value.copy(
-                    currentUser = _uiState.value.currentUser.copy(backendRoleStatus = statusMessage)
-                )
-            }
+        // ตรวจสอบสิทธิ์ผ่าน Backend จริง: friendtalk-brain GET /me (roles/{uid} ใน RTDB)
+        viewModelScope.launch {
+            val me = com.example.network.BrainApi.fetchMe(firebaseUser) ?: return@launch
+            if (_uiState.value.currentUser.id != firebaseUser.uid) return@launch
+            val isPrivileged = me.role == UserRole.SUPERADMIN || me.role == UserRole.ADMIN
+            val updated = _uiState.value.currentUser.copy(
+                role = me.role,
+                backendRoleStatus = "สิทธิ์จาก Backend: ${me.rawRole}",
+                badges = if (me.role == UserRole.SUPERADMIN) listOf("👑 SUPER ADMIN (Backend Verified)", "ยืนยันตัวตนแล้ว 🛡️")
+                    else if (isPrivileged) listOf("🛡️ ADMIN (Backend Verified)", "ยืนยันตัวตนแล้ว 🛡️")
+                    else _uiState.value.currentUser.badges
+            )
+            _uiState.value = _uiState.value.copy(
+                currentUser = updated,
+                users = _uiState.value.users.map { if (it.id == firebaseUser.uid) updated else it }
+            )
         }
     }
 
