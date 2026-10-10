@@ -23,6 +23,26 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Restore Firebase Google Services
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -z "$GOOGLE_SERVICES_JSON" ]; then
+            echo "::error::GOOGLE_SERVICES_JSON secret is missing"
+            exit 1
+          fi
+
+          mkdir -p app
+          printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
+
+          if ! python3 -m json.tool app/google-services.json > /dev/null; then
+            echo "::error::Invalid google-services.json"
+            exit 1
+          fi
+
+          chmod 600 app/google-services.json
+          echo "Firebase configuration restored successfully"
+
       - name: Restore Fixed Android Keystore
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
