@@ -66,14 +66,13 @@ fun ShakeView(
             )
             Spacer(modifier = Modifier.height(24.dp))
             Button(
-                onClick = {
-                    isShaking = true
-                    matchedUser = users.randomOrNull()
-                },
+                // Tap no longer "finds" anyone (was mock). Real shake detection lives in RealShakeView.
+                onClick = { },
+                enabled = false,
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Pink500)
             ) {
-                Text("จำลองการเขย่า (Shake Now)", fontWeight = FontWeight.Bold)
+                Text("ใช้เมนู เขย่าเจอ 📱 (เขย่าจริง)", fontWeight = FontWeight.Bold)
             }
         } else {
             Surface(

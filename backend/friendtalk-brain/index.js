@@ -53,7 +53,7 @@ async function isSuper(req, res, next) {
   req.role = r; next();
 }
 const w = fn => (q, r, n) => fn(q, r, n).catch(e => { console.error(e.message); r.status(e.code === 404 ? 404 : 500).json({ error: e.code === 404 ? 'user not found' : 'internal' }); });
-app.use(['/coins', '/age', '/config', '/admin', '/superadmin', '/me', '/match', '/bot', '/ui', '/chats', '/swipe', '/posts', '/feed'], w(auth));
+app.use(['/coins', '/age', '/config', '/admin', '/superadmin', '/me', '/match', '/bot', '/ui', '/chats', '/swipe', '/posts', '/feed', '/friends', '/radar', '/shake'], w(auth));
 app.get('/me', w(async (q, r) => {
   const role = await loadRole(q.uid);
   r.json({ uid: q.uid, role: role?.role || 'user', permissions: role?.permissions || {} });
@@ -470,6 +470,149 @@ app.delete('/posts/:id/comments/:cid', w(async (q, r) => {
   await db.ref().update(upd);
   const t = await db.ref(`posts/${id}/commentCount`).transaction(x => Math.max(0, (x || 0) - n));
   r.json({ ok: true, commentCount: t.snapshot.val() });
+}));
+// ===== Phase 3: friends, radar, shake =====
+const RADII = [0.5, 1, 2, 5, 10, 25, 50];
+const pickRadius = v => { const n = Number(v); return RADII.includes(n) ? n : 0.5; };
+const GH32 = '0123456789bcdefghjkmnpqrstuvwxyz';
+function geohash(lat, lng, prec) {
+  let la = [-90, 90], lo = [-180, 180], bit = 0, ch = 0, even = true, out = '';
+  while (out.length < prec) {
+    const r = even ? lo : la, v = even ? lng : lat, mid = (r[0] + r[1]) / 2;
+    if (v >= mid) { ch = (ch << 1) | 1; r[0] = mid; } else { ch = ch << 1; r[1] = mid; }
+    even = !even;
+    if (++bit === 5) { out += GH32[ch]; bit = 0; ch = 0; }
+  }
+  return out;
+}
+function distKm(a, b, c, d) {
+  const R = 6371, t = x => x * Math.PI / 180, dl = t(c - a), dn = t(d - b);
+  const h = Math.sin(dl / 2) ** 2 + Math.cos(t(a)) * Math.cos(t(c)) * Math.sin(dn / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function roundDist(km) {
+  const m = km * 1000;
+  if (m < 150) return '~100 m';
+  if (m < 1000) return `~${Math.round(m / 100) * 100} m`;
+  if (km < 10) return `~${Math.round(km * 10) / 10} km`;
+  return `~${Math.round(km)} km`;
+}
+const coarse = v => Math.round(v * 1000) / 1000; // ~110 m
+const validLatLng = (lat, lng) => typeof lat === 'number' && typeof lng === 'number' && isFinite(lat) && isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+async function blockedEither(a, b) {
+  const [x, y] = await Promise.all([db.ref(`blocks/${a}/${b}`).get(), db.ref(`blocks/${b}/${a}`).get()]);
+  return x.exists() || y.exists();
+}
+async function summary(uid) {
+  const u = (await db.ref(`users/${uid}`).get()).val();
+  return u ? publicProfile(uid, u) : null;
+}
+// --- friends
+app.post('/friends/request', w(notBanned), w(async (q, r) => {
+  const to = q.body?.toUid;
+  if (typeof to !== 'string' || !UID_RE.test(to) || to === q.uid) return r.status(400).json({ error: 'valid toUid required' });
+  if (!(await db.ref(`users/${to}`).get()).exists()) return r.status(404).json({ error: 'user not found' });
+  if (await isBanned(to) || await blockedEither(q.uid, to)) return r.status(403).json({ error: 'user unavailable' });
+  if ((await db.ref(`friends/${q.uid}/${to}`).get()).exists()) return r.json({ status: 'already_friends' });
+  if ((await db.ref(`friendRequests/${q.uid}/${to}`).get()).exists()) { // they already asked me -> accept
+    const t = Date.now(); const { chatId } = await openDirectChat(q.uid, to);
+    await db.ref().update({ [`friends/${q.uid}/${to}`]: t, [`friends/${to}/${q.uid}`]: t, [`friendRequests/${q.uid}/${to}`]: null });
+    return r.json({ status: 'friends', chatId });
+  }
+  await db.ref(`friendRequests/${to}/${q.uid}`).set({ at: Date.now() });
+  r.json({ status: 'requested' });
+}));
+app.post('/friends/respond', w(notBanned), w(async (q, r) => {
+  const from = q.body?.fromUid, accept = q.body?.accept === true;
+  if (typeof from !== 'string' || !UID_RE.test(from)) return r.status(400).json({ error: 'valid fromUid required' });
+  if (!(await db.ref(`friendRequests/${q.uid}/${from}`).get()).exists()) return r.status(404).json({ error: 'no such request' });
+  if (!accept) { await db.ref(`friendRequests/${q.uid}/${from}`).remove(); return r.json({ status: 'declined' }); }
+  if (await isBanned(from)) return r.status(403).json({ error: 'user unavailable' });
+  const t = Date.now(); const { chatId } = await openDirectChat(q.uid, from);
+  await db.ref().update({ [`friends/${q.uid}/${from}`]: t, [`friends/${from}/${q.uid}`]: t, [`friendRequests/${q.uid}/${from}`]: null });
+  r.json({ status: 'friends', chatId });
+}));
+app.get('/friends', w(async (q, r) => {
+  const ids = Object.keys((await db.ref(`friends/${q.uid}`).get()).val() || {}).slice(0, 500);
+  r.json({ friends: (await Promise.all(ids.map(summary))).filter(Boolean) });
+}));
+app.get('/friends/requests', w(async (q, r) => {
+  const reqs = (await db.ref(`friendRequests/${q.uid}`).get()).val() || {};
+  const out = [];
+  for (const [uid, v] of Object.entries(reqs).slice(0, 200)) { const p = await summary(uid); if (p) out.push({ ...p, at: v.at || 0 }); }
+  r.json({ requests: out });
+}));
+// --- radar (coarse only: 3 decimals ~110 m + geohash7; never returned to clients)
+app.post('/radar/location', w(notBanned), w(async (q, r) => {
+  const { lat, lng } = q.body || {};
+  if (!validLatLng(lat, lng)) return r.status(400).json({ error: 'lat,lng required' });
+  const la = coarse(lat), lo = coarse(lng);
+  await db.ref(`radar/${q.uid}`).set({ gh: geohash(la, lo, 7), lat: la, lng: lo, at: Date.now() });
+  r.json({ ok: true, visible: true });
+}));
+app.delete('/radar/location', w(async (q, r) => { await db.ref(`radar/${q.uid}`).remove(); r.json({ ok: true, visible: false }); }));
+app.get('/radar/nearby', w(notBanned), w(async (q, r) => {
+  const radius = pickRadius(q.query.radiusKm);
+  const me = (await db.ref(`radar/${q.uid}`).get()).val();
+  if (!me) return r.status(409).json({ error: 'location not shared' });
+  const prec = radius <= 2 ? 5 : radius <= 20 ? 4 : 3; // geohash5 cell ~4.9x4.9 km
+  const cellDeg = { 5: 0.044, 4: 0.18, 3: 1.4 }[prec];
+  const step = Math.max(cellDeg, radius / 111);
+  const prefixes = new Set();
+  for (const dy of [-1, 0, 1]) for (const dx of [-1, 0, 1]) {
+    const la = Math.max(-89.9, Math.min(89.9, me.lat + dy * step)), lo = ((me.lng + dx * step / Math.max(0.2, Math.cos(me.lat * Math.PI / 180)) + 540) % 360) - 180;
+    prefixes.add(geohash(la, lo, prec));
+  }
+  const cutoff = Date.now() - 30 * 60 * 1000, seen = new Map();
+  for (const p of prefixes) {
+    const s = await db.ref('radar').orderByChild('gh').startAt(p).endAt(p + '\uf8ff').limitToFirst(500).get();
+    s.forEach(c => { seen.set(c.key, c.val()); });
+  }
+  const out = [];
+  for (const [uid, v] of seen) {
+    if (uid === q.uid || !v || v.at < cutoff) continue;
+    const km = distKm(me.lat, me.lng, v.lat, v.lng);
+    if (km > radius) continue;
+    if (await isBanned(uid) || await blockedEither(q.uid, uid)) continue;
+    const p = await summary(uid); if (!p) continue;
+    out.push({ ...p, distance: roundDist(km), _km: km });
+  }
+  out.sort((a, b) => a._km - b._km);
+  r.json({ radiusKm: radius, users: out.slice(0, 50).map(({ _km, ...x }) => x) });
+}));
+// --- shake (15 s window)
+const SHAKE_MS = 15000;
+
+app.post('/shake', w(notBanned), w(async (q, r) => {
+  const { lat, lng } = q.body || {};
+  const radiusKm = pickRadius(q.body?.radiusKm);
+  const hasLoc = validLatLng(lat, lng);
+  const la = hasLoc ? coarse(lat) : null, lo = hasLoc ? coarse(lng) : null;
+  const now = Date.now(); let partner = null;
+  await db.ref(`shakeResults/${q.uid}`).remove();
+  await db.ref('shakeWaiting').transaction(cur => {
+    const w8 = {}; partner = null;
+    for (const [k, v] of Object.entries(cur || {})) if (v && now - v.at < SHAKE_MS && k !== q.uid) w8[k] = v;
+    // With location: only users that also shared location and are within BOTH users' radius (nearest first).
+    // Without location: only other users without location ("anywhere" mode).
+    const ids = Object.keys(w8).filter(k => hasLoc ? (w8[k].lat != null && distKm(la, lo, w8[k].lat, w8[k].lng) <= Math.min(radiusKm, w8[k].radiusKm || 0.5)) : w8[k].lat == null);
+    if (hasLoc) ids.sort((a, b) => distKm(la, lo, w8[a].lat, w8[a].lng) - distKm(la, lo, w8[b].lat, w8[b].lng));
+    partner = ids[0] || null;
+    if (partner) { delete w8[partner]; return w8; }
+    w8[q.uid] = hasLoc ? { at: now, lat: la, lng: lo, radiusKm } : { at: now }; return w8;
+  });
+  if (partner && (await isBanned(partner) || await blockedEither(q.uid, partner))) partner = null;
+  if (!partner) return r.json({ status: 'waiting', windowMs: SHAKE_MS, mode: hasLoc ? 'nearby' : 'anywhere', radiusKm });
+  await db.ref().update({ [`shakeResults/${q.uid}`]: { other: partner, at: now }, [`shakeResults/${partner}`]: { other: q.uid, at: now } });
+  r.json({ status: 'matched', user: await summary(partner) });
+}));
+app.get('/shake/result', w(async (q, r) => {
+  const res = (await db.ref(`shakeResults/${q.uid}`).get()).val();
+  if (res && Date.now() - res.at < 60000) return r.json({ status: 'matched', user: await summary(res.other) });
+  const wv = (await db.ref(`shakeWaiting/${q.uid}`).get()).val();
+  if (wv && Date.now() - wv.at < SHAKE_MS) return r.json({ status: 'waiting' });
+  if (wv) await db.ref(`shakeWaiting/${q.uid}`).remove();
+  r.json({ status: 'timeout' });
 }));
 app.use((e, _q, r, _n) => {
   if (e.type === 'entity.too.large') return r.status(413).json({ error: 'request too large' });

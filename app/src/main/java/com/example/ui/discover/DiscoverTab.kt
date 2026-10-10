@@ -74,10 +74,10 @@ fun DiscoverTab(
         }
 
         when (subTab) {
-            "radar" -> RadarView(users = users, currentUser = currentUser, onSelectUser = onStartChat)
-            "nearby" -> NearbyListView(users = users, currentUser = currentUser, onStartChat = onStartChat)
+            "radar" -> com.example.ui.social.RealRadarView() // real radar (old mock RadarView kept in code, not shown)
+            "nearby" -> com.example.ui.social.RealRadarView()
             "swipe" -> com.example.ui.social.RealSwipeView()
-            "shake" -> ShakeView(users = users.filter { it.id != currentUser.id }, onFoundUser = onStartChat)
+            "shake" -> com.example.ui.social.RealShakeView()
             "random" -> com.example.ui.ai.RandomMatchView(users = users.filter { it.id != currentUser.id }, onStartChatWithUser = onStartChat)
         }
     }

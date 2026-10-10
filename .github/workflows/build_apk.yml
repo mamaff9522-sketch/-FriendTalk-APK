@@ -96,7 +96,7 @@ jobs:
         run: |
           if [ -f "./gradlew" ]; then
             chmod +x ./gradlew
-            ./gradlew clean assembleRelease --no-daemon --stacktrace
+            ./gradlew clean testReleaseUnitTest assembleRelease --no-daemon --stacktrace
           else
             gradle clean assembleRelease --no-daemon --stacktrace
           fi

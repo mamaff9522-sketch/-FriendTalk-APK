@@ -41,6 +41,14 @@
         },
         "$other": {
           ".validate": false
+        },
+        "settings": {
+          "radiusKm": {
+            ".validate": "newData.isNumber() && (newData.val() === 0.5 || newData.val() === 1 || newData.val() === 2 || newData.val() === 5 || newData.val() === 10 || newData.val() === 25 || newData.val() === 50)"
+          },
+          "$o": {
+            ".validate": false
+          }
         }
       }
     },
@@ -243,6 +251,33 @@
     "swipes": {
       ".read": false,
       ".write": false
+    },
+    "radar": {
+      ".read": false,
+      ".write": false,
+      ".indexOn": [
+        "gh"
+      ]
+    },
+    "shakeWaiting": {
+      ".read": false,
+      ".write": false
+    },
+    "shakeResults": {
+      ".read": false,
+      ".write": false
+    },
+    "friendRequests": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": false
+      }
+    },
+    "friends": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": false
+      }
     }
   }
 }
