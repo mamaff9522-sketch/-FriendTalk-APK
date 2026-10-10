@@ -419,9 +419,10 @@ async function setLike(q, r, on) {
   const id = q.params.id; if (!POST_ID_RE.test(id)) return r.status(400).json({ error: 'bad id' });
   if (!(await db.ref(`posts/${id}/authorId`).get()).exists()) return r.status(404).json({ error: 'not found' });
   let changed = false;
+  // Never abort: the first run sees a null local cache; returning a value lets RTDB retry with the server value.
   await db.ref(`postLikes/${id}/${q.uid}`).transaction(cur => {
-    if (on) { if (cur) { changed = false; return; } changed = true; return Date.now(); }
-    if (!cur) { changed = false; return; } changed = true; return null;
+    if (on) { changed = !cur; return cur || Date.now(); }
+    changed = !!cur; return null;
   });
   let count;
   if (changed) {
@@ -456,7 +457,7 @@ app.get('/posts/:id/comments', w(async (q, r) => {
   const cursor = String(q.query.cursor || '');
   if (cursor) { if (!POST_ID_RE.test(cursor)) return r.status(400).json({ error: 'bad cursor' }); qq = qq.startAfter(cursor); }
   const snap = await qq.limitToFirst(limit).get();
-  const comments = []; snap.forEach(c => { comments.push({ id: c.key, ...c.val() }); });
+  const comments = []; snap.forEach(c => { comments.push({ id: c.key, parentId: null, ...c.val() }); });
   r.json({ comments, nextCursor: comments.length === limit ? comments[comments.length - 1].id : null });
 }));
 app.delete('/posts/:id/comments/:cid', w(async (q, r) => {
