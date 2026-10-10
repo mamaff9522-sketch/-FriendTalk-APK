@@ -247,8 +247,16 @@ fun RealShakeView() {
     var found by remember { mutableStateOf<RealProfile?>(null) }
     var showProfile by remember { mutableStateOf(false) }
     val detector = remember { ShakeDetector() }
+    val fx = remember { ShakeFeedback(ctx) }
+    DisposableEffect(Unit) { onDispose { fx.release() } }
+    var motion by remember { mutableStateOf(0f) }
+    val burst = remember { Animatable(0f) }
+    var burstStrength by remember { mutableStateOf(0.5f) }
 
     fun onShake() {
+        burstStrength = motion.coerceIn(0.3f, 1f)
+        fx.trigger(burstStrength)
+        scope.launch { burst.snapTo(1f); burst.animateTo(0f, tween(1100, easing = LinearOutSlowInEasing)) }
         if (state == "searching") return
         state = "searching"; found = null
         scope.launch {
@@ -273,13 +281,17 @@ fun RealShakeView() {
         val sensor = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         val l = object : SensorEventListener {
             override fun onSensorChanged(e: SensorEvent) {
+                val g = kotlin.math.sqrt((e.values[0] * e.values[0] + e.values[1] * e.values[1] + e.values[2] * e.values[2]).toDouble()).toFloat() / 9.80665f
+                val target = ((g - 1.25f) / 1.75f).coerceIn(0f, 1f)
+                motion = if (target > motion) target else motion * 0.9f + target * 0.1f
+                fx.pulse(motion)
                 if (detector.onSample(e.values[0], e.values[1], e.values[2], e.timestamp / 1_000_000)) onShake()
             }
             override fun onAccuracyChanged(s: Sensor?, a: Int) {}
         }
         var registered = false
         fun reg() { if (listening && sensor != null && !registered) { detector.reset(); sm.registerListener(l, sensor, SensorManager.SENSOR_DELAY_GAME); registered = true } }
-        fun unreg() { if (registered) { sm.unregisterListener(l); registered = false } }
+        fun unreg() { if (registered) { sm.unregisterListener(l); registered = false; motion = 0f } }
         val obs = LifecycleEventObserver { _, ev -> when (ev) { Lifecycle.Event.ON_RESUME -> reg(); Lifecycle.Event.ON_PAUSE -> unreg(); else -> {} } }
         lifecycle.addObserver(obs)
         if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) reg()
@@ -297,6 +309,8 @@ fun RealShakeView() {
                 color = Amber400, fontSize = 12.sp, modifier = Modifier.padding(vertical = 6.dp))
             LocationPermissionCard { granted = true }
         }
+        ShakeIcon(level = if (listening) motion else 0f, burst = burst.value, burstStrength = burstStrength,
+            idleHint = state != "searching", icon = if (state == "matched") "🎉" else "📱")
         Spacer(Modifier.height(12.dp))
         // This button only toggles the sensor listener; it never starts a search by itself.
         Button(onClick = { listening = !listening; if (!listening && state != "searching") state = "idle" },
