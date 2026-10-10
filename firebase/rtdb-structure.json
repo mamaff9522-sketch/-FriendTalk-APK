@@ -1,0 +1,55 @@
+{
+  "users": {
+    "uid_abc": {
+      "displayName": "Mama", "photoUrl": "https://...", "bio": "",
+      "createdAt": 1760100000000, "lastSeen": 1760100500000
+    }
+  },
+  "usernames": { "mama": "uid_abc" },
+  "roles": { "uid_abc": "superadmin", "uid_mod1": "moderator" },
+  "bans": {
+    "uid_bad": { "bannedBy": "uid_abc", "reason": "spam", "at": 1760100000000, "until": null }
+  },
+  "wallets": {
+    "uid_abc": { "coins": 0, "updatedAt": 1760100000000 }
+  },
+  "coinTransactions": {
+    "uid_abc": {
+      "tx_001": { "type": "purchase", "amount": 100, "priceThb": 35, "status": "paid", "paymentRef": "slip_or_order_id", "at": 1760100000000 },
+      "tx_002": { "type": "gift_sent", "amount": -20, "giftId": "rose", "toUid": "uid_xyz", "at": 1760100100000 }
+    }
+  },
+  "posts": {
+    "post_001": { "authorUid": "uid_abc", "text": "สวัสดี", "imageUrls": [], "clubId": null, "likeCount": 3, "commentCount": 1, "createdAt": 1760100000000 }
+  },
+  "postLikes": { "post_001": { "uid_xyz": true } },
+  "postComments": {
+    "post_001": { "c_001": { "authorUid": "uid_xyz", "text": "ดีครับ", "at": 1760100200000 } }
+  },
+  "userFeeds": { "uid_xyz": { "post_001": 1760100000000 } },
+  "chats": {
+    "chat_001": { "type": "direct", "title": null, "lastMessage": "hi", "lastAt": 1760100300000 }
+  },
+  "chatMembers": { "chat_001": { "uid_abc": true, "uid_xyz": true } },
+  "userChats": { "uid_abc": { "chat_001": 1760100300000 } },
+  "messages": {
+    "chat_001": { "m_001": { "senderUid": "uid_abc", "text": "hi", "imageUrl": null, "at": 1760100300000 } }
+  },
+  "lives": {
+    "live_001": { "hostUid": "uid_abc", "title": "คุยกัน", "status": "live", "viewerCount": 12, "startedAt": 1760100000000, "endedAt": null }
+  },
+  "liveViewers": { "live_001": { "uid_xyz": 1760100050000 } },
+  "liveComments": { "live_001": { "lc_001": { "uid": "uid_xyz", "text": "สวัสดี", "at": 1760100060000 } } },
+  "liveGifts": { "live_001": { "lg_001": { "fromUid": "uid_xyz", "giftId": "rose", "coins": 20, "at": 1760100070000 } } },
+  "clubs": {
+    "club_001": { "name": "คนรักแมว", "ownerUid": "uid_abc", "description": "", "memberCount": 2, "createdAt": 1760100000000 }
+  },
+  "clubMembers": { "club_001": { "uid_abc": "owner", "uid_xyz": "member" } },
+  "userClubs": { "uid_xyz": { "club_001": true } },
+  "gifts": { "rose": { "name": "กุหลาบ", "coins": 20, "iconUrl": "https://..." } },
+  "coinPackages": { "p100": { "coins": 100, "priceThb": 35, "active": true } },
+  "reports": {
+    "r_001": { "reporterUid": "uid_xyz", "targetType": "post", "targetId": "post_001", "reason": "spam", "status": "open", "at": 1760100400000 }
+  },
+  "appConfig": { "maintenanceMode": false, "maintenanceMessage": "", "minVersion": "1.2.0" }
+}

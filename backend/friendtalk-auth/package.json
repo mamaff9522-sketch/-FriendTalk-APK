@@ -1,0 +1,1 @@
+{"name":"friendtalk-auth","version":"1.0.0","type":"module","main":"server.js","engines":{"node":">=22"},"scripts":{"start":"node server.js"},"dependencies":{"express":"^4.21.2","firebase-admin":"^13.0.2"}}

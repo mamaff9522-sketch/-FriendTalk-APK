@@ -1,0 +1,65 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "users": {
+      ".read": "auth != null",
+      "$uid": { ".write": "auth != null && auth.uid === $uid && !root.child('bans').child(auth.uid).exists()" }
+    },
+    "usernames": {
+      ".read": "auth != null",
+      "$name": { ".write": "auth != null && !root.child('bans').child(auth.uid).exists() && ((!data.exists() && newData.val() === auth.uid) || (data.val() === auth.uid && !newData.exists()))" }
+    },
+    "roles": { ".read": "auth != null", ".write": false },
+    "bans": { ".read": "auth != null", ".write": false },
+    "wallets": { "$uid": { ".read": "auth != null && auth.uid === $uid", ".write": false } },
+    "coinTransactions": { "$uid": { ".read": "auth != null && auth.uid === $uid", ".write": false } },
+    "posts": {
+      ".read": "auth != null",
+      ".indexOn": ["createdAt", "authorUid", "clubId"],
+      "$postId": { ".write": "auth != null && !root.child('bans').child(auth.uid).exists() && ((!data.exists() && newData.child('authorUid').val() === auth.uid) || (data.exists() && data.child('authorUid').val() === auth.uid))" }
+    },
+    "postLikes": {
+      ".read": "auth != null",
+      "$postId": { "$uid": { ".write": "auth != null && auth.uid === $uid && !root.child('bans').child(auth.uid).exists()" } }
+    },
+    "postComments": {
+      ".read": "auth != null",
+      "$postId": { "$cid": { ".write": "auth != null && !root.child('bans').child(auth.uid).exists() && ((!data.exists() && newData.child('authorUid').val() === auth.uid) || (data.exists() && data.child('authorUid').val() === auth.uid))" } }
+    },
+    "userFeeds": { "$uid": { ".read": "auth != null && auth.uid === $uid", ".write": false } },
+    "chats": {
+      "$chatId": {
+        ".read": "auth != null && root.child('chatMembers').child($chatId).child(auth.uid).exists()",
+        ".write": "auth != null && !root.child('bans').child(auth.uid).exists() && root.child('chatMembers').child($chatId).child(auth.uid).exists()"
+      }
+    },
+    "chatMembers": { "$chatId": { ".read": "auth != null && data.child(auth.uid).exists()", ".write": false } },
+    "userChats": { "$uid": { ".read": "auth != null && auth.uid === $uid", ".write": false } },
+    "messages": {
+      "$chatId": {
+        ".read": "auth != null && root.child('chatMembers').child($chatId).child(auth.uid).exists()",
+        "$msgId": { ".write": "auth != null && !data.exists() && !root.child('bans').child(auth.uid).exists() && root.child('chatMembers').child($chatId).child(auth.uid).exists() && newData.child('senderUid').val() === auth.uid" }
+      }
+    },
+    "lives": { ".read": "auth != null", ".write": false },
+    "liveViewers": {
+      ".read": "auth != null",
+      "$liveId": { "$uid": { ".write": "auth != null && auth.uid === $uid && !root.child('bans').child(auth.uid).exists()" } }
+    },
+    "liveComments": {
+      ".read": "auth != null",
+      "$liveId": { "$cid": { ".write": "auth != null && !data.exists() && !root.child('bans').child(auth.uid).exists() && newData.child('authorUid').val() === auth.uid" } }
+    },
+    "liveGifts": { ".read": "auth != null", ".write": false },
+    "clubs": { ".read": "auth != null", ".write": false },
+    "clubMembers": { ".read": "auth != null", ".write": false },
+    "userClubs": { "$uid": { ".read": "auth != null && auth.uid === $uid", ".write": false } },
+    "gifts": { ".read": "auth != null", ".write": false },
+    "coinPackages": { ".read": "auth != null", ".write": false },
+    "appConfig": { ".read": "auth != null", ".write": false },
+    "reports": {
+      "$rid": { ".write": "auth != null && !data.exists() && !root.child('bans').child(auth.uid).exists() && newData.child('reporterUid').val() === auth.uid" }
+    }
+  }
+}
