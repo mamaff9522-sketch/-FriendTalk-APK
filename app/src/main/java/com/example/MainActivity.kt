@@ -197,6 +197,7 @@ fun FriendTalkApp(
                         onOpenCoins = { isCoinsOpen = true },
                         onOpenNotifications = { isNotifsOpen = true },
                         onOpenAuth = { isAuthOpen = true },
+                        onOpenProfile = { if (com.google.firebase.auth.FirebaseAuth.getInstance().currentUser != null) viewModel.setActiveTab("profile") else isAuthOpen = true },
                         onOpenPermissions = { isPermissionsOpen = true },
                         onToggleLocationSharing = { viewModel.toggleLocationSharing() },
                         uiConfig = uiState.uiConfig,
@@ -295,6 +296,7 @@ fun FriendTalkApp(
                         }
                     )
 
+                    "ads" -> com.example.ads.AdsPage()
                     "profile" -> ProfileTab(
                         currentUser = uiState.currentUser,
                         onEditProfile = { isEditProfileOpen = true },

@@ -20,6 +20,7 @@ android {
     // AdMob: Google's official TEST ids by default; real ids come from GitHub secrets (env) at build time.
     fun envOr(k: String, d: String) = System.getenv(k)?.takeIf { it.isNotBlank() } ?: d
     manifestPlaceholders["admobAppId"] = envOr("ADMOB_APP_ID", "ca-app-pub-3940256099942544~3347511713")
+    buildConfigField("String", "ADMOB_REWARDED_INTERSTITIAL_ID", "\"" + envOr("ADMOB_REWARDED_INTERSTITIAL_ID", "ca-app-pub-3940256099942544/5354046379") + "\"")
     buildConfigField("String", "ADMOB_REWARDED_ID", "\"" + envOr("ADMOB_REWARDED_ID", "ca-app-pub-3940256099942544/5224354917") + "\"")
     buildConfigField("String", "ADMOB_BANNER_ID", "\"" + envOr("ADMOB_BANNER_ID", "ca-app-pub-3940256099942544/6300978111") + "\"")
     buildConfigField("String", "ADMOB_INTERSTITIAL_ID", "\"" + envOr("ADMOB_INTERSTITIAL_ID", "ca-app-pub-3940256099942544/1033173712") + "\"")

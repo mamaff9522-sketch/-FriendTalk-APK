@@ -180,10 +180,12 @@ private val fmt = SimpleDateFormat("d MMM HH:mm", Locale("th", "TH"))
 fun RealPostCard(p: FeedPost, onLike: () -> Unit, onComments: () -> Unit, onDelete: () -> Unit, onTag: (String) -> Unit = {}, onVisibility: (String) -> Unit = {}) {
     val me = FirebaseAuth.getInstance().currentUser?.uid
     var confirm by remember { mutableStateOf(false) }
+    var showAuthor by remember { mutableStateOf(false) }
+    if (showAuthor) UserProfileDialog(p.authorId) { showAuthor = false }
     Surface(shape = RoundedCornerShape(16.dp), color = Slate900, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Avatar(p.authorAvatar, p.authorName, 36)
+                Box(Modifier.clip(androidx.compose.foundation.shape.CircleShape).clickable { showAuthor = true }) { Avatar(p.authorAvatar, p.authorName, 36) }
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
                     Text(p.authorName, color = White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
@@ -287,8 +289,10 @@ fun RealCommentsDialog(state: RealFeedState) {
 
 @Composable
 private fun CommentRow(c: FeedComment, isReply: Boolean, mine: Boolean, onReply: () -> Unit, onDelete: () -> Unit) {
+    var showAuthor by remember { mutableStateOf(false) }
+    if (showAuthor) UserProfileDialog(c.authorId) { showAuthor = false }
     Row(Modifier.fillMaxWidth().padding(start = if (isReply) 40.dp else 0.dp, top = 6.dp, bottom = 2.dp)) {
-        Avatar(c.authorAvatar, c.authorName, if (isReply) 26 else 32)
+        Box(Modifier.clip(androidx.compose.foundation.shape.CircleShape).clickable { showAuthor = true }) { Avatar(c.authorAvatar, c.authorName, if (isReply) 26 else 32) }
         Spacer(Modifier.width(8.dp))
         Column(Modifier.weight(1f)) {
             Text(c.authorName, color = White, fontWeight = FontWeight.Bold, fontSize = 12.sp)

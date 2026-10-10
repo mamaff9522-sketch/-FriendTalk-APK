@@ -105,6 +105,7 @@ fun AdminLimitsTab() {
                 if (r.code == 200 && r.json != null) { load(r.json); msg = "บันทึกแล้ว มีผลทันที" } else msg = r.json?.optString("error") ?: "บันทึกไม่สำเร็จ (${r.code})"
             }
         }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Pink500)) { Text("บันทึก") }
+        AdminAdOffersSection()
         Spacer(Modifier.height(16.dp))
         Text("จำกัดสิทธิ์รายผู้ใช้ (ห้ามโพสต์ / ห้ามแชท)", color = White, fontWeight = FontWeight.Bold)
         OutlinedTextField(value = rUid, onValueChange = { rUid = it.trim().take(128); rState = null }, label = { Text("UID ผู้ใช้") }, singleLine = true, modifier = Modifier.fillMaxWidth(),

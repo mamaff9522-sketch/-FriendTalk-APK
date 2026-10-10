@@ -59,9 +59,8 @@ fun BottomNavBar(
     if (uiConfig.bottomNav.showCompanionTab && uiConfig.isCompanionFeatureEnabled && currentUserAge >= 18) {
         items.add(NavItem("companion", "เพื่อนคุย", Icons.Filled.Favorite, Icons.Outlined.FavoriteBorder, isSpecial = true))
     }
-    if (uiConfig.bottomNav.showProfileTab) {
-        items.add(NavItem("profile", "โปรไฟล์", Icons.Filled.Person, Icons.Outlined.PersonOutline))
-    }
+    // Profile moved to the header avatar; this slot is the standalone ads page.
+    items.add(NavItem("ads", "โฆษณา", Icons.Filled.Star, Icons.Outlined.StarBorder))
 
     Surface(
         modifier = Modifier

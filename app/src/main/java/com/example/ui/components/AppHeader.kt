@@ -3,6 +3,8 @@ package com.example.ui.components
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -32,6 +34,7 @@ import com.example.model.UserRole
 import com.example.ui.theme.*
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 fun AppHeader(
     currentUser: User,
     unreadNotificationsCount: Int,
@@ -42,6 +45,7 @@ fun AppHeader(
     onOpenCoins: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenAuth: () -> Unit,
+    onOpenProfile: () -> Unit = onOpenAuth,
     onOpenPermissions: () -> Unit,
     onToggleLocationSharing: () -> Unit,
     uiConfig: AppUiConfig,
@@ -226,12 +230,13 @@ fun AppHeader(
                     // User Avatar / Account Details
                     AsyncImage(
                         model = currentUser.avatar,
-                        contentDescription = "Account Details",
+                        contentDescription = "เปิดโปรไฟล์ของฉัน",
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
-                            .clickable { onOpenAuth() }
+                            // tap = my profile (logout, my posts); long-press = account / linking
+                            .combinedClickable(onClick = { onOpenProfile() }, onLongClick = { onOpenAuth() })
                     )
                 }
             }

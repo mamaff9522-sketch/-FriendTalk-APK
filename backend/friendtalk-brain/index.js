@@ -193,11 +193,19 @@ async function postingFor(uid, tier, L) {
   if (!(tier === 'vip' ? P.vipEnabled : P.freeEnabled)) return { canPost: false, reason: P.reason || 'ระดับสมาชิกของคุณยังโพสต์ไม่ได้' };
   return { canPost: true, reason: '' };
 }
+/** Timed ad grants (offer.validityHours > 0): {feature: amount} still valid now. */
+async function activeGrants(uid) {
+  const v = (await db.ref(`quotaGrants/${uid}`).get()).val() || {}, out = {}, now = Date.now(), dead = {};
+  for (const [k, g] of Object.entries(v)) { if (g && g.until > now) out[g.feature] = (out[g.feature] || 0) + num(g.amount); else dead[k] = null; }
+  if (Object.keys(dead).length) db.ref(`quotaGrants/${uid}`).update(dead).catch(() => {});
+  return out;
+}
 async function quotaInfo(uid, L) {
   const { tier, vipUntil } = await tierOf(uid);
   const t = L.tiers?.[tier] || {}, day = dayKey();
   const [used, bonus] = await Promise.all([db.ref(`usage/${uid}/${day}`).get(), db.ref(`quotaBonus/${uid}/${day}`).get()]);
-  const u = used.val() || {}, b = bonus.val() || {};
+  const u = used.val() || {}, b = { ...(bonus.val() || {}) };
+  for (const [f, a] of Object.entries(await activeGrants(uid))) b[f] = num(b[f]) + a;
   const features = {};
   for (const f of FEATURES) {
     const base = num(t[f]), extra = num(b[f]), lim = base === 0 ? 0 : base + extra;
@@ -207,7 +215,8 @@ async function quotaInfo(uid, L) {
   { const f = features.chatMessagesPerDay; if (f) { f.used = cc && cc.day === chatDay() ? num(cc.n) : 0; f.limit = f.base; f.bonus = 0; f.remaining = f.base === 0 ? null : Math.max(0, f.base - f.used); } }
   const posting = await postingFor(uid, tier, L), chat = await chatFor(uid, tier, L);
   const comments = { ...SEED_LIMITS.comments, ...(L.comments || {}) };
-  return { tier, vipUntil, day, features, posting, chat, comments, ads: { watched: num(u.ads), max: num(t.maxAdsPerDay), perAd: L.adBonus || {}, ...(L.ads || {}), showAds: tier !== 'vip' && L.ads?.adsEnabled === true } };
+  return { tier, vipUntil, day, features, posting, chat, comments, ads: { watched: num(u.ads), max: num(t.maxAdsPerDay), perAd: L.adBonus || {}, ...(L.ads || {}), showAds: tier !== 'vip' && L.ads?.adsEnabled === true,
+    offers: (await getAdOffers()).filter(o => o.enabled !== false).sort((a, b) => (a.order || 0) - (b.order || 0)) } };
 }
 /** Atomically consume 1 unit of `feature`; returns null if OK, else the limit hit. 0 = unlimited. */
 async function consume(uid, feature) {
@@ -216,7 +225,7 @@ async function consume(uid, feature) {
   const base = num(L.tiers?.[tier]?.[feature]);
   if (base === 0) return null;
   const day = dayKey();
-  const lim = base + num((await db.ref(`quotaBonus/${uid}/${day}/${feature}`).get()).val());
+  const lim = base + num((await db.ref(`quotaBonus/${uid}/${day}/${feature}`).get()).val()) + num((await activeGrants(uid))[feature]);
   let over = false;
   await db.ref(`usage/${uid}/${day}/${feature}`).transaction(c => { c = c || 0; over = c >= lim; return over ? c : c + 1; });
   return over ? lim : null;
@@ -293,13 +302,56 @@ app.put('/admin/vip/:uid', perm('config_edit'), w(notBanned), w(async (q, r) => 
   await db.ref(`vip/${uid}`).set({ until, by: q.uid, at: Date.now() });
   r.json({ uid, vip: true, until });
 }));
-/** Credit one ad reward (shared by client path and SSV callback). */
-async function creditAd(uid, feature, txId) {
+// Ad offers the user can pick from (admin-editable). AdMob picks the creative; an offer = format + est. duration label + reward.
+const SEED_AD_OFFERS = [
+  { id: 'short', title: 'โฆษณาสั้น', adFormat: 'rewarded_interstitial', estDurationLabel: '~5–15 วินาที', description: 'ใช้คุยกับบอท AI ทุกตัว', validityHours: 0, reward: { feature: 'aiBotMessagesPerDay', amount: 3 }, enabled: true, order: 1 },
+  { id: 'standard', title: 'โฆษณามาตรฐาน', adFormat: 'rewarded', estDurationLabel: '~15–30 วินาที', description: 'ใช้คุยกับบอท AI ทุกตัว', validityHours: 0, reward: { feature: 'aiBotMessagesPerDay', amount: 10 }, enabled: true, order: 2 },
+  { id: 'radar', title: 'บูสต์เรดาร์', adFormat: 'rewarded', estDurationLabel: '~15–30 วินาที', description: 'ใช้ค้นหาคนใกล้ ๆ ด้วยเรดาร์', validityHours: 24, reward: { feature: 'radarPerDay', amount: 5 }, enabled: true, order: 3 }
+];
+const AD_FORMATS = ['rewarded', 'rewarded_interstitial'];
+let offersCache = { at: 0, v: null };
+async function getAdOffers() {
+  if (offersCache.v && Date.now() - offersCache.at < 30000) return offersCache.v;
+  const ref = db.ref('appConfig/adOffers');
+  let v = (await ref.get()).val();
+  if (!v) { await ref.transaction(c => c || SEED_AD_OFFERS); v = (await ref.get()).val(); }
+  v = (Array.isArray(v) ? v : Object.values(v || {})).filter(Boolean);
+  offersCache = { at: Date.now(), v }; return v;
+}
+function validOffers(list) {
+  if (!Array.isArray(list) || list.length > 20) throw new Error('offers must be an array of at most 20');
+  const ids = new Set();
+  return list.map((o, i) => {
+    const e = m => { throw new Error(`offers[${i}]: ${m}`); };
+    if (!o || typeof o !== 'object') e('object required');
+    const id = String(o.id || ''); if (!/^[a-z0-9_-]{1,32}$/.test(id) || ids.has(id)) e('id must be unique a-z0-9_- (1..32)'); ids.add(id);
+    const title = String(o.title || '').trim(); if (!title || title.length > 60) e('title 1..60 chars');
+    if (!AD_FORMATS.includes(o.adFormat)) e('adFormat must be rewarded|rewarded_interstitial');
+    const label = String(o.estDurationLabel || '').trim(); if (label.length > 40) e('estDurationLabel max 40 chars');
+    const f = o.reward?.feature, amt = o.reward?.amount;
+    if (!FEATURES.includes(f)) e('reward.feature unknown'); if (!Number.isInteger(amt) || amt < 1 || amt > 1000) e('reward.amount 1..1000');
+    const description = String(o.description || '').trim(); if (description.length > 200) e('description max 200 chars');
+    const vh = o.validityHours === undefined ? 0 : o.validityHours; if (!Number.isInteger(vh) || vh < 0 || vh > 72) e('validityHours 0..72 (0 = until midnight Bangkok)');
+    return { id, title, adFormat: o.adFormat, estDurationLabel: label, description, validityHours: vh, reward: { feature: f, amount: amt }, enabled: o.enabled !== false, order: Number.isInteger(o.order) ? o.order : i };
+  });
+}
+app.get('/admin/ad-offers', perm('config_edit'), w(async (_q, r) => { offersCache.at = 0; r.json({ offers: await getAdOffers() }); }));
+app.put('/admin/ad-offers', perm('config_edit'), w(notBanned), w(async (q, r) => {
+  let v; try { v = validOffers(q.body?.offers); } catch (e) { return r.status(400).json({ error: e.message }); }
+  await db.ref('appConfig/adOffers').set(v.length ? v : null);
+  offersCache = { at: Date.now(), v }; r.json({ offers: v });
+}));
+async function offerReward(offerId) {
+  const o = (await getAdOffers()).find(x => x.id === offerId && x.enabled !== false);
+  return o ? { feature: o.reward.feature, amount: o.reward.amount, offerId: o.id, validityHours: num(o.validityHours) } : null;
+}
+/** Credit one ad reward (shared by client path and SSV callback). `amount` overrides adBonus (offer rewards). */
+async function creditAd(uid, feature, txId, amount = null, validityHours = 0) {
   const L = await getLimits();
   if (!(L.ads?.adsEnabled && L.ads?.rewardEnabled)) return { status: 403, body: { error: 'ad rewards disabled' } };
   if (!FEATURES.includes(feature)) return { status: 400, body: { error: 'bad feature' } };
   const { tier } = await tierOf(uid);
-  const max = num(L.tiers?.[tier]?.maxAdsPerDay), per = num(L.adBonus?.[feature]), day = dayKey();
+  const max = num(L.tiers?.[tier]?.maxAdsPerDay), per = amount !== null ? num(amount) : num(L.adBonus?.[feature]), day = dayKey();
   if (txId) { const t = await db.ref(`adTx/${txId}`).transaction(c => c ? c : { uid, at: Date.now() }); if (t.snapshot.val()?.done) return { status: 200, body: { duplicate: true } }; }
   const lastRef = db.ref(`adLast/${uid}`), minGap = num(L.global?.adMinIntervalSec) * 1000;
   let tooSoon = false;
@@ -308,15 +360,20 @@ async function creditAd(uid, feature, txId) {
   let over = false;
   await db.ref(`usage/${uid}/${day}/ads`).transaction(c => { c = c || 0; over = max > 0 && c >= max; return over ? c : c + 1; });
   if (max === 0 || over) return { status: 429, body: { code: 'ad_cap', limit: max, error: 'daily ad limit reached' } };
-  await db.ref(`quotaBonus/${uid}/${day}/${feature}`).transaction(c => (c || 0) + per);
+  if (validityHours > 0) await db.ref(`quotaGrants/${uid}`).push({ feature, amount: per, until: Date.now() + validityHours * 3600000, at: Date.now() });
+  else await db.ref(`quotaBonus/${uid}/${day}/${feature}`).transaction(c => (c || 0) + per);
   if (txId) await db.ref(`adTx/${txId}/done`).set(true);
   return { status: 200, body: { credited: per, feature, ...(await quotaInfo(uid, L)) } };
 }
 app.post('/quota/ad-reward', w(notBanned), w(async (q, r) => {
   const L = await getLimits();
-  const feature = q.body?.feature || 'aiBotMessagesPerDay';
+  let feature = q.body?.feature || 'aiBotMessagesPerDay', amount = null, vh = 0;
+  if (q.body?.offerId !== undefined) {
+    const o = await offerReward(String(q.body.offerId)); if (!o) return r.status(404).json({ error: 'offer not found or disabled' });
+    feature = o.feature; amount = o.amount; vh = o.validityHours;
+  }
   if (L.ads?.ssvRequired) return r.status(202).json({ pending: true, note: 'credited by AdMob SSV callback' });
-  const x = await creditAd(q.uid, feature, null); r.status(x.status).json(x.body);
+  const x = await creditAd(q.uid, feature, null, amount, vh); r.status(x.status).json(x.body);
 }));
 // AdMob SSV callback (public; trust comes from Google's ECDSA signature).
 app.get('/admob/ssv', w(async (q, r) => {
@@ -324,9 +381,11 @@ app.get('/admob/ssv', w(async (q, r) => {
   if (!raw) return r.status(200).send('ok'); // AdMob console "verify URL" ping
   const v = verifySsv(raw, await fetchKeys());
   if (!v.ok) return r.status(403).json({ error: v.reason });
-  const uid = v.params.user_id, feature = v.params.custom_data || 'aiBotMessagesPerDay', tx = String(v.params.transaction_id || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 100);
+  const cd = String(v.params.custom_data || ''); let feature = cd || 'aiBotMessagesPerDay', amount = null, vh = 0;
+  if (cd.startsWith('offer:')) { const o = await offerReward(cd.slice(6)); if (!o) return r.status(200).json({ error: 'offer not found' }); feature = o.feature; amount = o.amount; vh = o.validityHours; }
+  const uid = v.params.user_id, tx = String(v.params.transaction_id || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 100);
   if (!UID_RE.test(uid || '') || !tx) return r.status(400).json({ error: 'missing user_id/transaction_id' });
-  const x = await creditAd(uid, feature, tx);
+  const x = await creditAd(uid, feature, tx, amount, vh);
   r.status(x.status === 429 ? 200 : x.status).json(x.body); // 200 so AdMob does not retry a capped reward
 }));
 // Simple real user search (by display name prefix), quota-limited.

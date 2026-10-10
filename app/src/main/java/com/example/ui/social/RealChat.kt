@@ -128,7 +128,9 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                 Surface(color = Slate900) {
                     Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                         TextButton(onClick = onClose) { Text("←", color = White, fontSize = 18.sp) }
-                        Avatar(other?.avatar.orEmpty(), other?.displayName ?: "?", 36)
+                        var showOther by remember { mutableStateOf(false) }
+                        if (showOther && otherUid.isNotBlank()) UserProfileDialog(otherUid) { showOther = false }
+                        Box(Modifier.clip(CircleShape).clickable { showOther = true }) { Avatar(other?.avatar.orEmpty(), other?.displayName ?: "?", 36) }
                         Spacer(Modifier.width(8.dp))
                         Text(other?.displayName ?: "…", color = White, fontWeight = FontWeight.Bold, fontSize = 15.sp, modifier = Modifier.weight(1f))
                         var menu by remember { mutableStateOf(false) }

@@ -11,7 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.network.BrainApi
+import com.example.network.AiRepo
 import com.example.ui.theme.*
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.launch
@@ -21,12 +21,12 @@ import kotlinx.coroutines.launch
 fun AdminBotsTab() {
     val scope = rememberCoroutineScope()
     var globalOn by remember { mutableStateOf(false) }
-    var bots by remember { mutableStateOf<List<BrainApi.AiBot>>(emptyList()) }
+    var bots by remember { mutableStateOf<List<AiRepo.AiBot>>(emptyList()) }
     var msg by remember { mutableStateOf("กำลังโหลด…") }
 
     suspend fun reload() {
         val fu = FirebaseAuth.getInstance().currentUser ?: run { msg = "ยังไม่ได้เข้าสู่ระบบ"; return }
-        val r = BrainApi.adminBots(fu)
+        val r = AiRepo.adminBots(fu)
         if (r == null) msg = "โหลดไม่ได้ (ต้องมีสิทธิ์ config_edit)" else { globalOn = r.first; bots = r.second; msg = "" }
     }
     LaunchedEffect(Unit) { reload() }
@@ -41,7 +41,7 @@ fun AdminBotsTab() {
                     }
                     Switch(checked = globalOn, onCheckedChange = { v ->
                         val fu = FirebaseAuth.getInstance().currentUser ?: return@Switch
-                        scope.launch { if (BrainApi.setBotsEnabled(fu, v)) globalOn = v else msg = "บันทึกไม่สำเร็จ" }
+                        scope.launch { if (AiRepo.setBotsEnabled(fu, v)) globalOn = v else msg = "บันทึกไม่สำเร็จ" }
                     })
                 }
             }
@@ -52,15 +52,15 @@ fun AdminBotsTab() {
                 Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(b.name, color = White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text(b.name, color = White, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                             Spacer(Modifier.width(6.dp)); AiBadge()
                         }
-                        Text(b.bio, color = Slate400, fontSize = 11.sp)
+                        Text(b.bio, color = Slate400, fontSize = 11.sp, maxLines = 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                     }
                     Switch(checked = b.enabled, onCheckedChange = { v ->
                         val fu = FirebaseAuth.getInstance().currentUser ?: return@Switch
                         scope.launch {
-                            if (BrainApi.setBotEnabled(fu, b.id, v)) bots = bots.map { if (it.id == b.id) it.copy(enabled = v) else it }
+                            if (AiRepo.setBotEnabled(fu, b.id, v)) bots = bots.map { if (it.id == b.id) it.copy(enabled = v) else it }
                             else msg = "บันทึกไม่สำเร็จ"
                         }
                     })

@@ -335,6 +335,10 @@
     "chatBlocks": {
       ".read": false,
       ".write": false
+    },
+    "quotaGrants": {
+      ".read": false,
+      ".write": false
     }
   }
 }
