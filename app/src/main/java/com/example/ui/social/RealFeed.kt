@@ -52,13 +52,20 @@ class RealFeedState(private val scope: CoroutineScope, val tag: String? = null, 
         val r = FeedRepo.feed(null, tag, author)
         if (r != null) { posts.clear(); posts.addAll(r.first); cursor = r.second; error = "" } else error = "โหลดฟีดไม่สำเร็จ"
         loading = false; loaded = true
+        if (r != null && posts.isEmpty() && cursor != null) loadMore()
     }
     fun loadMore() {
         val c = cursor ?: return
         if (loading) return
         loading = true
         scope.launch {
-            FeedRepo.feed(c, tag, author)?.let { (p, n) -> posts.addAll(p.filter { np -> posts.none { it.id == np.id } }); cursor = n }
+            var next: String? = c
+            // keep going through pages whose posts were all hidden by visibility, so scrolling always reaches the first post
+            while (next != null) {
+                val r = FeedRepo.feed(next, tag, author) ?: break
+                val fresh = r.first.filter { np -> posts.none { it.id == np.id } }
+                posts.addAll(fresh); cursor = r.second; next = if (fresh.isEmpty()) r.second else null
+            }
             loading = false
         }
     }
