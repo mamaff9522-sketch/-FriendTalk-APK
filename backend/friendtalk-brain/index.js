@@ -1248,11 +1248,12 @@ app.post('/gifts/:txId/accept', w(notBanned), w(async (q, r) => {
   if (tx.status === 'accepted') return r.json({ status: 'accepted', already: true, ...tx.split });
   const g = await giftGuard(tx.chatId, tx.from, tx.to); if (g) return r.status(403).json({ code: 'blocked', error: g });
   // lock: pending -> accepting (one concurrent accept only; idempotent)
-  const lock = await txRef.child('status').transaction(s => (s === 'pending' ? 'accepting' : undefined));
+  const lock = await txRef.child('status').transaction(s => (s === null ? 'pending' : s === 'pending' ? 'accepting' : undefined)); // null = cold cache guess, retried by server
+  if (lock.committed && lock.snapshot.val() !== 'accepting') return r.status(409).json({ error: 'busy, retry' });
   if (!lock.committed) { const s = (await txRef.child('status').get()).val(); return s === 'accepted' ? r.json({ status: 'accepted', already: true }) : r.status(409).json({ error: 'busy, retry' }); }
   const price = num(tx.price);
-  const d = await db.ref(`wallets/${tx.from}/coins`).transaction(c => (num(c) >= price ? num(c) - price : undefined));
-  if (!d.committed) {
+  const d = await db.ref(`wallets/${tx.from}/coins`).transaction(c => (c === null ? null : num(c) >= price ? num(c) - price : undefined));
+  if (!d.committed || d.snapshot.val() === null) {
     await txRef.update({ status: 'pending', lastFailAt: Date.now(), lastFail: 'insufficient' });
     await notifyGift([tx.from, tx.to], { type: 'gift_failed', txId, chatId: tx.chatId, name: tx.name, price, msg: 'รับของขวัญไม่สำเร็จ: เหรียญของผู้ส่งไม่พอ' });
     return r.status(402).json({ code: 'insufficient', error: 'เหรียญของผู้ส่งไม่พอ รับของขวัญไม่สำเร็จ' });
