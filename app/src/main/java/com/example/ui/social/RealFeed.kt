@@ -166,12 +166,12 @@ fun PostComposer(onPosted: (FeedPost) -> Unit) {
                     else locPerm.launch(arrayOf(android.Manifest.permission.ACCESS_COARSE_LOCATION))
                 }, label = { Text("แนบพิกัดคร่าว ๆ (~1 กม.)", fontSize = 10.sp) }, modifier = Modifier.padding(start = 4.dp))
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 10.dp, start = 54.dp).horizontalScroll(rememberScrollState())) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
                 listOf("public" to "🌐 สาธารณะ", "friends" to "👥 เพื่อน", "only_me" to "🔒 เฉพาะฉัน").forEach { (k, l) ->
                     val sel = visibility == k
-                    Surface(onClick = { visibility = k }, shape = RoundedCornerShape(10.dp), color = if (sel) Pink500.copy(alpha = 0.18f) else Slate800,
+                    Surface(onClick = { visibility = k }, shape = RoundedCornerShape(10.dp), modifier = Modifier.weight(1f), color = if (sel) Pink500.copy(alpha = 0.18f) else Slate800,
                         border = androidx.compose.foundation.BorderStroke(1.dp, if (sel) Pink500 else Slate700)) {
-                        Text(l, fontSize = 13.sp, color = White, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
+                        Text(l, fontSize = 12.sp, color = White, maxLines = 1, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp))
                     }
                 }
             }
@@ -181,9 +181,9 @@ fun PostComposer(onPosted: (FeedPost) -> Unit) {
             HorizontalDivider(color = Slate700.copy(alpha = 0.5f), modifier = Modifier.padding(top = 10.dp))
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 6.dp)) {
                 Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, contentPadding = PaddingValues(horizontal = 6.dp)) { Text("🖼 รูป (${images.size}/4)", color = Slate200, fontSize = 13.sp) }
-                    TextButton(onClick = { msg = "โพสต์คลิปยังไม่เปิดให้ใช้" }, contentPadding = PaddingValues(horizontal = 6.dp)) { Text("🎬 คลิป (0/1)", color = Slate400, fontSize = 13.sp) }
-                    TextButton(onClick = { showPlace = !showPlace; if (!showPlace) { place = ""; attachLoc = false } }, contentPadding = PaddingValues(horizontal = 6.dp)) { Text("📍 เพิ่มตำแหน่ง", color = Slate200, fontSize = 13.sp) }
+                    TextButton(onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("🖼 รูป (${images.size}/4)", color = Slate200, fontSize = 11.sp, maxLines = 1) }
+                    TextButton(onClick = { msg = "โพสต์คลิปยังไม่เปิดให้ใช้" }, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("🎬 คลิป (0/1)", color = Slate400, fontSize = 11.sp, maxLines = 1) }
+                    TextButton(onClick = { showPlace = !showPlace; if (!showPlace) { place = ""; attachLoc = false } }, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("📍 ตำแหน่ง", color = Slate200, fontSize = 11.sp, maxLines = 1) }
                     if (images.isNotEmpty()) TextButton(onClick = { images = emptyList() }) { Text("ล้างรูป", color = Slate400) }
                 }
                 val can = !busy && (text.isNotBlank() || images.isNotEmpty())
@@ -195,7 +195,7 @@ fun PostComposer(onPosted: (FeedPost) -> Unit) {
                             FeedRepo.createPost(ctx, text, images, place, loc?.latitude, loc?.longitude, visibility).onSuccess { onPosted(it); text = ""; images = emptyList(); place = ""; showPlace = false; attachLoc = false }.onFailure { msg = it.message ?: "โพสต์ไม่สำเร็จ" }
                             busy = false
                         }
-                    }.padding(horizontal = 20.dp, vertical = 10.dp)) { Text(if (busy) "กำลังโพสต์…" else "➤ โพสต์", color = White, fontWeight = FontWeight.Bold, fontSize = 15.sp) }
+                    }.padding(horizontal = 16.dp, vertical = 9.dp)) { Text(if (busy) "กำลังโพสต์…" else "➤ โพสต์", color = White, fontWeight = FontWeight.Bold, fontSize = 14.sp) }
             }
             if (msg.isNotBlank()) Text(msg, color = Amber400, fontSize = 12.sp)
         }

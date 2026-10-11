@@ -74,6 +74,7 @@ private val TILES = listOf(
     "random" to "สุ่มหาเพื่อน", "shake" to "เขย่าหาเพื่อน", "radar" to "เรดาร์", "swipe" to "ปัดหาเพื่อน",
     "similar" to "คนที่ชอบคล้ายกัน", "requests" to "คำขอเป็นเพื่อน", "companion" to "เพื่อนคุย"
 )
+private val TILE_ART = mapOf("random" to com.example.R.drawable.art_dice, "shake" to com.example.R.drawable.art_phone, "radar" to com.example.R.drawable.art_radar, "swipe" to com.example.R.drawable.art_heart, "similar" to com.example.R.drawable.art_puzzle, "requests" to com.example.R.drawable.art_handshake)
 private val TILE_TINT = mapOf("random" to Color(0xFFEC4899), "shake" to Color(0xFF6366F1), "radar" to Color(0xFF8B5CF6), "swipe" to Color(0xFFDB2777), "similar" to Color(0xFF10B981), "requests" to Color(0xFFF59E0B), "companion" to Color(0xFFF43F5E))
 private val TILE_ICONS = mapOf("random" to "🎲", "shake" to "📱", "radar" to "📡", "swipe" to "💘", "similar" to "🧩", "requests" to "🤝", "companion" to "💗")
 
@@ -169,7 +170,9 @@ private fun FindFriendsHome(onTile: (String) -> Unit, showCompanion: Boolean) {
                             Surface(shape = RoundedCornerShape(16.dp), color = Slate900, onClick = { onTile(k) },
                                 border = androidx.compose.foundation.BorderStroke(1.dp, tint.copy(alpha = 0.55f)), modifier = Modifier.weight(1f).height(150.dp)) {
                                 Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.radialGradient(listOf(tint.copy(alpha = 0.35f), Color.Transparent)))) {
-                                    Text(TILE_ICONS[k] ?: "", fontSize = 54.sp, modifier = Modifier.align(Alignment.Center).padding(bottom = 26.dp))
+                                    val art = TILE_ART[k]
+                                    if (art != null) androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(art), null, modifier = Modifier.align(Alignment.Center).padding(bottom = 30.dp).size(88.dp))
+                                    else Text(TILE_ICONS[k] ?: "", fontSize = 54.sp, modifier = Modifier.align(Alignment.Center).padding(bottom = 26.dp))
                                     Row(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                                         Text(label, color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                                         Text("›", color = Slate300, fontSize = 18.sp)

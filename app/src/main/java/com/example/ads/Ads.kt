@@ -256,11 +256,11 @@ fun AdsPageContent(feature: String?, onClose: (() -> Unit)?, returnAfterReward: 
         val vip = lim?.tier == "vip"
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("🎁 หน้าโฆษณา", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 26.sp)
+                Text("🎁 หน้าโฆษณา", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 24.sp)
                 Row { Text("✦ สถานะ: ", color = Slate300, fontSize = 14.sp); Text(if (vip) "VIP ⭐ (ไม่มีโฆษณา)" else "ฟรี", color = Emerald400, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
                 if (onClose != null) TextButton(onClick = onClose, contentPadding = PaddingValues(0.dp)) { Text("‹ กลับ", color = Slate300) }
             }
-            AdIllustration("🎁", 110)
+            androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(com.example.R.drawable.art_gift), null, modifier = Modifier.width(170.dp).height(110.dp))
         }
         if (lim == null) { CircularProgressIndicator(color = Pink500); return@Column }
         if (feature != null) Text("โควตาที่หมด: ${FEATURE_LABELS[feature] ?: feature}", color = Amber400, fontSize = 12.sp)
@@ -281,22 +281,23 @@ fun AdsPageContent(feature: String?, onClose: (() -> Unit)?, returnAfterReward: 
                     border = androidx.compose.foundation.BorderStroke(1.5.dp, androidx.compose.ui.graphics.Brush.linearGradient(listOf(Pink500.copy(alpha = 0.8f), Purple500.copy(alpha = 0.6f)))),
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
                     Box(Modifier.background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(Purple600.copy(alpha = 0.22f), Color.Transparent, Pink600.copy(alpha = 0.18f))))) {
-                    Column(Modifier.padding(16.dp)) {
+                    Column(Modifier.padding(14.dp)) {
                         Row(verticalAlignment = Alignment.Top) {
                             Column(Modifier.weight(1f)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(o.title, color = White, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp)
+                                    Text(o.title, color = White, fontWeight = FontWeight.ExtraBold, fontSize = 19.sp, maxLines = 1)
                                     if (idx == 0 || o.feature == feature) { Spacer(Modifier.width(8.dp))
                                         Surface(shape = RoundedCornerShape(12.dp), color = Purple600.copy(alpha = 0.5f), border = androidx.compose.foundation.BorderStroke(1.dp, Pink400)) {
                                             Text("👑 แนะนำ", color = White, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)) } }
                                 }
                                 Spacer(Modifier.height(6.dp))
-                                Text("▶  ดูโฆษณา ${o.durationLabel}".trim(), color = Slate200, fontSize = 15.sp)
-                                Text("🎁  ${rewardText(o.feature, o.amount)}", color = Emerald400, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                                Text("⏳  ${validityText(o.validityHours)}", color = Slate200, fontSize = 14.sp)
-                                if (o.description.isNotBlank()) Text("✨  ${o.description}", color = Slate300, fontSize = 14.sp)
+                                Text("▶  ดูโฆษณา ${o.durationLabel}".trim(), color = Slate200, fontSize = 12.sp, maxLines = 1, softWrap = false)
+                                Text("🎁  ${rewardText(o.feature, o.amount)}", color = Emerald400, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1, softWrap = false)
+                                Text("⏳  ${validityText(o.validityHours)}", color = Slate200, fontSize = 12.sp, maxLines = 1, softWrap = false)
+                                if (o.description.isNotBlank()) Text("✨  ${o.description}", color = Slate300, fontSize = 12.sp, maxLines = 1, softWrap = false)
                             }
-                            AdIllustration(if (o.adFormat == "rewarded_interstitial") "📱" else "🎬", 96)
+                            androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(if (o.adFormat == "rewarded_interstitial") com.example.R.drawable.art_ad_short else com.example.R.drawable.art_ad_standard), null,
+                                modifier = Modifier.padding(top = 18.dp).width(120.dp).height(80.dp))
                         }
                         val en = busy == null && !capped
                         Box(Modifier.fillMaxWidth().padding(top = 12.dp).clip(RoundedCornerShape(26.dp))
@@ -313,8 +314,8 @@ fun AdsPageContent(feature: String?, onClose: (() -> Unit)?, returnAfterReward: 
                                     else if (returnAfterReward) onClose?.invoke() // back to where the user was (draft kept)
                                     else msg = "ได้รับแล้ว: ${rewardText(o.feature, o.amount)}"
                                 }
-                            }.padding(vertical = 14.dp), contentAlignment = Alignment.Center) {
-                            Text(if (busy == o.id) "กำลังโหลดโฆษณา…" else if (capped) "ดูครบจำนวนวันนี้แล้ว" else "▶  ดูโฆษณานี้", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 17.sp)
+                            }.padding(vertical = 11.dp), contentAlignment = Alignment.Center) {
+                            Text(if (busy == o.id) "กำลังโหลดโฆษณา…" else if (capped) "ดูครบจำนวนวันนี้แล้ว" else "▶  ดูโฆษณานี้", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp)
                             Text("›", color = White, fontSize = 20.sp, modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp))
                         }
                     }

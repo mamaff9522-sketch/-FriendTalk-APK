@@ -165,7 +165,7 @@ fun FeedTab(
 
             val secClubs: LazyListScope.() -> Unit = {
             // 3. Optional Clubs Snippet (if enabled in UI config)
-            if (feedConfig.showClubsSnippet && clubs.isNotEmpty() && selectedCategory == "ทั้งหมด" && searchQuery.isBlank()) {
+            if (false && feedConfig.showClubsSnippet && clubs.isNotEmpty() && selectedCategory == "ทั้งหมด" && searchQuery.isBlank()) {
                 item {
                     ClubsSnippetRow(clubs = clubs, onClubClick = {})
                 }
