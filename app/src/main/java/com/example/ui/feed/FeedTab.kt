@@ -61,6 +61,7 @@ fun FeedTab(
     var reportTargetPost by remember { mutableStateOf<Post?>(null) }
 
     val feedConfig = uiConfig.feed
+    androidx.compose.runtime.SideEffect { com.example.ui.social.FeedStyle.cfg = feedConfig }
     val availableTabs = feedConfig.availableTabs.ifEmpty {
         listOf("ทั้งหมด", "คนใกล้เคียง", "ออนไลน์", "หาเพื่อน")
     }

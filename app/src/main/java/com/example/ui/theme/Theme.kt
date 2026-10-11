@@ -39,6 +39,9 @@ fun FriendTalkTheme(
     val surfaceColor = parseHexColor(themeConfig.surfaceColorHex, Slate900)
     val cardColor = parseHexColor(themeConfig.cardColorHex, Slate800)
 
+    androidx.compose.runtime.SideEffect {
+        AppPalette.primary = primaryColor; AppPalette.background = bgColor; AppPalette.surface = surfaceColor; AppPalette.card = cardColor
+    }
     val colorScheme = DarkColorScheme.copy(
         primary = primaryColor,
         secondary = secondaryColor,

@@ -182,7 +182,8 @@ fun RealPostCard(p: FeedPost, onLike: () -> Unit, onComments: () -> Unit, onDele
     var confirm by remember { mutableStateOf(false) }
     var showAuthor by remember { mutableStateOf(false) }
     if (showAuthor) UserProfileDialog(p.authorId) { showAuthor = false }
-    Surface(shape = RoundedCornerShape(16.dp), color = Slate900, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
+    val fs = FeedStyle.cfg
+    Surface(shape = RoundedCornerShape(fs.cardCornerRadiusDp.coerceIn(0, 40).dp), color = Slate900, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = (fs.postSpacingDp.coerceIn(0, 48) / 2).dp)) {
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.clip(androidx.compose.foundation.shape.CircleShape).clickable { showAuthor = true }) { Avatar(p.authorAvatar, p.authorName, 36) }
@@ -206,7 +207,7 @@ fun RealPostCard(p: FeedPost, onLike: () -> Unit, onComments: () -> Unit, onDele
                     TextButton(onClick = { confirm = true }) { Text("ลบ", color = Rose500, fontSize = 12.sp) }
                 }
             }
-            if (p.text.isNotBlank()) Text(p.text, color = White, fontSize = 14.sp, modifier = Modifier.padding(vertical = 6.dp))
+            if (p.text.isNotBlank()) Text(p.text, color = White, fontSize = (14 * fs.textSizeScale.coerceIn(0.7f, 1.6f)).sp, modifier = Modifier.padding(vertical = 6.dp))
             if (p.hashtags.isNotEmpty()) Row(Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState())) {
                 p.hashtags.forEach { t -> Text("#$t", color = Cyan400, fontSize = 13.sp, modifier = Modifier.clickable { onTag(t) }.padding(end = 8.dp, bottom = 4.dp)) }
             }
@@ -332,3 +333,6 @@ fun FilteredFeedDialog(title: String, tag: String?, author: String?, onClose: ()
     RealCommentsDialog(st)
     st.openTag?.let { if (it != tag) TagFeedDialog(it) { st.openTag = null } else st.openTag = null }
 }
+
+/** Feed style from the published Remote UI config (admin 'จัด Feed': corner radius, spacing, text size). */
+object FeedStyle { var cfg by androidx.compose.runtime.mutableStateOf(com.example.model.FeedSectionConfig()) }

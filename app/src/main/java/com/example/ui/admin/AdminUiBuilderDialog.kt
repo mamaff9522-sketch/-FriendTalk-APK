@@ -329,40 +329,49 @@ fun ThemeBuilder(
             Text(text = "ชุดสี Accent & พื้นหลัง:", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Pink400)
             Spacer(modifier = Modifier.height(8.dp))
             Surface(shape = RoundedCornerShape(14.dp), color = Slate900, modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Text("เลือก Palette สำเร็จรูป:", fontSize = 12.sp, color = Slate400)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
-                            onClick = {
-                                onUpdateThemeConfig(
-                                    themeConfig.copy(
-                                        primaryColorHex = "#EC4899",
-                                        secondaryColorHex = "#A855F7",
-                                        accentColorHex = "#22D3EE"
-                                    )
-                                )
-                            },
-                            shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Pink600)
-                        ) {
-                            Text("Pink & Purple", fontSize = 11.sp)
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("เลือก Palette สำเร็จรูป (แตะเพื่อเลือก แล้วกด 'เผยแพร่ UI เวอร์ชันใหม่'):", fontSize = 12.sp, color = Slate400)
+                    UI_PALETTES.chunked(2).forEach { row ->
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            row.forEach { pal ->
+                                val sel = themeConfig.primaryColorHex.equals(pal.primary, true) && themeConfig.backgroundColorHex.equals(pal.background, true)
+                                Surface(
+                                    onClick = { onUpdateThemeConfig(themeConfig.copy(primaryColorHex = pal.primary, secondaryColorHex = pal.secondary, accentColorHex = pal.accent,
+                                        backgroundColorHex = pal.background, surfaceColorHex = pal.surface, cardColorHex = pal.card)) },
+                                    shape = RoundedCornerShape(10.dp), color = parseHexColor(pal.background, Slate950),
+                                    border = androidx.compose.foundation.BorderStroke(if (sel) 3.dp else 1.dp, if (sel) White else Slate700),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Column(Modifier.padding(10.dp)) {
+                                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            listOf(pal.primary, pal.secondary, pal.accent, pal.card).forEach { Box(Modifier.size(16.dp).clip(RoundedCornerShape(4.dp)).background(parseHexColor(it, Pink500))) }
+                                        }
+                                        Text((if (sel) "✓ " else "") + pal.name, fontSize = 12.sp, color = White, fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal)
+                                    }
+                                }
+                            }
+                            if (row.size == 1) Spacer(Modifier.weight(1f))
                         }
-                        Button(
-                            onClick = {
-                                onUpdateThemeConfig(
-                                    themeConfig.copy(
-                                        primaryColorHex = "#6366F1",
-                                        secondaryColorHex = "#EC4899",
-                                        accentColorHex = "#FBBF24"
-                                    )
-                                )
-                            },
-                            shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Indigo500)
-                        ) {
-                            Text("Indigo Neon", fontSize = 11.sp)
+                    }
+                }
+            }
+        }
+        item {
+            // Live preview of the draft theme (the whole app switches after publishing)
+            val p = parseHexColor(themeConfig.primaryColorHex, Pink500)
+            Text("ตัวอย่างสด (ยังไม่เผยแพร่):", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Pink400)
+            Spacer(Modifier.height(6.dp))
+            Surface(shape = RoundedCornerShape(14.dp), color = parseHexColor(themeConfig.backgroundColorHex, Slate950), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Surface(shape = RoundedCornerShape(12.dp), color = parseHexColor(themeConfig.cardColorHex, Slate800), modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(10.dp)) {
+                            Text("โพสต์ตัวอย่าง", color = White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text("สวัสดีเพื่อน ๆ ✨ #FriendTalk", color = parseHexColor(themeConfig.accentColorHex, Pink400), fontSize = 12.sp)
                         }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = {}, colors = ButtonDefaults.buttonColors(containerColor = p)) { Text("ปุ่มหลัก", fontSize = 12.sp) }
+                        Surface(shape = RoundedCornerShape(20.dp), color = parseHexColor(themeConfig.secondaryColorHex, Pink600)) { Text("แท็ก", color = White, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) }
                     }
                 }
             }
@@ -721,3 +730,9 @@ fun DeviceLivePreview(
     }
 }
 
+
+private data class UiPalette(val name: String, val primary: String, val secondary: String, val accent: String, val background: String, val surface: String, val card: String)
+private val UI_PALETTES = listOf(
+    UiPalette("Pink & Purple", "#EC4899", "#A855F7", "#22D3EE", "#090D16", "#0F172A", "#1E293B"),
+    UiPalette("Indigo Neon", "#6366F1", "#EC4899", "#FBBF24", "#0B0B1E", "#14142E", "#1F1F45")
+)

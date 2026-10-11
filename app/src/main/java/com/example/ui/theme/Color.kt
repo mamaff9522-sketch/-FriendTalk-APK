@@ -1,10 +1,24 @@
 package com.example.ui.theme
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 
-val Pink500 = Color(0xFFEC4899)
-val Pink600 = Color(0xFFDB2777)
-val Pink400 = Color(0xFFF472B6)
+/** Live app palette from the published Remote UI theme (admin 'ธีม & สี'); the named colours below read from it. */
+object AppPalette {
+    var primary by mutableStateOf(Color(0xFFEC4899))
+    var background by mutableStateOf(Color(0xFF090D16))
+    var surface by mutableStateOf(Color(0xFF0F172A))
+    var card by mutableStateOf(Color(0xFF1E293B))
+    val primaryDark: Color get() = lerp(primary, Color.Black, 0.12f)
+    val primaryLight: Color get() = lerp(primary, Color.White, 0.25f)
+}
+
+val Pink500: Color get() = AppPalette.primary
+val Pink600: Color get() = AppPalette.primaryDark
+val Pink400: Color get() = AppPalette.primaryLight
 val Purple500 = Color(0xFFA855F7)
 val Purple600 = Color(0xFF9333EA)
 val Purple400 = Color(0xFFC084FC)
@@ -20,10 +34,10 @@ val Blue400 = Color(0xFF60A5FA)
 val Rose500 = Color(0xFFF43F5E)
 
 // Dark Palette
-val Slate950 = Color(0xFF090D16)
-val Slate900 = Color(0xFF0F172A)
+val Slate950: Color get() = AppPalette.background
+val Slate900: Color get() = AppPalette.surface
 val Slate850 = Color(0xFF131C31)
-val Slate800 = Color(0xFF1E293B)
+val Slate800: Color get() = AppPalette.card
 val Slate700 = Color(0xFF334155)
 val Slate600 = Color(0xFF475569)
 val Slate500 = Color(0xFF64748B)
