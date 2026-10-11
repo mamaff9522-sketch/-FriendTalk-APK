@@ -16,7 +16,7 @@ import kotlin.coroutines.resume
 
 /** Reads the signed-in user's role from friendtalk-brain GET /me (role lives in RTDB roles/{uid}). */
 object BrainApi {
-    private const val BASE_URL = "https://friendtalk-brain-123224091480.asia-southeast1.run.app"
+    const val BASE_URL = "https://friendtalk-brain-123224091480.asia-southeast1.run.app"
 
     private val client by lazy {
         OkHttpClient.Builder()
@@ -61,6 +61,18 @@ object BrainApi {
 
     /** code = HTTP status (0 = network error); body = parsed JSON or null */
     data class ApiResponse(val code: Int, val json: JSONObject?)
+
+    /** Raw upload (image bytes) — used for gift assets and room-decor images. */
+    suspend fun callRaw(user: FirebaseUser, method: String, path: String, bytes: ByteArray, mime: String): ApiResponse {
+        val token = idToken(user) ?: return ApiResponse(0, null)
+        return withContext(Dispatchers.IO) {
+            try {
+                val req = Request.Builder().url("$BASE_URL$path").header("Authorization", "Bearer $token")
+                    .method(method, bytes.toRequestBody(mime.toMediaType())).build()
+                client.newCall(req).execute().use { resp -> ApiResponse(resp.code, runCatching { JSONObject(resp.body?.string().orEmpty()) }.getOrNull()) }
+            } catch (e: Exception) { ApiResponse(0, null) }
+        }
+    }
 
     suspend fun call(user: FirebaseUser, method: String, path: String, body: JSONObject? = null): ApiResponse {
         val token = idToken(user) ?: return ApiResponse(0, null)

@@ -55,7 +55,7 @@ async function isSuper(req, res, next) {
   req.role = r; next();
 }
 const w = fn => (q, r, n) => fn(q, r, n).catch(e => { console.error(e.message); r.status(e.code === 404 ? 404 : 500).json({ error: e.code === 404 ? 'user not found' : 'internal' }); });
-app.use(['/coins', '/age', '/config', '/admin', '/superadmin', '/me', '/match', '/bot', '/ui', '/chats', '/swipe', '/posts', '/feed', '/friends', '/radar', '/shake', '/limits', '/quota', '/search', '/users', '/interests', '/bots'], w(auth));
+app.use(['/coins', '/age', '/config', '/admin', '/superadmin', '/me', '/match', '/bot', '/ui', '/chats', '/swipe', '/posts', '/feed', '/friends', '/radar', '/shake', '/limits', '/quota', '/search', '/users', '/interests', '/bots', '/gifts', '/rooms'], w(auth));
 app.get('/me', w(async (q, r) => {
   const role = await loadRole(q.uid);
   r.json({ uid: q.uid, role: role?.role || 'user', permissions: role?.permissions || {} });
@@ -1123,6 +1123,258 @@ app.get('/shake/result', w(async (q, r) => {
   if (wv && Date.now() - wv.at < SHAKE_MS) return r.json({ status: 'waiting' });
   if (wv) await db.ref(`shakeWaiting/${q.uid}`).remove();
   r.json({ status: 'timeout' });
+}));
+// ===== Gift catalog (live / vip / chat) + stickers; admin-managed, images in Storage giftAssets/{id}.webp =====
+const CHANNELS = ['live', 'vip', 'chat', 'stickers'];
+const ITEM_ID = /^[A-Za-z0-9_-]{1,40}$/;
+const SEED_LIVE = [
+  ['gift_heart', 'หัวใจมินิ', '💖', 10, 'POP'], ['gift_flower', 'ดอกกุหลาบ', '🌹', 50, 'FLOAT'], ['gift_tea', 'ชานมไข่มุก', '🧋', 100, 'POP'],
+  ['gift_crown', 'มงกุฎทอง', '👑', 500, 'ROYAL'], ['gift_rocket', 'จรวดซูเปอร์สตาร์', '🚀', 1000, 'BLAST']];
+(async () => { try { await db.ref('catalog/live').transaction(c => c || Object.fromEntries(SEED_LIVE.map(([id, name, icon, price, fx], i) => [id, { name, icon, price, animationEffect: fx, category: 'live', enabled: true, order: i, imagePath: '' }]))); } catch (e) { console.error('seed live', e.message); } })();
+const GIFT_CFG_SEED = { enabled: true, autoFriend: true, adminPercent: 20, recipientPercent: 80 };
+async function giftCfg() { return { ...GIFT_CFG_SEED, ...((await db.ref('appConfig/gifts').get()).val() || {}) }; }
+const assetUrl = id => `https://friendtalk-brain-123224091480.asia-southeast1.run.app/gift-assets/${id}`;
+app.get('/gift-assets/:id', w(async (q, r) => {
+  if (!ITEM_ID.test(q.params.id)) return r.status(400).end();
+  const file = admin.storage().bucket(STORAGE_BUCKET).file(`giftAssets/${q.params.id}.webp`);
+  const [meta] = await file.getMetadata().catch(() => [null]);
+  if (!meta) return r.status(404).end();
+  r.set('Content-Type', meta.contentType || 'image/webp'); r.set('Cache-Control', 'public, max-age=86400'); r.set('ETag', meta.etag || meta.generation);
+  file.createReadStream().on('error', () => r.end()).pipe(r);
+}));
+const catPerm = perm('manage_content');
+app.get('/admin/catalog/:ch', catPerm, w(async (q, r) => {
+  if (!CHANNELS.includes(q.params.ch)) return r.status(400).json({ error: 'bad channel' });
+  const v = (await db.ref(`catalog/${q.params.ch}`).get()).val() || {};
+  const all = Object.entries(v).map(([id, x]) => ({ id, ...x })).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const page = Math.max(0, parseInt(q.query.page || '0', 10)), size = Math.min(100, Math.max(1, parseInt(q.query.size || '50', 10)));
+  r.json({ items: all.slice(page * size, page * size + size), total: all.length, page, size });
+}));
+// Item fields (image uploaded separately as raw image/webp ≤512KB)
+app.put('/admin/catalog/:ch/:id', catPerm, w(notBanned), w(async (q, r) => {
+  const { ch, id } = q.params; if (!CHANNELS.includes(ch) || !ITEM_ID.test(id)) return r.status(400).json({ error: 'bad channel/id' });
+  const b = q.body || {}, name = String(b.name || '').trim().slice(0, 40);
+  const price = Number.isInteger(b.price) ? b.price : -1;
+  if (!name) return r.status(400).json({ error: 'name required' });
+  if (price < 0 || price > 1000000 || (price === 0 && ch !== 'stickers')) return r.status(400).json({ error: ch === 'stickers' ? 'price 0..1000000' : 'price 1..1000000' });
+  const ref = db.ref(`catalog/${ch}/${id}`), cur = (await ref.get()).val() || {};
+  let order = Number.isInteger(b.order) ? b.order : cur.order;
+  if (!Number.isInteger(order)) order = Object.keys((await db.ref(`catalog/${ch}`).get()).val() || {}).length;
+  const item = { name, price, category: String(b.category || cur.category || ch).slice(0, 30), enabled: b.enabled !== false, order,
+    icon: String(b.icon ?? cur.icon ?? '').slice(0, 8), animationEffect: String(b.animationEffect ?? cur.animationEffect ?? 'POP').slice(0, 12), imagePath: cur.imagePath || '', imageUrl: cur.imageUrl || '', updatedAt: Date.now(), updatedBy: q.uid };
+  await ref.set(item); r.json({ id, ...item });
+}));
+app.put('/admin/catalog/:ch/:id/image', catPerm, express.raw({ type: 'image/*', limit: '600kb' }), w(async (q, r) => {
+  const { ch, id } = q.params; if (!CHANNELS.includes(ch) || !ITEM_ID.test(id)) return r.status(400).json({ error: 'bad channel/id' });
+  const ref = db.ref(`catalog/${ch}/${id}`); if (!(await ref.get()).exists()) return r.status(404).json({ error: 'save item first' });
+  const buf = q.body; if (!Buffer.isBuffer(buf) || !buf.length) return r.status(400).json({ error: 'image/webp body required' });
+  if (buf.length > 512 * 1024) return r.status(413).json({ error: 'image too large (max 512KB)' });
+  const isWebp = buf.slice(0, 4).toString() === 'RIFF' && buf.slice(8, 12).toString() === 'WEBP', isPng = buf[0] === 0x89 && buf[1] === 0x50;
+  if (!isWebp && !isPng) return r.status(400).json({ error: 'webp or png only' });
+  const fileId = `${ch}_${id}`;
+  await admin.storage().bucket(STORAGE_BUCKET).file(`giftAssets/${fileId}.webp`).save(buf, { contentType: isWebp ? 'image/webp' : 'image/png', resumable: false });
+  const url = `${assetUrl(fileId)}?v=${Date.now()}`;
+  await ref.update({ imagePath: `giftAssets/${fileId}.webp`, imageUrl: url });
+  r.json({ imageUrl: url, bytes: buf.length });
+}));
+app.delete('/admin/catalog/:ch/:id', catPerm, w(async (q, r) => {
+  const { ch, id } = q.params; if (!CHANNELS.includes(ch) || !ITEM_ID.test(id)) return r.status(400).json({ error: 'bad channel/id' });
+  await db.ref(`catalog/${ch}/${id}`).remove();
+  await admin.storage().bucket(STORAGE_BUCKET).file(`giftAssets/${ch}_${id}.webp`).delete().catch(() => {});
+  r.json({ deleted: id });
+}));
+app.post('/admin/catalog/:ch/order', catPerm, w(async (q, r) => {
+  const { ch } = q.params, ids = q.body?.ids; if (!CHANNELS.includes(ch) || !Array.isArray(ids) || ids.length > 5000 || !ids.every(x => typeof x === 'string' && ITEM_ID.test(x))) return r.status(400).json({ error: 'ids[] required' });
+  const have = (await db.ref(`catalog/${ch}`).get()).val() || {}, upd = {};
+  ids.forEach((id, i) => { if (have[id]) upd[`catalog/${ch}/${id}/order`] = i; });
+  await db.ref().update(upd); r.json({ ordered: Object.keys(upd).length });
+}));
+app.get('/admin/gifts/config', perm('config_edit'), w(async (_q, r) => r.json(await giftCfg())));
+app.put('/admin/gifts/config', perm('config_edit'), w(async (q, r) => {
+  const b = q.body || {}, c = await giftCfg();
+  for (const k of ['enabled', 'autoFriend']) if (typeof b[k] === 'boolean') c[k] = b[k];
+  if (b.adminPercent !== undefined || b.recipientPercent !== undefined) {
+    const a = b.adminPercent, p = b.recipientPercent;
+    if (!Number.isInteger(a) || !Number.isInteger(p) || a < 0 || p < 0 || a + p !== 100) return r.status(400).json({ error: 'adminPercent + recipientPercent must be integers totalling 100' });
+    c.adminPercent = a; c.recipientPercent = p;
+  }
+  await db.ref('appConfig/gifts').set(c); r.json(c);
+}));
+app.get('/admin/gifts/tx', perm('coins_confirm'), w(async (q, r) => {
+  let qq = db.ref('giftTx').orderByKey(); if (q.query.cursor) qq = qq.endBefore(String(q.query.cursor));
+  const s = await qq.limitToLast(50).get(), out = []; s.forEach(c => { out.push({ id: c.key, ...c.val() }); });
+  out.reverse(); r.json({ tx: out, nextCursor: out.length === 50 ? out[out.length - 1].id : null });
+}));
+// ===== Chat gifts: no deduction at send; recipient accepts -> atomic split (admin/recipient) + auto-friend =====
+async function chatOther(chatId, uid) {
+  const m = (await db.ref(`chatMembers/${chatId}`).get()).val() || {};
+  if (!m[uid]) return null; return Object.keys(m).find(k => k !== uid) || null;
+}
+async function giftGuard(chatId, from, to) {
+  if ((await db.ref(`chats/${chatId}/closed`).get()).exists()) return 'แชทนี้ถูกปิดอยู่';
+  if (await blockedEither(from, to)) return 'ส่งของขวัญให้ผู้ใช้นี้ไม่ได้';
+  if (await isBanned(to)) return 'ผู้รับถูกระงับบัญชี';
+  const [a, b] = await Promise.all([db.ref(`chatBlocks/${from}`).get(), db.ref(`chatBlocks/${to}`).get()]);
+  if (a.exists()) return 'บัญชีของคุณถูกระงับการแชท'; if (b.exists()) return 'ผู้รับถูกระงับการแชท';
+  return null;
+}
+const pendingSum = async uid => Object.values((await db.ref(`giftPending/${uid}`).get()).val() || {}).reduce((s, x) => s + num(x), 0);
+async function notifyGift(uids, payload) { const t = Date.now(), u = {}; for (const id of uids) u[`giftNotifications/${id}/${t}_${Math.random().toString(36).slice(2, 7)}`] = { ...payload, at: t }; await db.ref().update(u); }
+app.post('/chats/:chatId/gift', w(notBanned), w(async (q, r) => {
+  const { chatId } = q.params, giftId = q.body?.giftId;
+  if (!/^[A-Za-z0-9_-]{1,300}$/.test(chatId) || typeof giftId !== 'string' || !ITEM_ID.test(giftId)) return r.status(400).json({ error: 'chatId/giftId required' });
+  const to = await chatOther(chatId, q.uid); if (!to) return r.status(403).json({ error: 'not a member' });
+  const cfg = await giftCfg(); if (!cfg.enabled) return r.status(403).json({ code: 'gifts_disabled', error: 'ปิดระบบของขวัญชั่วคราว' });
+  const g = await giftGuard(chatId, q.uid, to); if (g) return r.status(403).json({ code: 'blocked', error: g });
+  const item = (await db.ref(`catalog/chat/${giftId}`).get()).val();
+  if (!item || item.enabled === false || !(item.price > 0)) return r.status(404).json({ error: 'ไม่พบของขวัญนี้' });
+  const coins = num((await db.ref(`wallets/${q.uid}/coins`).get()).val()), pend = await pendingSum(q.uid);
+  if (coins < item.price + pend) return r.status(402).json({ code: 'insufficient', error: `เหรียญไม่พอ (มี ${coins}, รอรับอยู่ ${pend}, ต้องการ ${item.price})`, coins, pending: pend, price: item.price });
+  const t = Date.now(), txId = db.ref('giftTx').push().key;
+  const gift = { txId, giftId, name: item.name, price: item.price, imageUrl: item.imageUrl || '', icon: item.icon || '', status: 'pending' };
+  await db.ref().update({
+    [`giftTx/${txId}`]: { from: q.uid, to, chatId, giftId, name: item.name, price: item.price, imageUrl: item.imageUrl || '', status: 'pending', createdAt: t },
+    [`giftPending/${q.uid}/${txId}`]: item.price,
+    [`messages/${chatId}/${txId}`]: { senderUid: q.uid, at: t, text: `🎁 ${item.name}`, gift },
+    [`chats/${chatId}/lastMessage`]: `🎁 ส่งของขวัญ ${item.name}`, [`chats/${chatId}/lastAt`]: t, [`chats/${chatId}/lastSenderUid`]: q.uid
+  });
+  r.json({ txId, status: 'pending', price: item.price });
+}));
+app.post('/gifts/:txId/accept', w(notBanned), w(async (q, r) => {
+  const { txId } = q.params; if (!/^[A-Za-z0-9_-]{1,40}$/.test(txId)) return r.status(400).json({ error: 'bad id' });
+  const txRef = db.ref(`giftTx/${txId}`), tx = (await txRef.get()).val();
+  if (!tx) return r.status(404).json({ error: 'not found' });
+  if (tx.to !== q.uid) return r.status(403).json({ error: 'only the recipient can accept' });
+  if (tx.status === 'accepted') return r.json({ status: 'accepted', already: true, ...tx.split });
+  const g = await giftGuard(tx.chatId, tx.from, tx.to); if (g) return r.status(403).json({ code: 'blocked', error: g });
+  // lock: pending -> accepting (one concurrent accept only; idempotent)
+  const lock = await txRef.child('status').transaction(s => (s === 'pending' ? 'accepting' : undefined));
+  if (!lock.committed) { const s = (await txRef.child('status').get()).val(); return s === 'accepted' ? r.json({ status: 'accepted', already: true }) : r.status(409).json({ error: 'busy, retry' }); }
+  const price = num(tx.price);
+  const d = await db.ref(`wallets/${tx.from}/coins`).transaction(c => (num(c) >= price ? num(c) - price : undefined));
+  if (!d.committed) {
+    await txRef.update({ status: 'pending', lastFailAt: Date.now(), lastFail: 'insufficient' });
+    await notifyGift([tx.from, tx.to], { type: 'gift_failed', txId, chatId: tx.chatId, name: tx.name, price, msg: 'รับของขวัญไม่สำเร็จ: เหรียญของผู้ส่งไม่พอ' });
+    return r.status(402).json({ code: 'insufficient', error: 'เหรียญของผู้ส่งไม่พอ รับของขวัญไม่สำเร็จ' });
+  }
+  const cfg = await giftCfg(), recipientShare = Math.floor(price * cfg.recipientPercent / 100), adminShare = price - recipientShare;
+  await Promise.all([db.ref(`wallets/${tx.to}/coins`).transaction(c => num(c) + recipientShare), db.ref('wallets/_system/coins').transaction(c => num(c) + adminShare)]);
+  const t = Date.now(), split = { recipientShare, adminShare, adminPercent: cfg.adminPercent, recipientPercent: cfg.recipientPercent, senderBalanceAfter: d.snapshot.val() };
+  const upd = { [`giftTx/${txId}/status`]: 'accepted', [`giftTx/${txId}/acceptedAt`]: t, [`giftTx/${txId}/split`]: split,
+    [`giftPending/${tx.from}/${txId}`]: null, [`messages/${tx.chatId}/${txId}/gift/status`]: 'accepted' };
+  let friended = false;
+  if (cfg.autoFriend && !(await db.ref(`friends/${tx.from}/${tx.to}`).get()).exists()) {
+    upd[`friends/${tx.from}/${tx.to}`] = t; upd[`friends/${tx.to}/${tx.from}`] = t; upd[`friendRequests/${tx.to}/${tx.from}`] = null; upd[`friendRequests/${tx.from}/${tx.to}`] = null; friended = true;
+  }
+  upd[`giftTx/${txId}/friended`] = friended;
+  await db.ref().update(upd);
+  r.json({ status: 'accepted', ...split, friended });
+}));
+app.get('/gifts/wallet', w(async (q, r) => {
+  const [c, p] = await Promise.all([db.ref(`wallets/${q.uid}/coins`).get(), pendingSum(q.uid)]);
+  r.json({ coins: num(c.val()), pending: p, available: num(c.val()) - p });
+}));
+// ===== VIP room decor for 1:1 chats =====
+const THEMES = ['royal_gold', 'diamond_luxury', 'galaxy', 'romantic', 'neon_vip', 'luxury_palace'];
+const FRAMES = ['none', 'diamond', 'gold', 'sparkle'], EFFECTS = ['none', 'sparkle', 'hearts', 'stars', 'snow', 'bubbles'], PATTERNS = ['none', 'dots', 'stripes', 'hearts', 'stars', 'diamonds'];
+const BUBBLES = ['default', 'rounded', 'glass', 'gold', 'neon'];
+const DHEX = /^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/;
+function lum(hex) { const c = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255).map(v => v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; }
+const contrast = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+function validDecor(chatId, d) {
+  if (!d || typeof d !== 'object') return 'decor required';
+  if (!THEMES.includes(d.theme)) return 'theme invalid';
+  const bg = d.bg || {}, out = { theme: d.theme, bg: { color: DHEX.test(bg.color || '') ? bg.color : '', pattern: PATTERNS.includes(bg.pattern) ? bg.pattern : 'none', imagePath: '' },
+    frame: FRAMES.includes(d.frame) ? d.frame : 'none', effect: EFFECTS.includes(d.effect) ? d.effect : 'none',
+    bubble: { style: BUBBLES.includes(d.bubble?.style) ? d.bubble.style : 'default', color: DHEX.test(d.bubble?.color || '') ? d.bubble.color : '#7C3AED', textColor: DHEX.test(d.bubble?.textColor || '') ? d.bubble.textColor : '#FFFFFF' }, items: [] };
+  if (bg.imagePath) { if (typeof bg.imagePath !== 'string' || !bg.imagePath.startsWith(`roomDecor/${chatId}/`) || bg.imagePath.includes('..')) return 'bg.imagePath invalid'; out.bg.imagePath = bg.imagePath; out.bg.animated = bg.animated === true; }
+  if (contrast(out.bubble.color.slice(0, 7), out.bubble.textColor.slice(0, 7)) < 4.5) return 'สีตัวอักษรกับสีบับเบิลตัดกันไม่พอ (contrast < 4.5)';
+  const items = Array.isArray(d.items) ? d.items : []; if (items.length > 30) return 'max 30 items';
+  for (const it of items) {
+    const ok = it && typeof it.stickerId === 'string' && ITEM_ID.test(it.stickerId) && [it.x, it.y, it.scale, it.rotation].every(v => typeof v === 'number' && isFinite(v));
+    if (!ok || it.x < 0 || it.x > 1 || it.y < 0 || it.y > 1 || it.scale < 0.2 || it.scale > 4 || Math.abs(it.rotation) > 360) return 'item invalid (stickerId, x/y 0..1, scale 0.2..4, rotation ±360)';
+    out.items.push({ stickerId: it.stickerId, x: it.x, y: it.y, scale: it.scale, rotation: it.rotation });
+  }
+  return out;
+}
+const isVipNow = async uid => (await tierOf(uid)).tier === 'vip';
+async function decorView(chatId) {
+  const d = (await db.ref(`roomDecor/${chatId}`).get()).val(); if (!d) return { decor: null };
+  if (!(await isVipNow(d.ownerUid))) return { decor: null, hidden: true, reason: 'VIP ของเจ้าของห้องหมดอายุ (เก็บการตกแต่งไว้แล้ว)', ownerUid: d.ownerUid };
+  return { decor: d.decor, ownerUid: d.ownerUid, updatedAt: d.updatedAt, rev: d.rev };
+}
+app.get('/rooms/:chatId/decor', w(async (q, r) => {
+  const { chatId } = q.params; if (!/^[A-Za-z0-9_-]{1,300}$/.test(chatId)) return r.status(400).json({ error: 'bad id' });
+  if (!(await chatOther(chatId, q.uid))) return r.status(403).json({ error: 'not a member' });
+  const v = await decorView(chatId); r.json({ ...v, canEdit: (await isVipNow(q.uid)) && (!v.ownerUid || v.ownerUid === q.uid) });
+}));
+app.post('/rooms/decor/previews', w(async (q, r) => {
+  const ids = (Array.isArray(q.body?.chatIds) ? q.body.chatIds : []).filter(x => typeof x === 'string' && /^[A-Za-z0-9_-]{1,300}$/.test(x)).slice(0, 100), out = {};
+  await Promise.all(ids.map(async id => {
+    if (!(await db.ref(`chatMembers/${id}/${q.uid}`).get()).exists()) return;
+    const v = await decorView(id); if (v.decor) out[id] = { theme: v.decor.theme, frame: v.decor.frame, bgColor: v.decor.bg.color, bubbleColor: v.decor.bubble.color };
+  }));
+  r.json({ previews: out });
+}));
+app.put('/rooms/:chatId/decor', w(notBanned), w(async (q, r) => {
+  const { chatId } = q.params; if (!/^[A-Za-z0-9_-]{1,300}$/.test(chatId)) return r.status(400).json({ error: 'bad id' });
+  if (!(await chatOther(chatId, q.uid))) return r.status(403).json({ error: 'not a member' });
+  if (!(await isVipNow(q.uid))) return r.status(403).json({ code: 'vip_required', error: 'เฉพาะสมาชิก VIP' });
+  const cur = (await db.ref(`roomDecor/${chatId}`).get()).val();
+  if (cur && cur.ownerUid !== q.uid) return r.status(403).json({ code: 'not_owner', error: 'ห้องนี้ถูกตกแต่งโดยอีกฝ่าย ต้องให้เจ้าของรีเซ็ตก่อน' });
+  const d = validDecor(chatId, q.body?.decor); if (typeof d === 'string') return r.status(400).json({ error: d });
+  if (d.items.length) { const st = (await db.ref('catalog/stickers').get()).val() || {}; if (d.items.some(i => !st[i.stickerId] || st[i.stickerId].enabled === false)) return r.status(400).json({ error: 'unknown sticker' }); }
+  const t = Date.now(); await db.ref(`roomDecor/${chatId}`).set({ ownerUid: q.uid, decor: d, updatedAt: t, rev: t });
+  r.json({ saved: true, rev: t });
+}));
+app.delete('/rooms/:chatId/decor', w(async (q, r) => {
+  const { chatId } = q.params; if (!/^[A-Za-z0-9_-]{1,300}$/.test(chatId)) return r.status(400).json({ error: 'bad id' });
+  const cur = (await db.ref(`roomDecor/${chatId}`).get()).val(); if (!cur) return r.json({ reset: true });
+  if (cur.ownerUid !== q.uid && !can(await loadRole(q.uid), 'manage_content')) return r.status(403).json({ error: 'only the owner can reset' });
+  await db.ref(`roomDecor/${chatId}`).remove(); r.json({ reset: true });
+}));
+app.post('/rooms/:chatId/decor/image', w(notBanned), express.raw({ type: 'image/*', limit: '5mb' }), w(async (q, r) => {
+  const { chatId } = q.params; if (!/^[A-Za-z0-9_-]{1,300}$/.test(chatId)) return r.status(400).json({ error: 'bad id' });
+  if (!(await chatOther(chatId, q.uid))) return r.status(403).json({ error: 'not a member' });
+  if (!(await isVipNow(q.uid))) return r.status(403).json({ code: 'vip_required', error: 'เฉพาะสมาชิก VIP' });
+  const buf = q.body; if (!Buffer.isBuffer(buf) || !buf.length) return r.status(400).json({ error: 'image body required' });
+  const h = buf.slice(0, 12), isGif = h.slice(0, 3).toString() === 'GIF', isPng = h[0] === 0x89 && h[1] === 0x50, isJpg = h[0] === 0xFF && h[1] === 0xD8, isWebp = h.slice(0, 4).toString() === 'RIFF' && h.slice(8, 12).toString() === 'WEBP';
+  const animWebp = isWebp && buf.includes(Buffer.from('ANIM'));
+  if (!(isGif || isPng || isJpg || isWebp)) return r.status(400).json({ error: 'jpeg/png/webp/gif only' });
+  const animated = isGif || animWebp; if (buf.length > (animated ? 3 : 5) * 1024 * 1024) return r.status(413).json({ error: animated ? 'GIF/ภาพเคลื่อนไหว ไม่เกิน 3MB' : 'รูปไม่เกิน 5MB' });
+  const ext = isGif ? 'gif' : isPng ? 'png' : isJpg ? 'jpg' : 'webp', path = `roomDecor/${chatId}/${q.uid}/${Date.now()}.${ext}`;
+  await admin.storage().bucket(STORAGE_BUCKET).file(path).save(buf, { contentType: `image/${ext === 'jpg' ? 'jpeg' : ext}`, resumable: false });
+  r.json({ imagePath: path, animated });
+}));
+app.get('/rooms/:chatId/decor/image', w(async (q, r) => {
+  const { chatId } = q.params, path = String(q.query.path || '');
+  if (!/^[A-Za-z0-9_-]{1,300}$/.test(chatId) || !path.startsWith(`roomDecor/${chatId}/`) || path.includes('..')) return r.status(400).json({ error: 'bad path' });
+  if (!(await db.ref(`chatMembers/${chatId}/${q.uid}`).get()).exists()) return r.status(403).json({ error: 'not a member' });
+  const file = admin.storage().bucket(STORAGE_BUCKET).file(path); const [meta] = await file.getMetadata().catch(() => [null]);
+  if (!meta) return r.status(404).json({ error: 'not found' });
+  r.set('Content-Type', meta.contentType); r.set('Cache-Control', 'private, max-age=86400'); r.set('ETag', meta.etag || meta.generation);
+  file.createReadStream().on('error', () => r.end()).pipe(r);
+}));
+app.post('/rooms/:chatId/decor/report', w(notBanned), w(async (q, r) => {
+  const { chatId } = q.params; if (!/^[A-Za-z0-9_-]{1,300}$/.test(chatId)) return r.status(400).json({ error: 'bad id' });
+  if (!(await chatOther(chatId, q.uid))) return r.status(403).json({ error: 'not a member' });
+  const d = (await db.ref(`roomDecor/${chatId}`).get()).val(); if (!d) return r.status(404).json({ error: 'no decor' });
+  const id = db.ref('decorReports').push().key;
+  await db.ref(`decorReports/${id}`).set({ chatId, by: q.uid, ownerUid: d.ownerUid, imagePath: d.decor?.bg?.imagePath || '', reason: String(q.body?.reason || '').slice(0, 300), at: Date.now(), status: 'open' });
+  r.json({ reported: id });
+}));
+app.get('/admin/decor/reports', perm('manage_content'), w(async (_q, r) => {
+  const v = (await db.ref('decorReports').orderByKey().limitToLast(100).get()).val() || {};
+  r.json({ reports: Object.entries(v).map(([id, x]) => ({ id, ...x })).reverse() });
+}));
+// Admin removes an inappropriate background (keeps the rest of the decor) and closes the report.
+app.post('/admin/decor/:chatId/remove-bg', perm('manage_content'), w(async (q, r) => {
+  const { chatId } = q.params; if (!/^[A-Za-z0-9_-]{1,300}$/.test(chatId)) return r.status(400).json({ error: 'bad id' });
+  const ref = db.ref(`roomDecor/${chatId}`), d = (await ref.get()).val(); if (!d) return r.status(404).json({ error: 'no decor' });
+  const p = d.decor?.bg?.imagePath; if (p) await admin.storage().bucket(STORAGE_BUCKET).file(p).delete().catch(() => {});
+  await ref.update({ 'decor/bg/imagePath': '', 'decor/bg/animated': false, rev: Date.now(), removedBgBy: q.uid });
+  if (q.body?.reportId && ITEM_ID.test(q.body.reportId)) await db.ref(`decorReports/${q.body.reportId}`).update({ status: 'resolved', by: q.uid });
+  r.json({ removed: !!p });
 }));
 app.use((e, _q, r, _n) => {
   if (e.type === 'entity.too.large') return r.status(413).json({ error: 'request too large' });

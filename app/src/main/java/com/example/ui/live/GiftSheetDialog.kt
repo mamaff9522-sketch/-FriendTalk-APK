@@ -10,6 +10,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -28,7 +30,9 @@ fun GiftSheetDialog(
     onDismiss: () -> Unit,
     onSelectGift: (GiftItem) -> Unit
 ) {
-    val gifts = MockData.giftsList
+    // Live gift list now comes from the admin catalog (catalog/live, realtime); seeded from the former built-in list.
+    val catalog by androidx.compose.runtime.remember { com.example.social.GiftRepo.catalog("live") }.collectAsState(initial = null)
+    val gifts = catalog?.map { GiftItem(it.id, it.name, it.icon.ifBlank { "🎁" }, it.price, it.animationEffect) } ?: emptyList()
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(

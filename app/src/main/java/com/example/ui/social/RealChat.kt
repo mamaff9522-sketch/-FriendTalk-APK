@@ -1,5 +1,6 @@
 package com.example.ui.social
 
+import androidx.compose.ui.graphics.Color
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -66,18 +67,19 @@ fun RealChatListScreen() {
         }
         if (aiHub) com.example.ui.ai.AiHubDialog { aiHub = false }
         Spacer(Modifier.height(8.dp))
+        val previews by produceState(emptyMap<String, com.example.social.GiftRepo.Decor>(), chats?.size) { chats?.let { value = com.example.social.GiftRepo.previews(it.map { c -> c.chatId }) } }
         when {
             chats == null -> Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Pink500) }
             chats!!.isEmpty() -> Text("ยังไม่มีแชท ไปที่หน้า หาเพื่อน เพื่อปัด สุ่ม หรือเขย่าหาเพื่อน", color = Slate400, fontSize = 13.sp)
             else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                items(chats!!, key = { it.chatId }) { c -> ChatRow(c) }
+                items(chats!!, key = { it.chatId }) { c -> ChatRow(c, previews[c.chatId]) }
             }
         }
     }
 }
 
 @Composable
-private fun ChatRow(c: ChatSummary) {
+private fun ChatRow(c: ChatSummary, decor: com.example.social.GiftRepo.Decor? = null) {
     val p = rememberProfile(c.otherUid)
     val fmt = remember { SimpleDateFormat("d MMM HH:mm", Locale("th", "TH")) }
     Surface(shape = RoundedCornerShape(14.dp), color = Slate800, modifier = Modifier.fillMaxWidth().clickable { SocialRepo.openChat.value = c.chatId }) {
@@ -88,6 +90,7 @@ private fun ChatRow(c: ChatSummary) {
                 Text(p?.displayName ?: "…", color = White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 Text(c.lastMessage.ifBlank { "เริ่มคุยกันได้เลย" }, color = Slate400, fontSize = 12.sp, maxLines = 1)
             }
+            decor?.let { Box(Modifier.padding(end = 6.dp)) { DecorMiniPreview(it) } }
             if (c.lastAt > 0) Text(fmt.format(Date(c.lastAt)), color = Slate400, fontSize = 10.sp)
         }
     }
@@ -114,6 +117,17 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
     var cs by remember { mutableStateOf<SocialRepo.ChatStatus?>(null) }
     var csTick by remember { mutableStateOf(0) }
     LaunchedEffect(chatId, csTick) { cs = SocialRepo.chatStatus(chatId) }
+    val decorRev by remember(chatId) { com.example.social.GiftRepo.decorRev(chatId) }.collectAsState(initial = 0L)
+    var decorTick by remember { mutableStateOf(0) }
+    val decorState by produceState<com.example.social.GiftRepo.DecorState?>(null, chatId, decorRev, decorTick) { value = com.example.social.GiftRepo.decor(chatId) }
+    val decor = decorState?.decor
+    val stickerList by remember { com.example.social.GiftRepo.catalog("stickers") }.collectAsState(initial = emptyList())
+    val prefs = remember { context.getSharedPreferences("friendtalk", 0) }
+    var lite by remember { mutableStateOf(prefs.getBoolean("decorLite", false)) }
+    var editDecor by remember { mutableStateOf(false) }
+    var giftSheet by remember { mutableStateOf(false) }
+    var isFriend by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(otherUid, csTick) { if (otherUid.isNotBlank()) isFriend = com.example.social.NearbyRepo.friendsWithOnline().any { it.first.uid == otherUid } }
     val listState = rememberLazyListState()
     LaunchedEffect(messages.size) { if (messages.isNotEmpty()) { listState.animateScrollToItem(messages.size - 1); SocialRepo.markRead(chatId) } }
 
@@ -137,7 +151,9 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                         if (showOther && otherUid.isNotBlank()) UserProfileDialog(otherUid) { showOther = false }
                         Box(Modifier.clip(CircleShape).clickable { showOther = true }) { Avatar(other?.avatar.orEmpty(), other?.displayName ?: "?", 36) }
                         Spacer(Modifier.width(8.dp))
-                        Text(other?.displayName ?: "…", color = White, fontWeight = FontWeight.Bold, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                        Text(other?.displayName ?: "…", color = White, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                        if (isFriend == false) TextButton(onClick = { scope.launch { status = if (com.example.social.NearbyRepo.requestFriend(otherUid) != null) "ส่งคำขอเป็นเพื่อนแล้ว" else "ส่งคำขอไม่สำเร็จ"; csTick++ } }, contentPadding = PaddingValues(horizontal = 6.dp)) { Text("➕เพื่อน", color = White, fontSize = 12.sp) }
+                        TextButton(onClick = { giftSheet = true }, contentPadding = PaddingValues(horizontal = 6.dp)) { Text("🎁", fontSize = 20.sp) }
                         var menu by remember { mutableStateOf(false) }
                         Box {
                             TextButton(onClick = { menu = true }) { Text("⋮", color = White, fontSize = 18.sp) }
@@ -145,18 +161,29 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                                 val c = cs
                                 if (c?.closed == true && c.closedByMe) DropdownMenuItem(text = { Text("🔓 เปิดแชทอีกครั้ง") }, onClick = { menu = false; scope.launch { status = SocialRepo.setClosed(chatId, false).orEmpty(); csTick++ } })
                                 else if (c?.closed != true) DropdownMenuItem(text = { Text("🔒 ปิดแชทนี้") }, onClick = { menu = false; scope.launch { status = SocialRepo.setClosed(chatId, true).orEmpty(); csTick++ } })
+                                val ds = decorState
+                                if (ds?.canEdit == true) DropdownMenuItem(text = { Text("✨ ตกแต่งห้อง VIP") }, onClick = { menu = false; editDecor = true })
+                                else if (ds != null && ds.ownerUid.isNotBlank() && ds.ownerUid != me) DropdownMenuItem(text = { Text("✨ ห้องนี้ตกแต่งโดยอีกฝ่าย", color = Slate400) }, onClick = { menu = false })
+                                else DropdownMenuItem(text = { Text("✨ ตกแต่งห้อง (VIP เท่านั้น)", color = Slate400) }, onClick = { menu = false; status = "การตกแต่งห้องสำหรับสมาชิก VIP" })
+                                if (decor != null) DropdownMenuItem(text = { Text(if (lite) "🎞 เปิดภาพเคลื่อนไหว" else "🪶 โหมดประหยัด (หยุด GIF)") }, onClick = { menu = false; lite = !lite; prefs.edit().putBoolean("decorLite", lite).apply() })
+                                if (decor != null && ds?.ownerUid != me) DropdownMenuItem(text = { Text("🚩 รายงานพื้นหลังไม่เหมาะสม") }, onClick = { menu = false; scope.launch { status = if (com.example.social.GiftRepo.reportDecor(chatId, "inappropriate")) "รายงานแล้ว ขอบคุณ" else "รายงานไม่สำเร็จ" } })
                             }
                         }
                     }
                 }
                 val shared by produceState<com.example.social.Similarity?>(null, otherUid) { if (otherUid.isNotBlank()) value = com.example.social.InterestsRepo.profile(otherUid)?.similarity }
                 shared?.takeIf { it.shared.isNotEmpty() }?.let { Surface(color = Slate800, modifier = Modifier.fillMaxWidth()) { Box(Modifier.padding(10.dp)) { SharedInterests(it) } } }
-                LazyColumn(state = listState, modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
+                decorState?.hiddenReason?.takeIf { it.isNotBlank() }?.let { Text("✨ $it", color = Slate400, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 12.dp)) }
+                Box(Modifier.weight(1f)) {
+                if (decor != null) DecorBackground(chatId, decor, token, stickerList.associateBy { it.id }, lite)
+                LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
                     items(messages, key = { it.id }) { m ->
                         val mine = m.senderUid == me
                         Column(Modifier.fillMaxWidth(), horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
-                            Surface(shape = RoundedCornerShape(14.dp), color = if (mine) Pink600 else Slate800) {
+                            if (m.gift != null) GiftBubble(m.gift, mine) { scope.launch { status = com.example.social.GiftRepo.accept(m.gift.txId).msg; csTick++ } }
+                            else if (decor != null && m.imagePath == null) DecorBubble(decor, m.text.orEmpty(), mine)
+                            else Surface(shape = RoundedCornerShape(14.dp), color = if (mine) Pink600 else Slate800) {
                                 if (m.imagePath != null) {
                                     AsyncImage(
                                         model = ImageRequest.Builder(context).data(SocialRepo.imageUrl(chatId, m.imagePath))
@@ -170,6 +197,9 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                         }
                     }
                 }
+                }
+                if (editDecor) RoomDecorEditor(chatId, decor, token) { saved -> editDecor = false; if (saved) decorTick++ }
+                if (giftSheet) ChatGiftSheet(onDismiss = { giftSheet = false }) { item -> giftSheet = false; scope.launch { status = com.example.social.GiftRepo.sendGift(chatId, item.id).msg } }
                 if (status.isNotBlank()) Text(status, color = Amber400, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 12.dp))
                 cs?.takeIf { !it.canSend }?.let { Surface(color = Slate800, modifier = Modifier.fillMaxWidth()) { Text("🚫 " + it.reason, color = Amber400, fontSize = 13.sp, modifier = Modifier.padding(12.dp)) } }
                 if (cs?.canSend != false) Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -182,6 +212,57 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                         val t = input; input = ""
                         scope.launch { if (!SocialRepo.sendText(chatId, t)) { input = t; cs = SocialRepo.chatStatus(chatId); status = if (cs?.canSend == false) "" else "ส่งไม่สำเร็จ (ยืนยันอีเมลแล้วหรือยัง?)" } else status = "" }
                     }) { Text("ส่ง") }
+                }
+            }
+        }
+    }
+}
+
+/** Gift message: recipient sees 'รับของขวัญ' until accepted (coins move only on accept). */
+@Composable
+private fun GiftBubble(g: com.example.social.GiftMsg, mine: Boolean, onAccept: () -> Unit) {
+    var busy by remember(g.txId, g.status) { mutableStateOf(false) }
+    Surface(shape = RoundedCornerShape(16.dp), color = Color(0xFF3B1D4A), border = androidx.compose.foundation.BorderStroke(1.dp, Amber400)) {
+        Column(Modifier.padding(12.dp).widthIn(max = 220.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            if (g.imageUrl.isNotBlank()) AsyncImage(model = g.imageUrl, contentDescription = g.name, modifier = Modifier.size(72.dp)) else Text(g.icon.ifBlank { "🎁" }, fontSize = 44.sp)
+            Text(g.name, color = White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            Text("🪙 ${g.price}", color = Amber400, fontSize = 12.sp)
+            when {
+                g.status == "accepted" -> Text("✓ รับแล้ว", color = Emerald400, fontSize = 12.sp)
+                mine -> Text("รออีกฝ่ายกดรับ", color = Slate300, fontSize = 11.sp)
+                else -> Button(enabled = !busy, onClick = { busy = true; onAccept() }, colors = ButtonDefaults.buttonColors(containerColor = Pink500)) { Text(if (busy) "กำลังรับ…" else "รับของขวัญ") }
+            }
+        }
+    }
+}
+
+/** Realtime list of enabled chat gifts (catalog/chat). */
+@Composable
+private fun ChatGiftSheet(onDismiss: () -> Unit, onPick: (com.example.social.CatalogItem) -> Unit) {
+    val items by remember { com.example.social.GiftRepo.catalog("chat") }.collectAsState(initial = null)
+    val wallet by produceState<Triple<Int, Int, Int>?>(null) { value = com.example.social.GiftRepo.wallet() }
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = RoundedCornerShape(18.dp), color = Slate900) {
+            Column(Modifier.padding(16.dp).heightIn(max = 520.dp)) {
+                Text("🎁 ส่งของขวัญ", color = White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                wallet?.let { Text("เหรียญ ${it.first} · รอรับ ${it.second} · ใช้ได้ ${it.third}", color = Slate300, fontSize = 12.sp) }
+                Text("ยังไม่หักเหรียญตอนส่ง จะหักเมื่ออีกฝ่ายกดรับ", color = Slate400, fontSize = 11.sp)
+                Spacer(Modifier.height(8.dp))
+                val l = items
+                when {
+                    l == null -> CircularProgressIndicator(color = Pink500)
+                    l.isEmpty() -> Text("ยังไม่มีของขวัญในแชท", color = Slate400)
+                    else -> androidx.compose.foundation.lazy.grid.LazyVerticalGrid(androidx.compose.foundation.lazy.grid.GridCells.Fixed(3), verticalArrangement = Arrangement.spacedBy(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(l.size) { i -> val it = l[i]
+                            Surface(shape = RoundedCornerShape(12.dp), color = Slate800, onClick = { onPick(it) }) {
+                                Column(Modifier.padding(8.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Box(Modifier.size(48.dp)) { StickerImage(it) }
+                                    Text(it.name, color = White, fontSize = 11.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                    Text("🪙 ${it.price}", color = Amber400, fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

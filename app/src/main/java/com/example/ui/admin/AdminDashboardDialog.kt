@@ -132,7 +132,8 @@ fun AdminDashboardDialog(
                     "📜 บันทึก",
                     "⚙️ เครื่องมือ",
                     "🤖 บอท AI",
-                    "📊 ตั้งค่าลิมิต"
+                    "📊 ตั้งค่าลิมิต",
+                    "🎁 สติกเกอร์/ของขวัญ"
                 )
 
                 LazyRow(
@@ -201,6 +202,7 @@ fun AdminDashboardDialog(
                         )
                         5 -> com.example.ui.ai.AdminBotsTab()
                         6 -> AdminLimitsTab()
+                        7 -> AdminGiftsTab()
                     }
                 }
             }
