@@ -182,6 +182,14 @@ fun FriendTalkApp(
     val appBgColor = parseHexColor(uiState.uiConfig.theme.backgroundColorHex, Slate950)
 
     FriendTalkTheme(themeConfig = uiState.uiConfig.theme) {
+        // Maintenance mode from published Remote UI config: blocks normal users, admins still get in.
+        if (uiState.uiConfig.maintenanceMode && uiState.currentUser.role == com.example.model.UserRole.USER) {
+            androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(appBgColor).padding(32.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
+                androidx.compose.material3.Text("🛠 " + uiState.uiConfig.maintenanceMessage.ifBlank { "ระบบกำลังปรับปรุง กรุณากลับมาใหม่ภายหลัง" },
+                    color = White, fontSize = 16.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            }
+            return@FriendTalkTheme
+        }
         Scaffold(
             modifier = Modifier
                 .fillMaxSize()
@@ -192,6 +200,7 @@ fun FriendTalkApp(
                 if (uiState.uiConfig.feed.showHeader) {
                     AppHeader(
                         currentUser = uiState.currentUser,
+                        appName = uiState.uiConfig.appName,
                         unreadNotificationsCount = unreadNotificationsCount,
                         searchQuery = uiState.searchQuery,
                         isSearchActive = uiState.isSearchActive,

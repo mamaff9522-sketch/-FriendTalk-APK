@@ -37,6 +37,7 @@ import com.example.ui.theme.*
 @OptIn(ExperimentalFoundationApi::class)
 fun AppHeader(
     currentUser: User,
+    appName: String = "FriendTalk",
     unreadNotificationsCount: Int,
     searchQuery: String = "",
     isSearchActive: Boolean = false,
@@ -107,7 +108,7 @@ fun AppHeader(
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = "FriendTalk",
+                                text = appName.ifBlank { "FriendTalk" },
                                 fontWeight = FontWeight.ExtraBold,
                                 fontSize = 20.sp,
                                 color = White,
