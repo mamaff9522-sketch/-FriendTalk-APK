@@ -181,6 +181,7 @@ fun FriendTalkApp(
 
     val appBgColor = parseHexColor(uiState.uiConfig.theme.backgroundColorHex, Slate950)
 
+    com.example.ui.social.ProfileNav.openOwn = { viewModel.setActiveTab("profile") }
     FriendTalkTheme(themeConfig = uiState.uiConfig.theme) {
         // Maintenance mode from published Remote UI config: blocks normal users, admins still get in.
         if (uiState.uiConfig.maintenanceMode && uiState.currentUser.role == com.example.model.UserRole.USER) {

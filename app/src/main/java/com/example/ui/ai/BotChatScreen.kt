@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,8 +40,10 @@ fun BotChatScreen(bot: AiRepo.AiBot, onEnd: () -> Unit, onSkip: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         Surface(color = Slate900, modifier = Modifier.fillMaxWidth()) {
             Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                AsyncImage(model = bot.avatarUrl, contentDescription = bot.name, contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(36.dp).clip(CircleShape))
+                var info by remember { mutableStateOf(false) }
+                if (info) BotInfoDialog(bot) { info = false }
+                AsyncImage(model = bot.avatarUrl, contentDescription = "ข้อมูล ${bot.name}", contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(36.dp).clip(CircleShape).clickable { info = true })
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -64,7 +67,13 @@ fun BotChatScreen(bot: AiRepo.AiBot, onEnd: () -> Unit, onSkip: () -> Unit) {
         LazyColumn(state = listState, modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
             items(messages) { m ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = if (m.fromBot) Arrangement.Start else Arrangement.End) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = if (m.fromBot) Arrangement.Start else Arrangement.End, verticalAlignment = Alignment.Bottom) {
+                    if (m.fromBot && !m.isError) {
+                        var bi by remember { mutableStateOf(false) }
+                        if (bi) BotInfoDialog(bot) { bi = false }
+                        AsyncImage(model = bot.avatarUrl, contentDescription = "ข้อมูล ${bot.name}", contentScale = ContentScale.Crop,
+                            modifier = Modifier.size(28.dp).clip(CircleShape).clickable { bi = true }); Spacer(Modifier.width(6.dp))
+                    }
                     Surface(shape = RoundedCornerShape(14.dp),
                         color = when { m.isError -> Slate700; m.fromBot -> Slate800; else -> Pink600 }) {
                         Text(m.text, color = White, fontSize = 13.sp, modifier = Modifier.widthIn(max = 280.dp).padding(10.dp))
@@ -93,4 +102,17 @@ fun BotChatScreen(bot: AiRepo.AiBot, onEnd: () -> Unit, onSkip: () -> Unit) {
             }) { Text(if (sending) "…" else "ส่ง") }
         }
     }
+}
+
+/** Bot info (always labeled AI). */
+@Composable
+fun BotInfoDialog(bot: com.example.network.AiRepo.AiBot, onDismiss: () -> Unit) {
+    androidx.compose.material3.AlertDialog(onDismissRequest = onDismiss, confirmButton = { TextButton(onClick = onDismiss) { Text("ปิด") } },
+        title = { Row(verticalAlignment = Alignment.CenterVertically) { Text(bot.name, modifier = Modifier.weight(1f, fill = false)); Spacer(Modifier.width(6.dp)); AiBadge() } },
+        text = { Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+            AsyncImage(model = bot.avatarUrl, contentDescription = bot.name, contentScale = ContentScale.Crop, modifier = Modifier.size(96.dp).clip(CircleShape))
+            Spacer(Modifier.height(8.dp)); Text(bot.bio, fontSize = 13.sp)
+            if (bot.interests.isNotEmpty()) Text(bot.interests.joinToString(" · "), fontSize = 12.sp, color = Slate400)
+            Text("นี่คือตัวละคร AI ไม่ใช่คนจริง", fontSize = 12.sp, color = Amber400)
+        } })
 }

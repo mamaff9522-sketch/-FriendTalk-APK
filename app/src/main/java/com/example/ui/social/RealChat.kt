@@ -84,7 +84,9 @@ private fun ChatRow(c: ChatSummary, decor: com.example.social.GiftRepo.Decor? = 
     val fmt = remember { SimpleDateFormat("d MMM HH:mm", Locale("th", "TH")) }
     Surface(shape = RoundedCornerShape(14.dp), color = Slate800, modifier = Modifier.fillMaxWidth().clickable { SocialRepo.openChat.value = c.chatId }) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Avatar(p?.avatar.orEmpty(), p?.displayName ?: "?", 44)
+            var showP by remember { mutableStateOf(false) }
+            if (showP) UserProfileDialog(c.otherUid) { showP = false }
+            Box(Modifier.clip(CircleShape).clickable { showP = true }) { Avatar(p?.avatar.orEmpty(), p?.displayName ?: "?", 44) }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(p?.displayName ?: "…", color = White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
@@ -180,7 +182,11 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                     verticalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
                     items(messages, key = { it.id }) { m ->
                         val mine = m.senderUid == me
-                        Column(Modifier.fillMaxWidth(), horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
+                        var showSender by remember { mutableStateOf(false) }
+                        if (showSender) UserProfileDialog(m.senderUid) { showSender = false }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.Bottom) {
+                        if (!mine) { Box(Modifier.clip(CircleShape).clickable { showSender = true }) { Avatar(other?.avatar.orEmpty(), other?.displayName ?: "?", 28) }; Spacer(Modifier.width(6.dp)) }
+                        Column(Modifier.weight(1f, fill = false), horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
                             if (m.gift != null) GiftBubble(m.gift, mine) { scope.launch { status = com.example.social.GiftRepo.accept(m.gift.txId).msg; csTick++ } }
                             else if (decor != null && m.imagePath == null) DecorBubble(decor, m.text.orEmpty(), mine)
                             else Surface(shape = RoundedCornerShape(14.dp), color = if (mine) Pink600 else Slate800) {
@@ -194,6 +200,7 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                                 } else Text(m.text.orEmpty(), color = White, fontSize = 14.sp, modifier = Modifier.padding(10.dp))
                             }
                             if (mine && m == messages.lastOrNull { it.senderUid == me } && otherRead >= m.at) Text("อ่านแล้ว", color = Slate400, fontSize = 9.sp)
+                        }
                         }
                     }
                 }

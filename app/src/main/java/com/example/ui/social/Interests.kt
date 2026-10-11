@@ -105,6 +105,8 @@ fun InterestsEditorDialog(onDismiss: () -> Unit, skippable: Boolean = false) {
 /** Another user's profile: interests by category, shared ones highlighted, similarity %, add friend / chat. */
 @Composable
 fun UserProfileDialog(uid: String, distance: String? = null, onDismiss: () -> Unit) {
+    // Own avatar anywhere -> own Profile page (logout, my posts) instead of the public card.
+    if (uid == com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid) { LaunchedEffect(uid) { ProfileNav.openOwn(); onDismiss() }; return }
     val scope = rememberCoroutineScope()
     var fp by remember { mutableStateOf<FullProfile?>(null) }
     var sent by remember { mutableStateOf<InterestsRepo.FriendResult?>(null) }
@@ -199,3 +201,6 @@ fun PersonalityMatchView() {
 
 /** Optional interests step shown once after the profile is first created (sign-up). */
 object InterestsPrompt { val show = kotlinx.coroutines.flow.MutableStateFlow(false) }
+
+/** Set by MainActivity: navigates to the user's own Profile page. */
+object ProfileNav { var openOwn: () -> Unit = {} }
