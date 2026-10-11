@@ -181,7 +181,13 @@ class AuthService private constructor() {
 
         val auth = ensureAuth(context)
 
-        val user = auth?.currentUser
+        var user = auth?.currentUser
+        // Require an explicit login on this install: a restored/old session without the flag is signed out so the login screen shows first.
+        val prefs = context.getSharedPreferences("ft_auth", Context.MODE_PRIVATE)
+        if (user != null && !prefs.getBoolean("explicit_login_v1", false)) {
+            Log.d(TAG, "Session without explicit login flag -> sign out, show login")
+            auth?.signOut(); user = null
+        }
 
         if (user != null) {
 

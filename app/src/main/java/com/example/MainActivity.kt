@@ -72,6 +72,7 @@ fun FriendTalkRoot(
     val authService = remember { AuthService.getInstance() }
     val firebaseUser by authService.currentUser.collectAsStateWithLifecycle()
     val isInitialized by authService.isInitialized.collectAsStateWithLifecycle()
+    var explicitLogin by remember { mutableStateOf(context.getSharedPreferences("ft_auth", android.content.Context.MODE_PRIVATE).getBoolean("explicit_login_v1", false)) }
 
     // Attempt auto sign-in once on startup
     LaunchedEffect(Unit) {
@@ -112,9 +113,10 @@ fun FriendTalkRoot(
                     modifier = Modifier.size(36.dp)
                 )
             }
-        } else if (firebaseUser == null) {
+        } else if (firebaseUser == null || !explicitLogin) {
             AuthScreen(
                 onAuthSuccess = { user ->
+                    context.getSharedPreferences("ft_auth", android.content.Context.MODE_PRIVATE).edit().putBoolean("explicit_login_v1", true).apply(); explicitLogin = true
                     viewModel.syncFirebaseUser(user)
                 }
             )
@@ -135,6 +137,7 @@ fun FriendTalkRoot(
                         }
                         com.example.social.SocialRepo.openChat.value = null
                         com.example.ads.AdRoom.open.value = null; com.example.ads.AdRoom.quotaHit.value = null; com.example.ads.AdRoom.limits.value = null
+                        context.getSharedPreferences("ft_auth", android.content.Context.MODE_PRIVATE).edit().remove("explicit_login_v1").apply()
                         authService.signOut(context, coroutineScope) {
                             // Restart with a cleared back stack: drops all ViewModel/cached role state and listeners
                             val act = context as? android.app.Activity
