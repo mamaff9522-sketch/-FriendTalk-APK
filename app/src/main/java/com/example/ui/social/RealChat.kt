@@ -65,8 +65,8 @@ fun RealChatListScreen() {
         var aiHub by remember { mutableStateOf(false) }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(tr("แชท"), fontWeight = FontWeight.ExtraBold, fontSize = 30.sp, color = White, modifier = Modifier.weight(1f))
-            OutlinedButton(onClick = { aiHub = true }, shape = RoundedCornerShape(24.dp),
-                border = androidx.compose.foundation.BorderStroke(1.5.dp, androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Purple500, Pink500)))) { Text(tr("🤖 คุยกับ AI"), color = White, fontSize = 15.sp, fontWeight = FontWeight.Bold) }
+            com.example.ui.components.FeatureLockGate("ai", compact = true) { OutlinedButton(onClick = { aiHub = true }, shape = RoundedCornerShape(24.dp),
+                border = androidx.compose.foundation.BorderStroke(1.5.dp, androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Purple500, Pink500)))) { Text(tr("🤖 คุยกับ AI"), color = White, fontSize = 15.sp, fontWeight = FontWeight.Bold) } }
         }
         if (aiHub) com.example.ui.ai.AiHubDialog { aiHub = false }
         Spacer(Modifier.height(8.dp))

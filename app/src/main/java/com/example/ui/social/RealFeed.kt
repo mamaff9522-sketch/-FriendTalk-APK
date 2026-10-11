@@ -99,7 +99,7 @@ fun rememberRealFeedState(): RealFeedState {
 
 /** Feed section content (composer + real posts). Used by the Home layout's "feed" section. */
 fun LazyListScope.realFeedItems(state: RealFeedState) {
-    if (state.tag == null && state.author == null) item(key = "real_composer") { PostComposer(onPosted = { state.posts.add(0, it) }) }
+    if (state.tag == null && state.author == null) item(key = "real_composer") { com.example.ui.components.FeatureLockGate("posting") { PostComposer(onPosted = { state.posts.add(0, it) }) } }
     if (state.error.isNotBlank()) item(key = "real_err") { Text(state.error, color = Amber400, fontSize = 12.sp, modifier = Modifier.padding(16.dp)) }
     if (state.loaded && state.posts.isEmpty()) item(key = "real_empty") {
         Box(Modifier.fillMaxWidth().padding(vertical = 40.dp), contentAlignment = Alignment.Center) {

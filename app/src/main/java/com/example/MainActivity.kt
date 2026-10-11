@@ -243,7 +243,7 @@ fun FriendTalkApp(
                     .fillMaxSize()
                     .padding(innerPadding)
             ) {
-                com.example.ui.components.ComingSoonGate("tab_" + uiState.activeTab, Modifier.fillMaxSize()) { when (uiState.activeTab) {
+                com.example.ui.components.ComingSoonGate("tab_" + uiState.activeTab, Modifier.fillMaxSize()) { com.example.ui.components.FeatureLockGate(when (uiState.activeTab) { "movie" -> "video"; else -> uiState.activeTab }, Modifier.fillMaxSize()) { when (uiState.activeTab) {
                     "home" -> FeedTab(
                         onOpenFindFriends = { viewModel.setActiveTab("discover") },
                         onOpenLive = { viewModel.setActiveTab("live") },
@@ -322,7 +322,7 @@ fun FriendTalkApp(
                         onOpenCompanionApply = { isCompanionApplyOpen = true },
                         onLogout = onSignOut
                     )
-                } }
+                } } }
 
                 // Global Gift Animation Overlay
                 GiftAnimationOverlay(activeGift = uiState.activeGiftAnimation)

@@ -412,9 +412,10 @@ private fun SystemPane() {
         if (l.locked) Button(onClick = { set(true) }) { Text("อัปเดตข้อความ/รูป") }
         if (msg.isNotBlank()) Text(msg, color = Amber400, fontSize = 13.sp)
         Text("ระบบบังคับฝั่งเซิร์ฟเวอร์: API ปฏิเสธผู้ใช้ทั่วไป (423) และกฎฐานข้อมูลห้ามอ่าน/เขียนข้อมูลโซเชียลขณะล็อก", color = Slate400, fontSize = 11.sp)
+        FeatureLocksCard { tick++ }
         Text("ประวัติการล็อก/ปลดล็อก", color = White, fontWeight = FontWeight.Bold)
         if (log.isEmpty()) Text("ยังไม่มี", color = Slate400, fontSize = 12.sp)
-        log.forEach { x -> Text("${if (x.optString("action") == "app_lock") "🔒 ล็อก" else "🔓 ปลดล็อก"} · ${ts(x.optLong("at"))} · โดย ${x.optString("by").take(10)}…", color = Slate300, fontSize = 12.sp) }
+        log.forEach { x -> Text("${when (x.optString("action")) { "app_lock" -> "🔒 ล็อก"; "app_feature_locks" -> "🧩 ฟีเจอร์ที่ปิด: " + x.optString("message"); else -> "🔓 ปลดล็อก" }} · ${ts(x.optLong("at"))} · โดย ${x.optString("by").take(10)}…", color = Slate300, fontSize = 12.sp) }
     }
 }
 
@@ -435,4 +436,35 @@ private fun ComingSoonList(p: Perms) {
         }
     }
     edit?.let { com.example.ui.components.ComingSoonEditor(it) { edit = null } }
+}
+
+
+/** Per-feature on/off. OFF = feature still visible (greyed + 🔒) but unusable for non-staff; brain returns 423 for its endpoints. */
+@Composable
+private fun FeatureLocksCard(onChanged: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val locked = com.example.ui.components.AppGates.lockedParts
+    var fmsg by remember(com.example.ui.components.AppGates.featureLockMsg) { mutableStateOf(com.example.ui.components.AppGates.featureLockMsg) }
+    var status by remember { mutableStateOf("") }
+    fun save(parts: Set<String>) { scope.launch {
+        val pj = JSONObject(); parts.forEach { pj.put(it, true) }
+        val r = api("PUT", "/admin/feature-locks", JSONObject().put("parts", pj).put("message", fmsg.trim()))
+        status = if (r.code == 200) { com.example.ui.components.AppGates.lockedParts = parts; onChanged(); "บันทึกแล้ว — มีผลกับผู้ใช้ทันที" } else err(r)
+    } }
+    Surface(shape = RoundedCornerShape(18.dp), color = Slate900, border = BorderStroke(1.dp, Slate700)) {
+        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("🧩 เปิด/ปิดฟีเจอร์ (ล็อกเฉพาะส่วน)", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+            Text("ปิด = ผู้ใช้ยังเห็นเมนู/ไทล์ (สีจาง + 🔒) แต่ใช้ไม่ได้ แตะแล้วขึ้นแจ้งเตือน · เซิร์ฟเวอร์ปฏิเสธ API ของส่วนนั้น · แอดมินใช้ได้ปกติ · แยกจาก 'เร็ว ๆ นี้' (ภาพทับ)", color = Slate400, fontSize = 11.sp)
+            com.example.ui.components.FEATURE_PARTS.forEach { (k, label) ->
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text((if (k in locked) "🔒 " else "✅ ") + label, color = if (k in locked) Rose500 else White, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                    Switch(checked = k !in locked, onCheckedChange = { on -> save(if (on) locked - k else locked + k) })
+                }
+            }
+            OutlinedTextField(value = fmsg, onValueChange = { fmsg = it.take(300) }, label = { Text("ข้อความแจ้งเมื่อแตะฟีเจอร์ที่ปิด (ไม่บังคับ)") }, modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White))
+            Button(onClick = { save(locked) }) { Text("บันทึกข้อความ") }
+            if (status.isNotBlank()) Text(status, color = Amber400, fontSize = 12.sp)
+        }
+    }
 }

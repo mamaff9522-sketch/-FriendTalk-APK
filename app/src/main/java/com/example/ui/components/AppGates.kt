@@ -1,5 +1,10 @@
 package com.example.ui.components
 
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.input.pointer.changedToUp
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.draw.alpha
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -46,6 +51,10 @@ object AppGates {
     var isStaff by mutableStateOf(false)
     var comingSoon by mutableStateOf<Map<String, ComingSoonCfg>>(emptyMap())
     var lock by mutableStateOf(LockCfg(false, "", ""))
+    /** Feature locks (appConfig/featureLocks/parts): feature stays visible but unusable for non-staff. */
+    var lockedParts by mutableStateOf<Set<String>>(emptySet())
+    var featureLockMsg by mutableStateOf("")
+    fun partLocked(part: String) = part in lockedParts
     private var started = false
     fun start() {
         if (started || FirebaseAuth.getInstance().currentUser == null) return; started = true
@@ -54,6 +63,13 @@ object AppGates {
             override fun onDataChange(s: DataSnapshot) {
                 comingSoon = s.children.associate { c -> (c.key ?: "") to ComingSoonCfg(c.child("enabled").getValue(Boolean::class.java) != false,
                     c.child("text").getValue(String::class.java) ?: tr("เร็ว ๆ นี้ รอติดตาม"), c.child("sticker").getValue(String::class.java) ?: "", c.child("imageUrl").getValue(String::class.java) ?: "") }
+            }
+            override fun onCancelled(e: DatabaseError) {}
+        })
+        db.getReference("appConfig/featureLocks").addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(s: DataSnapshot) {
+                lockedParts = s.child("parts").children.filter { it.getValue(Boolean::class.java) == true }.mapNotNull { it.key }.toSet()
+                featureLockMsg = s.child("message").getValue(String::class.java) ?: ""
             }
             override fun onCancelled(e: DatabaseError) {}
         })
@@ -174,4 +190,33 @@ fun AppLockScreen(appName: String) {
             }
         }
     }
+}
+
+
+/** Admin-lockable features (key -> Thai label). */
+val FEATURE_PARTS = linkedMapOf(
+    "home" to "หน้าแรก / ฟีด", "posting" to "โพสต์ใหม่", "discover" to "หาเพื่อน (ค้นหา)", "random" to "สุ่มหาเพื่อน", "shake" to "เขย่าหาเพื่อน",
+    "radar" to "เรดาร์", "swipe" to "ปัดหาเพื่อน", "similar" to "คนที่ชอบคล้ายกัน", "requests" to "คำขอเป็นเพื่อน", "companion" to "เพื่อนคุย",
+    "live" to "ไลฟ์สด", "video" to "วิดีโอ", "chat" to "แชท", "ai" to "บอท AI", "ads" to "โฆษณา", "gifts" to "ของขวัญ", "decor" to "ตกแต่งห้อง VIP")
+
+/** Feature lock: content stays visible but greyed with a 🔒 badge; any tap shows a 'locked' notice. Staff use it normally (small badge). */
+@Composable
+fun FeatureLockGate(part: String, modifier: Modifier = Modifier, compact: Boolean = false, content: @Composable () -> Unit) {
+    if (!AppGates.partLocked(part)) { Box(modifier) { content() }; return }
+    if (AppGates.isStaff) {
+        Box(modifier) { content(); Text("🔒 staff", color = PureWhite, fontSize = 9.sp, modifier = Modifier.align(Alignment.TopStart).padding(4.dp).clip(RoundedCornerShape(6.dp)).background(Rose500).padding(horizontal = 4.dp, vertical = 1.dp)) }
+        return
+    }
+    var notice by remember { mutableStateOf(false) }
+    Box(modifier) {
+        Box(Modifier.matchParentSize().alpha(0.4f)) { content() }
+        Box(Modifier.matchParentSize().pointerInput(Unit) { awaitPointerEventScope { while (true) { val e = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial); e.changes.forEach { it.consume() }; if (e.changes.any { it.changedToUp() }) notice = true } } })
+        Surface(shape = RoundedCornerShape(10.dp), color = Rose500, modifier = Modifier.align(if (compact) Alignment.TopEnd else Alignment.TopCenter).padding(6.dp)) {
+            Text(if (compact) "🔒" else "🔒 " + tr("ปิดใช้งานชั่วคราว"), color = PureWhite, fontSize = if (compact) 12.sp else 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
+        }
+    }
+    if (notice) androidx.compose.material3.AlertDialog(onDismissRequest = { notice = false },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = { notice = false }) { Text(tr("ตกลง")) } },
+        title = { Text("🔒 " + tr(FEATURE_PARTS[part] ?: part)) },
+        text = { Text(AppGates.featureLockMsg.ifBlank { tr("ฟีเจอร์นี้ปิดใช้งานชั่วคราว") }) })
 }

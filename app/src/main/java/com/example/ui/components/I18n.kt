@@ -11,6 +11,9 @@ object I18n {
     fun load(ctx: Context) { lang = ctx.getSharedPreferences("app_prefs", 0).getString("lang", "th") ?: "th" }
     fun set(ctx: Context, l: String) { lang = l; ctx.getSharedPreferences("app_prefs", 0).edit().putString("lang", l).apply() }
     val EN: Map<String, String> = mapOf(
+        "ปิดใช้งานชั่วคราว" to "Temporarily disabled",
+        "ฟีเจอร์นี้ปิดใช้งานชั่วคราว" to "This feature is temporarily disabled",
+        "หน้าแรก / ฟีด" to "Home / feed", "โพสต์ใหม่" to "New post", "หาเพื่อน (ค้นหา)" to "Friends (search)", "บอท AI" to "AI bots", "ของขวัญ" to "Gifts", "ตกแต่งห้อง VIP" to "VIP room decor",
         "หน้าแรก" to "Home",
         "หาเพื่อน" to "Friends",
         "ไลฟ์สด" to "Live",

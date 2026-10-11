@@ -71,6 +71,42 @@ app.use(w(async (q, r, n) => {
   const role = await loadRole(q.uid); if (role && ['admin', 'superadmin'].includes(role.role)) return n();
   r.status(423).json({ error: 'app locked', message: l.message || 'แอปปิดชั่วคราว' });
 }));
+// Per-feature lock: appConfig/featureLocks {parts:{part:true}, message}. Feature stays visible in the app (greyed + lock badge) but its endpoints return 423 {code:'feature_locked', part} for non-staff.
+const PARTS = ['home','posting','discover','random','shake','radar','swipe','similar','requests','companion','live','video','chat','ai','ads','gifts','decor'];
+const PART_OF = q => {
+  const p = q.path;
+  if (/^\/posts\/?$/.test(p) && q.method === 'POST') return 'posting';
+  if (/^\/(posts|feed)(\/|$)/.test(p)) return 'home';
+  if (/^\/match(\/|$)/.test(p)) return 'random';
+  if (/^\/shake(\/|$)/.test(p)) return 'shake';
+  if (/^\/radar(\/|$)/.test(p)) return 'radar';
+  if (/^\/swipe(\/|$)/.test(p)) return 'swipe';
+  if (/^\/interests\/(similar|match)/.test(p)) return 'similar';
+  if (/^\/friends\/(request|respond|requests)/.test(p)) return 'requests';
+  if (/^\/search(\/|$)/.test(p)) return 'discover';
+  if (/^\/chats(\/|$)/.test(p)) return 'chat';
+  if (/^\/(bot|bots)(\/|$)/.test(p)) return 'ai';
+  if (/^\/(quota|admob)(\/|$)/.test(p)) return 'ads';
+  if (/^\/rooms(\/|$)/.test(p)) return 'decor';
+  if (/^\/gifts(\/|$)/.test(p)) return 'gifts';
+  return null;
+};
+let flCache = { at: 0, v: null };
+async function featureLocks() { if (Date.now() - flCache.at < 10e3) return flCache.v; const v = (await db.ref('appConfig/featureLocks').get()).val() || {}; flCache = { at: Date.now(), v }; return v; }
+app.use(w(async (q, r, n) => {
+  if (!q.uid) return n();
+  const part = PART_OF(q); if (!part) return n();
+  const f = await featureLocks(); if (!(f.parts && f.parts[part])) return n();
+  const role = await loadRole(q.uid); if (role && ['admin', 'superadmin', 'moderator'].includes(role.role)) return n();
+  r.status(423).json({ error: 'feature locked', code: 'feature_locked', part, message: f.message || 'ฟีเจอร์นี้ปิดใช้งานชั่วคราว' });
+}));
+app.put('/admin/feature-locks', perm('app_lock'), w(notBanned), w(async (q, r) => {
+  const parts = {}; for (const k of Object.keys(q.body?.parts || {})) if (PARTS.includes(k) && q.body.parts[k] === true) parts[k] = true;
+  const v = { parts, message: String(q.body?.message || '').slice(0, 300), by: q.uid, at: Date.now() };
+  await db.ref('appConfig/featureLocks').set(v); flCache = { at: 0, v: null };
+  await db.ref('adminLog').push({ action: 'app_feature_locks', by: q.uid, at: Date.now(), message: Object.keys(parts).join(',') || '(none)' });
+  r.json(v);
+}));
 app.get('/lock', w(async (_q, r) => { const l = await lockState(); r.json({ locked: l.locked === true, message: l.message || '', imageUrl: l.imageUrl || '' }); }));
 app.use('/admin', w(isAdmin));
 app.use('/superadmin', w(isSuper));

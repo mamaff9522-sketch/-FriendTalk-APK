@@ -130,7 +130,7 @@ fun BottomNavBar(
                     Spacer(modifier = Modifier.height(2.dp))
 
                     Text(
-                        text = item.label,
+                        text = item.label + if (com.example.ui.components.AppGates.partLocked(if (item.id == "movie") "video" else item.id)) " 🔒" else "",
                         fontSize = 12.sp,
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                         color = when {
