@@ -35,7 +35,7 @@ async function notBanned(req, res, next) {
   if (b && (!b.until || b.until > Date.now())) return res.status(403).json({ error: 'banned' });
   next();
 }
-const PERMS = ['coins_confirm','age_approve','config_edit','ban_users','manage_content'];
+const PERMS = ['coins_confirm','age_approve','config_edit','ban_users','manage_content','app_lock'];
 async function loadRole(uid) {
   const r = (await db.ref(`roles/${uid}`).get()).val();
   if (!r) return null;
@@ -55,11 +55,23 @@ async function isSuper(req, res, next) {
   req.role = r; next();
 }
 const w = fn => (q, r, n) => fn(q, r, n).catch(e => { console.error(e.message); r.status(e.code === 404 ? 404 : 500).json({ error: e.code === 404 ? 'user not found' : 'internal' }); });
-app.use(['/coins', '/age', '/config', '/admin', '/superadmin', '/me', '/match', '/bot', '/ui', '/chats', '/swipe', '/posts', '/feed', '/friends', '/radar', '/shake', '/limits', '/quota', '/search', '/users', '/interests', '/bots', '/gifts', '/rooms'], w(auth));
+app.use(['/coins', '/age', '/config', '/admin', '/superadmin', '/me', '/match', '/bot', '/ui', '/chats', '/swipe', '/posts', '/feed', '/friends', '/radar', '/shake', '/limits', '/quota', '/search', '/users', '/interests', '/bots', '/gifts', '/rooms', '/reports'], w(auth));
 app.get('/me', w(async (q, r) => {
   const role = await loadRole(q.uid);
-  r.json({ uid: q.uid, role: role?.role || 'user', permissions: role?.permissions || {} });
+  const raw = role ? (await db.ref(`roles/${q.uid}/label`).get()).val() : null;
+  r.json({ uid: q.uid, role: raw === 'moderator' ? 'moderator' : (role?.role || 'user'), permissions: role?.permissions || {} });
 }));
+// Whole-app lock: non-staff requests are rejected while appConfig/lock/locked is true (allow /me, /config, /ui/config, /lock).
+let lockCache = { at: 0, v: null };
+async function lockState() { if (Date.now() - lockCache.at < 10e3) return lockCache.v; const v = (await db.ref('appConfig/lock').get()).val() || {}; lockCache = { at: Date.now(), v }; return v; }
+app.use(w(async (q, r, n) => {
+  if (!q.uid) return n();
+  if (/^\/(me|config|ui\/config|lock|admin|superadmin)(\/|$)/.test(q.path)) return n();
+  const l = await lockState(); if (l.locked !== true) return n();
+  const role = await loadRole(q.uid); if (role && ['admin', 'superadmin'].includes(role.role)) return n();
+  r.status(423).json({ error: 'app locked', message: l.message || 'แอปปิดชั่วคราว' });
+}));
+app.get('/lock', w(async (_q, r) => { const l = await lockState(); r.json({ locked: l.locked === true, message: l.message || '', imageUrl: l.imageUrl || '' }); }));
 app.use('/admin', w(isAdmin));
 app.use('/superadmin', w(isSuper));
 app.post('/coins/purchase', w(notBanned), w(async (q, r) => {
@@ -1376,6 +1388,190 @@ app.post('/admin/decor/:chatId/remove-bg', perm('manage_content'), w(async (q, r
   await ref.update({ 'decor/bg/imagePath': '', 'decor/bg/animated': false, rev: Date.now(), removedBgBy: q.uid });
   if (q.body?.reportId && ITEM_ID.test(q.body.reportId)) await db.ref(`decorReports/${q.body.reportId}`).update({ status: 'resolved', by: q.uid });
   r.json({ removed: !!p });
+}));
+
+// ===== Admin console (real data; every route server-gated by role/permission) =====
+const bkkMidnight = () => { const t = Date.now() + 7 * 3600e3; return t - (t % 86400e3) - 7 * 3600e3; };
+const roleOf = v => (typeof v === 'string' ? v : (v?.label === 'moderator' ? 'moderator' : v?.role)) || 'user';
+app.get('/admin/overview', w(async (q, r) => {
+  const [users, roles, bans, posts, kyc, ctx, reps, ledger] = await Promise.all(['users', 'roles', 'bans', 'posts', 'kyc', 'coinTransactions', 'reports', 'adminCoinLedger'].map(p => db.ref(p).get().then(s => s.val() || {})));
+  const day = bkkMidnight(), now24 = Date.now() - 86400e3;
+  let pendingCoins = 0; for (const u of Object.values(ctx)) for (const t of Object.values(u || {})) if (t?.status === 'pending') pendingCoins++;
+  const confirmed = Object.values(ctx).flatMap(u => Object.values(u || {})).filter(t => t?.status === 'paid').reduce((a, t) => a + (Number(t.coins) || 0), 0);
+  const granted = Object.values(ledger).reduce((a, x) => a + (Number(x.amount) || 0), 0);
+  r.json({
+    users: Object.keys(users).length,
+    active24h: Object.values(users).filter(u => Number(u?.lastActive) >= now24).length,
+    newToday: Object.values(users).filter(u => Number(u?.createdAt) >= day).length,
+    postsToday: Object.values(posts).filter(p => Number(p?.createdAt) >= day).length,
+    postsTotal: Object.keys(posts).length,
+    banned: Object.values(bans).filter(b => b && (!b.until || b.until > Date.now())).length,
+    admins: Object.values(roles).filter(v => ['admin', 'superadmin', 'moderator'].includes(roleOf(v))).length,
+    coinsIssued: confirmed + granted, coinsPurchased: confirmed, coinsGranted: granted,
+    pendingCoinRequests: pendingCoins, pendingAgeRequests: Object.values(kyc).filter(k => k?.status === 'pending').length,
+    openReports: Object.values(reps).filter(x => (x?.status || 'open') === 'open').length,
+    yourRole: q.role.role, yourPermissions: q.role.permissions,
+  });
+}));
+app.get('/admin/users', w(async (q, r) => {
+  const term = String(q.query.q || '').trim().toLowerCase(), roleF = String(q.query.role || 'all').toLowerCase();
+  const [users, roles, bans] = await Promise.all(['users', 'roles', 'bans'].map(p => db.ref(p).get().then(s => s.val() || {})));
+  let list = Object.entries(users).map(([uid, u]) => {
+    const b = bans[uid]; const banned = !!(b && (!b.until || b.until > Date.now()));
+    return { uid, displayName: u?.displayName || '', username: u?.username || '', avatar: u?.avatar || '', lastActive: Number(u?.lastActive) || 0, createdAt: Number(u?.createdAt) || 0, role: roleOf(roles[uid]), banned };
+  });
+  const counts = { all: list.length, banned: list.filter(u => u.banned).length }; for (const u of list) counts[u.role] = (counts[u.role] || 0) + 1;
+  if (term) list = list.filter(u => [u.uid, u.displayName, u.username].some(x => x.toLowerCase().includes(term)));
+  if (roleF === 'banned') list = list.filter(u => u.banned);
+  else if (roleF !== 'all') list = list.filter(u => u.role === roleF);
+  list.sort((a, b) => b.lastActive - a.lastActive);
+  const off = Math.max(0, parseInt(q.query.offset) || 0);
+  r.json({ total: list.length, counts, users: list.slice(off, off + 50), next: off + 50 < list.length ? off + 50 : null });
+}));
+app.get('/admin/users/:uid', w(async (q, r) => {
+  const uid = q.params.uid;
+  const [u, role, ban, pb, cb, wal, reps, vip] = await Promise.all([`users/${uid}`, `roles/${uid}`, `bans/${uid}`, `postBlocks/${uid}`, `chatBlocks/${uid}`, `wallets/${uid}`, 'reports', `vip/${uid}`].map(p => db.ref(p).get().then(s => s.val())));
+  if (!u) return r.status(404).json({ error: 'user not found' });
+  const au = await admin.auth().getUser(uid).catch(() => null);
+  const against = Object.entries(reps || {}).filter(([, x]) => x?.targetUid === uid || x?.targetId === uid).map(([id, x]) => ({ id, ...x })).slice(-50).reverse();
+  r.json({ uid, profile: { displayName: u.displayName || '', username: u.username || '', avatar: u.avatar || '', bio: u.bio || '', createdAt: u.createdAt || 0, lastActive: u.lastActive || 0 },
+    email: (can(q.role, 'ban_users') || q.role.role === 'superadmin') ? (au?.email || '') : '', emailVerified: !!au?.emailVerified,
+    role: roleOf(role), permissions: (typeof role === 'object' && role?.permissions) || {},
+    ban: ban && (!ban.until || ban.until > Date.now()) ? ban : null, noPost: pb || null, noChat: cb || null,
+    coins: Number(wal?.coins) || 0, vip: vip || null, reports: against });
+}));
+app.post('/admin/users/:uid/ban', perm('ban_users'), w(notBanned), w(async (q, r) => {
+  const uid = q.params.uid, b = q.body || {};
+  if (uid === q.uid) return r.status(400).json({ error: 'cannot ban yourself' });
+  const tr = await loadRole(uid);
+  if (tr && ['admin', 'superadmin'].includes(tr.role) && q.role.role !== 'superadmin') return r.status(403).json({ error: 'only superadmin can ban admins' });
+  if (tr?.role === 'superadmin') return r.status(403).json({ error: 'cannot ban a superadmin' });
+  if (b.banned === false) { await db.ref(`bans/${uid}`).remove(); await db.ref('adminLog').push({ action: 'unban', uid, by: q.uid, at: Date.now() }); return r.json({ uid, banned: false }); }
+  const days = Math.max(0, Math.min(3650, Number(b.days) || 0));
+  const entry = { reason: String(b.reason || '').slice(0, 200) || 'ละเมิดกฎการใช้งาน', by: q.uid, at: Date.now(), until: days ? Date.now() + days * 86400e3 : null };
+  await db.ref(`bans/${uid}`).set(entry);
+  await admin.auth().revokeRefreshTokens(uid).catch(() => {});
+  await db.ref('adminLog').push({ action: 'ban', uid, days, by: q.uid, at: Date.now() });
+  r.json({ uid, banned: true, ...entry });
+}));
+app.post('/admin/users/:uid/coins', perm('coins_confirm'), w(notBanned), w(async (q, r) => {
+  const uid = q.params.uid, amount = Math.trunc(Number(q.body?.amount)), reason = String(q.body?.reason || '').trim().slice(0, 200);
+  if (!Number.isFinite(amount) || amount === 0 || Math.abs(amount) > 100000) return r.status(400).json({ error: 'amount must be a non-zero integer within ±100000' });
+  if (reason.length < 3) return r.status(400).json({ error: 'reason required' });
+  if (!(await db.ref(`users/${uid}`).get()).exists()) return r.status(404).json({ error: 'user not found' });
+  let insufficient = false;
+  const res = await db.ref(`wallets/${uid}/coins`).transaction(c => { const v = Number(c) || 0; if (v + amount < 0) { insufficient = true; return; } insufficient = false; return v + amount; });
+  if (!res.committed) return r.status(409).json({ error: insufficient ? 'balance would go negative' : 'busy, retry' });
+  await db.ref('adminCoinLedger').push({ uid, amount, reason, by: q.uid, at: Date.now() });
+  r.json({ uid, coins: res.snapshot.val() });
+}));
+// superadmin: set role user|moderator|admin with permissions (superadmin roles are not changeable here)
+app.put('/superadmin/users/:uid/role', w(notBanned), w(async (q, r) => {
+  const uid = q.params.uid, role = String(q.body?.role || '');
+  if (!['user', 'moderator', 'admin'].includes(role)) return r.status(400).json({ error: 'role must be user|moderator|admin' });
+  if (uid === q.uid) return r.status(400).json({ error: 'cannot change your own role' });
+  const cur = await loadRole(uid); if (cur?.role === 'superadmin') return r.status(409).json({ error: 'target is superadmin' });
+  if (role === 'user') { await db.ref(`roles/${uid}`).remove(); return r.json({ uid, role }); }
+  const p = {}; for (const k of PERMS) p[k] = q.body?.permissions?.[k] === true;
+  if (role === 'moderator') { p.coins_confirm = false; p.config_edit = false; p.age_approve = false; }
+  const entry = { role: role === 'moderator' ? 'admin' : 'admin', label: role, permissions: p, grantedBy: q.uid, grantedAt: Date.now() };
+  await db.ref(`roles/${uid}`).set(entry); r.json({ uid, ...entry });
+}));
+// reports: users file, admins with manage_content resolve
+app.post('/reports', w(notBanned), w(async (q, r) => {
+  const b = q.body || {}, type = String(b.targetType || '');
+  if (!['post', 'user', 'comment'].includes(type) || typeof b.targetId !== 'string' || !b.targetId || b.targetId.length > 128) return r.status(400).json({ error: 'targetType and targetId required' });
+  const today = new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
+  const cnt = await db.ref(`usage/${q.uid}/${today.replace(/-/g, '')}/reports`).transaction(c => (Number(c) || 0) + 1);
+  if (cnt.snapshot.val() > 30) return r.status(429).json({ error: 'too many reports today' });
+  let targetUid = typeof b.targetUid === 'string' ? b.targetUid : null, preview = '';
+  if (type === 'post') { const p = (await db.ref(`posts/${b.targetId}`).get()).val(); if (!p) return r.status(404).json({ error: 'post not found' }); targetUid = p.authorId; preview = String(p.text || '').slice(0, 140); }
+  if (type === 'user') targetUid = b.targetId;
+  const ref = db.ref('reports').push();
+  await ref.set({ reporterUid: q.uid, targetType: type, targetId: b.targetId, targetUid, preview, reason: String(b.reason || '').slice(0, 300) || 'ไม่ระบุ', status: 'open', createdAt: Date.now() });
+  r.status(201).json({ id: ref.key });
+}));
+app.get('/admin/reports', perm('manage_content'), w(async (q, r) => {
+  const status = String(q.query.status || 'open');
+  const [reps, users] = await Promise.all([db.ref('reports').get(), db.ref('users').get()]);
+  const us = users.val() || {};
+  const list = Object.entries(reps.val() || {}).map(([id, x]) => ({ id, reporterUid: x.reporterUid || '', targetType: x.targetType || 'user', targetId: x.targetId || x.targetUid || '', targetUid: x.targetUid || '',
+    preview: x.preview || x.details || '', reason: x.reason || '', status: x.status || 'open', createdAt: Number(x.createdAt) || 0,
+    reporterName: us[x.reporterUid]?.displayName || '', targetName: us[x.targetUid]?.displayName || '' }))
+    .filter(x => status === 'all' || x.status === status).sort((a, b) => b.createdAt - a.createdAt).slice(0, 200);
+  r.json({ reports: list });
+}));
+app.post('/admin/reports/:id/resolve', perm('manage_content'), w(notBanned), w(async (q, r) => {
+  const id = q.params.id, action = String(q.body?.action || '');
+  const rep = (await db.ref(`reports/${id}`).get()).val(); if (!rep) return r.status(404).json({ error: 'not found' });
+  if (!['dismiss', 'remove_post', 'ban'].includes(action)) return r.status(400).json({ error: 'action must be dismiss|remove_post|ban' });
+  if (action === 'remove_post') {
+    const pid = rep.targetType === 'post' ? rep.targetId : null; if (!pid) return r.status(400).json({ error: 'report is not about a post' });
+    const post = (await db.ref(`posts/${pid}`).get()).val();
+    if (post) {
+      const del = { [`posts/${pid}`]: null, [`postLikes/${pid}`]: null, [`postComments/${pid}`]: null, [`authorPosts/${post.authorId}/${pid}`]: null };
+      for (const t of post.hashtags || []) del[`hashtags/${t}/${pid}`] = null;
+      await db.ref().update(del);
+      for (const im of post.images || []) await admin.storage().bucket(STORAGE_BUCKET).file(im.path).delete().catch(() => {});
+    }
+  }
+  if (action === 'ban') {
+    if (!can(q.role, 'ban_users')) return r.status(403).json({ error: 'missing permission ban_users' });
+    const tu = rep.targetUid; if (!tu) return r.status(400).json({ error: 'no target user' });
+    const tr = await loadRole(tu); if (tr?.role === 'superadmin' || (tr?.role === 'admin' && q.role.role !== 'superadmin')) return r.status(403).json({ error: 'cannot ban this account' });
+    const days = Math.max(0, Math.min(3650, Number(q.body?.days) || 0));
+    await db.ref(`bans/${tu}`).set({ reason: `รายงาน: ${rep.reason || ''}`.slice(0, 200), by: q.uid, at: Date.now(), until: days ? Date.now() + days * 86400e3 : null });
+    await admin.auth().revokeRefreshTokens(tu).catch(() => {});
+  }
+  await db.ref(`reports/${id}`).update({ status: action === 'dismiss' ? 'dismissed' : 'actioned', action, resolvedBy: q.uid, resolvedAt: Date.now() });
+  await db.ref('adminLog').push({ action: `report_${action}`, reportId: id, by: q.uid, at: Date.now() });
+  r.json({ id, status: action === 'dismiss' ? 'dismissed' : 'actioned' });
+}));
+
+app.put('/admin/lock', perm('app_lock'), w(notBanned), w(async (q, r) => {
+  const b = q.body || {}; if (typeof b.locked !== 'boolean') return r.status(400).json({ error: 'locked (boolean) required' });
+  const img = String(b.imageUrl || ''); if (img && !/^https:\/\//.test(img)) return r.status(400).json({ error: 'imageUrl must be https' });
+  const v = { locked: b.locked, message: String(b.message || '').slice(0, 300) || 'แอปปิดปรับปรุงชั่วคราว ขออภัยในความไม่สะดวก', imageUrl: img.slice(0, 500), by: q.uid, at: Date.now() };
+  await db.ref('appConfig/lock').set(v); lockCache = { at: 0, v: null };
+  await db.ref('adminLog').push({ action: b.locked ? 'app_lock' : 'app_unlock', by: q.uid, at: Date.now(), message: v.message });
+  r.json(v);
+}));
+app.get('/admin/lock/log', perm('app_lock'), w(async (_q, r) => {
+  const v = (await db.ref('adminLog').orderByChild('at').limitToLast(200).get()).val() || {};
+  r.json({ log: Object.values(v).filter(x => String(x.action).startsWith('app_')).sort((a, b) => b.at - a.at).slice(0, 30) });
+}));
+// Coming-soon placeholders (superadmin only). appConfig/comingSoon/{target} — clients read live via RTDB.
+const CS_ID = /^[a-z0-9_]{2,40}$/;
+const csUrl = id => `https://friendtalk-brain-123224091480.asia-southeast1.run.app/cs-assets/${id}`;
+app.get('/cs-assets/:id', w(async (q, r) => {
+  if (!CS_ID.test(q.params.id)) return r.status(400).end();
+  const f = admin.storage().bucket(STORAGE_BUCKET).file(`comingSoon/${q.params.id}.webp`);
+  const [ok] = await f.exists(); if (!ok) return r.status(404).end();
+  const [meta] = await f.getMetadata(); r.set('Content-Type', meta.contentType || 'image/webp'); r.set('Cache-Control', 'public, max-age=300');
+  f.createReadStream().on('error', () => r.status(500).end()).pipe(r);
+}));
+app.put('/superadmin/coming-soon/:id', w(notBanned), w(async (q, r) => {
+  const id = q.params.id, b = q.body || {}; if (!CS_ID.test(id)) return r.status(400).json({ error: 'bad target' });
+  const ref = db.ref(`appConfig/comingSoon/${id}`), cur = (await ref.get()).val() || {};
+  const v = { enabled: b.enabled !== false, text: String(b.text ?? cur.text ?? '').slice(0, 120) || 'เร็ว ๆ นี้ รอติดตาม', sticker: String(b.sticker ?? cur.sticker ?? '').slice(0, 16),
+    imageUrl: b.removeImage ? '' : (cur.imageUrl || ''), by: q.uid, at: Date.now() };
+  await ref.set(v); r.json(v);
+}));
+app.put('/superadmin/coming-soon/:id/image', express.raw({ type: 'image/*', limit: '1mb' }), w(async (q, r) => {
+  const id = q.params.id; if (!CS_ID.test(id)) return r.status(400).json({ error: 'bad target' });
+  const buf = q.body; if (!Buffer.isBuffer(buf) || !buf.length) return r.status(400).json({ error: 'image body required' });
+  const isWebp = buf.slice(0, 4).toString() === 'RIFF' && buf.slice(8, 12).toString() === 'WEBP', isPng = buf[0] === 0x89 && buf[1] === 0x50, isJpg = buf[0] === 0xff && buf[1] === 0xd8;
+  if (!isWebp && !isPng && !isJpg) return r.status(400).json({ error: 'webp/png/jpeg only' });
+  await admin.storage().bucket(STORAGE_BUCKET).file(`comingSoon/${id}.webp`).save(buf, { contentType: isWebp ? 'image/webp' : isPng ? 'image/png' : 'image/jpeg', resumable: false });
+  const ref = db.ref(`appConfig/comingSoon/${id}`), cur = (await ref.get()).val() || {};
+  const v = { enabled: cur.enabled !== false, text: cur.text || 'เร็ว ๆ นี้ รอติดตาม', sticker: cur.sticker || '', imageUrl: `${csUrl(id)}?v=${Date.now()}`, by: q.uid, at: Date.now() };
+  await ref.set(v); r.json(v);
+}));
+app.delete('/superadmin/coming-soon/:id', w(async (q, r) => {
+  const id = q.params.id; if (!CS_ID.test(id)) return r.status(400).json({ error: 'bad target' });
+  await db.ref(`appConfig/comingSoon/${id}`).remove();
+  await admin.storage().bucket(STORAGE_BUCKET).file(`comingSoon/${id}.webp`).delete().catch(() => {});
+  r.json({ removed: id });
 }));
 app.use((e, _q, r, _n) => {
   if (e.type === 'entity.too.large') return r.status(413).json({ error: 'request too large' });
