@@ -279,7 +279,7 @@ fun FeedTab(
         }
 
         // Old mock-post FAB hidden: real posts use the composer at the top of the feed
-        com.example.ads.FeedBanner(Modifier.align(Alignment.BottomCenter))
+        com.example.ads.PlacementBanner("home", Modifier.align(Alignment.BottomCenter))
     }
 
     // Dialogs

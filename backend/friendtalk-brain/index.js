@@ -107,6 +107,14 @@ app.put('/admin/feature-locks', perm('app_lock'), w(notBanned), w(async (q, r) =
   await db.ref('adminLog').push({ action: 'app_feature_locks', by: q.uid, at: Date.now(), message: Object.keys(parts).join(',') || '(none)' });
   r.json(v);
 }));
+// Ad placements (live via RTDB appConfig/adPlacements; clients read directly).
+const AD_PLACES = ['home', 'discover', 'chatList', 'video', 'inFeed', 'chatRoom'];
+app.put('/admin/ad-placements', perm('config_edit'), w(notBanned), w(async (q, r) => {
+  const b = q.body || {}, v = {};
+  for (const k of AD_PLACES) if (typeof b[k] === 'boolean') v[k] = b[k];
+  v.inFeedEvery = Math.max(2, Math.min(50, parseInt(b.inFeedEvery) || 5)); v.by = q.uid; v.at = Date.now();
+  await db.ref('appConfig/adPlacements').set(v); r.json(v);
+}));
 app.get('/lock', w(async (_q, r) => { const l = await lockState(); r.json({ locked: l.locked === true, message: l.message || '', imageUrl: l.imageUrl || '' }); }));
 app.use('/admin', w(isAdmin));
 app.use('/superadmin', w(isSuper));

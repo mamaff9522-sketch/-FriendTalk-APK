@@ -69,6 +69,7 @@ fun RealChatListScreen() {
                 border = androidx.compose.foundation.BorderStroke(1.5.dp, androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Purple500, Pink500)))) { Text(tr("🤖 คุยกับ AI"), color = White, fontSize = 15.sp, fontWeight = FontWeight.Bold) } }
         }
         if (aiHub) com.example.ui.ai.AiHubDialog { aiHub = false }
+        com.example.ads.PlacementBanner("chatList")
         Spacer(Modifier.height(8.dp))
         val previews by produceState(emptyMap<String, com.example.social.GiftRepo.Decor>(), chats?.size) { chats?.let { value = com.example.social.GiftRepo.previews(it.map { c -> c.chatId }) } }
         when {
@@ -180,6 +181,7 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                 val shared by produceState<com.example.social.Similarity?>(null, otherUid) { if (otherUid.isNotBlank()) value = com.example.social.InterestsRepo.profile(otherUid)?.similarity }
                 shared?.takeIf { it.shared.isNotEmpty() }?.let { Surface(color = Slate800, modifier = Modifier.fillMaxWidth()) { Box(Modifier.padding(10.dp)) { SharedInterests(it) } } }
                 decorState?.hiddenReason?.takeIf { it.isNotBlank() }?.let { Text("✨ $it", color = Slate400, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 12.dp)) }
+                com.example.ads.PlacementBanner("chatRoom")
                 Box(Modifier.weight(1f)) {
                 if (decor != null) DecorBackground(chatId, decor, token, stickerList.associateBy { it.id }, lite)
                 LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),

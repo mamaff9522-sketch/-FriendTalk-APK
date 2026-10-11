@@ -1,5 +1,6 @@
 package com.example.ui.social
 
+import androidx.compose.foundation.lazy.itemsIndexed
 import com.example.ui.components.tr
 import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.rememberScrollState
@@ -113,7 +114,8 @@ fun LazyListScope.realFeedItems(state: RealFeedState) {
             if (!state.endReached) TextButton(onClick = { state.loadMore() }) { Text(tr("โหลดโพสต์เพิ่ม"), color = Pink400) }
         }
     }
-    items(shown, key = { "rp_" + it.id }) { p ->
+    itemsIndexed(shown, key = { _, it -> "rp_" + it.id }) { idx, p ->
+        if (idx > 0 && idx % com.example.ads.AdPlacements.inFeedEvery == 0) com.example.ads.PlacementBanner("inFeed", Modifier.padding(vertical = 6.dp))
         RealPostCard(p, onLike = { state.toggleLike(p) }, onComments = { state.commentsFor = p }, onDelete = { state.delete(p) },
             onTag = { state.openTag = it }, onVisibility = { v -> when (v) { "#comments_on" -> state.setCommentsOff(p, false); "#comments_off" -> state.setCommentsOff(p, true); else -> state.setVisibility(p, v) } })
         if (p.id == shown.lastOrNull()?.id) LaunchedEffect(p.id, state.posts.size) { state.loadMore() }

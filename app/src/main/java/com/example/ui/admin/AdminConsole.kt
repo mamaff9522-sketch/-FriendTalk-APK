@@ -371,11 +371,11 @@ private fun ReportsPane(p: Perms) {
 
 @Composable
 private fun EconomyPane(p: Perms) {
-    val subs = buildList { if (p.has("config_edit")) add("limits" to "ลิมิต & โฆษณา"); if (p.has("manage_content")) add("gifts" to "ของขวัญ & สติกเกอร์") }
+    val subs = buildList { if (p.has("config_edit")) { add("limits" to "ลิมิต & โฆษณา"); add("placements" to "ตำแหน่งโฆษณา") }; if (p.has("manage_content")) add("gifts" to "ของขวัญ & สติกเกอร์") }
     var sub by remember { mutableStateOf(subs.firstOrNull()?.first ?: "") }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.padding(12.dp, 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) { subs.forEach { (k, l) -> FilterChip(selected = sub == k, onClick = { sub = k }, label = { Text(l) }) } }
-        Box(Modifier.fillMaxSize()) { when (sub) { "limits" -> AdminLimitsTab(); "gifts" -> AdminGiftsTab() } }
+        Box(Modifier.fillMaxSize()) { when (sub) { "limits" -> AdminLimitsTab(); "placements" -> AdPlacementsCard(); "gifts" -> AdminGiftsTab() } }
     }
 }
 
@@ -466,5 +466,35 @@ private fun FeatureLocksCard(onChanged: () -> Unit) {
             Button(onClick = { save(locked) }) { Text("บันทึกข้อความ") }
             if (status.isNotBlank()) Text(status, color = Amber400, fontSize = 12.sp)
         }
+    }
+}
+
+
+@Composable
+private fun AdPlacementsCard() {
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) { com.example.ads.AdPlacements.start() }
+    val cur = com.example.ads.AdPlacements.cfg
+    var every by remember(com.example.ads.AdPlacements.inFeedEvery) { mutableStateOf(com.example.ads.AdPlacements.inFeedEvery.toString()) }
+    var status by remember { mutableStateOf("") }
+    val labels = linkedMapOf("home" to "หน้าแรก (แบนเนอร์ล่าง)", "discover" to "หาเพื่อน", "chatList" to "รายการแชท", "video" to "วิดีโอ",
+        "inFeed" to "ในฟีด คั่นระหว่างโพสต์", "chatRoom" to "แชท 1:1 (แบนเนอร์เล็กด้านบน)")
+    fun save(m: Map<String, Boolean>) { scope.launch {
+        val j = JSONObject(); m.forEach { (k, v) -> j.put(k, v) }; j.put("inFeedEvery", every.toIntOrNull() ?: 5)
+        val r = api("PUT", "/admin/ad-placements", j); status = if (r.code == 200) "บันทึกแล้ว — มีผลทันที" else err(r)
+    } }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("📍 ตำแหน่งแบนเนอร์โฆษณา", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+        Text("ซ่อนสำหรับ VIP · บัญชีแอดมินเห็นโฆษณาทดสอบเหมือนเดิม · ต้องเปิด 'แบนเนอร์' ในหน้าลิมิตด้วย · Interstitial ตั้งค่าที่หน้าลิมิต (ค่าเริ่มต้นปิด)", color = Slate400, fontSize = 11.sp)
+        labels.forEach { (k, l) ->
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(l, color = White, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                Switch(checked = cur[k] == true, onCheckedChange = { save(cur + (k to it)) })
+            }
+        }
+        OutlinedTextField(value = every, onValueChange = { every = it.filter(Char::isDigit).take(2) }, label = { Text("ในฟีด: แสดงทุก ๆ N โพสต์ (2–50)") }, singleLine = true,
+            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White))
+        Button(onClick = { save(cur) }) { Text("บันทึก") }
+        if (status.isNotBlank()) Text(status, color = Amber400, fontSize = 12.sp)
     }
 }

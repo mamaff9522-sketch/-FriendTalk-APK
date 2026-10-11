@@ -188,7 +188,35 @@ object AdsManager {
     }
 }
 
-/** Small banner for the bottom of the Feed only. Hidden for VIP / when disabled by admin. */
+/** Admin ad placements (RTDB appConfig/adPlacements, live). Defaults: home bottom + 1:1 chat-room top ON, others OFF. */
+object AdPlacements {
+    var cfg by androidx.compose.runtime.mutableStateOf(mapOf("home" to true, "chatRoom" to true))
+    var inFeedEvery by androidx.compose.runtime.mutableIntStateOf(5)
+    val DEFAULTS = linkedMapOf("home" to true, "discover" to false, "chatList" to false, "video" to false, "inFeed" to false, "chatRoom" to true)
+    private var started = false
+    fun start() {
+        if (started) return; started = true
+        com.google.firebase.database.FirebaseDatabase.getInstance("https://friendtalk-4e623-default-rtdb.asia-southeast1.firebasedatabase.app")
+            .getReference("appConfig/adPlacements").addValueEventListener(object : com.google.firebase.database.ValueEventListener {
+                override fun onDataChange(s: com.google.firebase.database.DataSnapshot) {
+                    cfg = DEFAULTS.mapValues { (k, d) -> s.child(k).getValue(Boolean::class.java) ?: d }
+                    inFeedEvery = (s.child("inFeedEvery").getValue(Long::class.java) ?: 5L).toInt().coerceIn(2, 50)
+                }
+                override fun onCancelled(e: com.google.firebase.database.DatabaseError) {}
+            })
+    }
+    fun on(place: String) = cfg[place] ?: DEFAULTS[place] ?: false
+}
+
+/** Banner for a given placement (home | discover | chatList | video | inFeed | chatRoom). Hidden for VIP / when disabled. */
+@Composable
+fun PlacementBanner(place: String, modifier: Modifier = Modifier) {
+    LaunchedEffect(Unit) { AdPlacements.start(); if (AdRoom.limits.value == null) AdRoom.refresh() }
+    if (!AdPlacements.on(place)) return
+    FeedBanner(modifier)
+}
+
+/** Small banner. Hidden for VIP / when disabled by admin. */
 @Composable
 fun FeedBanner(modifier: Modifier = Modifier) {
     val l by AdRoom.limits.collectAsState()

@@ -75,6 +75,11 @@ fun RealVerticalFeed() {
     val state = rememberRealFeedState()
     LaunchedEffect(Unit) { if (state.posts.isEmpty()) state.refresh() }
     val media = state.posts.filter { it.imageUrls.isNotEmpty() }
+    Box(Modifier.fillMaxSize()) { RealVerticalFeedBody(state, media) ; com.example.ads.PlacementBanner("video", Modifier.align(Alignment.BottomCenter)) }
+}
+
+@Composable
+private fun RealVerticalFeedBody(state: RealFeedState, media: List<com.example.social.FeedPost>) {
     if (media.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {

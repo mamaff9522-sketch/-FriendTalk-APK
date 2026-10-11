@@ -323,6 +323,7 @@ fun FriendTalkApp(
                         onLogout = onSignOut
                     )
                 } } }
+                if (uiState.activeTab == "discover") com.example.ads.PlacementBanner("discover", Modifier.align(androidx.compose.ui.Alignment.BottomCenter))
 
                 // Global Gift Animation Overlay
                 GiftAnimationOverlay(activeGift = uiState.activeGiftAnimation)
