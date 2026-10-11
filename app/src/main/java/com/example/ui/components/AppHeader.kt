@@ -80,23 +80,27 @@ fun AppHeader(
                         .clip(RoundedCornerShape(12.dp))
                         .padding(4.dp)
                 ) {
+                    val signedIn = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser != null
                     Box(
                         modifier = Modifier
-                            .size(46.dp)
+                            .size(48.dp)
                             .clip(CircleShape)
-                            .background(
-                                Brush.linearGradient(
-                                    listOf(Pink500, Purple600)
-                                )
-                            ),
+                            .background(Brush.linearGradient(listOf(Pink500, Purple600)))
+                            .clickable { if (signedIn) onOpenProfile() else onOpenAuth() },
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = "FT",
-                            fontWeight = FontWeight.Black,
-                            fontSize = 19.sp,
-                            color = White
-                        )
+                        if (signedIn && currentUser.avatar.isNotBlank()) {
+                            AsyncImage(
+                                model = currentUser.avatar,
+                                contentDescription = "เปิดโปรไฟล์ของฉัน",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.size(42.dp).clip(CircleShape)
+                            )
+                        } else if (signedIn) {
+                            Text(currentUser.displayName.take(1).ifBlank { "?" }, fontWeight = FontWeight.Black, fontSize = 19.sp, color = White)
+                        } else {
+                            Text(text = "FT", fontWeight = FontWeight.Black, fontSize = 19.sp, color = White)
+                        }
                     }
 
                     Spacer(modifier = Modifier.width(10.dp))
@@ -214,16 +218,6 @@ fun AppHeader(
                         }
                     }
 
-                    // User Avatar / Account Details
-                    AsyncImage(
-                        model = currentUser.avatar,
-                        contentDescription = "เปิดโปรไฟล์ของฉัน",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .clickable { onOpenProfile() }
-                    )
                 }
             }
 
