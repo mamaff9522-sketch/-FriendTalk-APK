@@ -199,8 +199,7 @@ fun HomeLayoutEditor() {
         var pan by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("ซูม ${(zoom * 100).toInt()}%  (ใช้สองนิ้วถ่าง/หุบ)", color = Slate400, fontSize = 11.sp, modifier = Modifier.weight(1f))
-            SmallBtn("−") { zoom = (zoom - 0.25f).coerceIn(0.5f, 3f) }
-            Spacer(Modifier.width(4.dp)); SmallBtn("+") { zoom = (zoom + 0.25f).coerceIn(0.5f, 3f) }
+            androidx.compose.material3.Slider(value = zoom.coerceIn(0.5f, 2f), onValueChange = { zoom = it }, valueRange = 0.5f..2f, modifier = Modifier.width(150.dp))
             Spacer(Modifier.width(4.dp)); SmallBtn("รีเซ็ต") { zoom = 1f; pan = androidx.compose.ui.geometry.Offset.Zero }
         }
         Surface(
@@ -212,7 +211,7 @@ fun HomeLayoutEditor() {
                         do {
                             val ev = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
                             if (ev.changes.count { it.pressed } >= 2) {
-                                zoom = (zoom * ev.calculateZoom()).coerceIn(0.5f, 3f)
+                                zoom = (zoom * ev.calculateZoom()).coerceIn(0.5f, 2f)
                                 pan += ev.calculatePan()
                                 ev.changes.forEach { it.consume() }
                             }
