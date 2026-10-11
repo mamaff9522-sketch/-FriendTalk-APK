@@ -660,6 +660,43 @@ app.post('/admin/ui/layout/:screen/revert', perm('config_edit'), w(notBanned), w
   await base.update({ current: { layout: v.layout, publishedAt: t, publishedBy: q.uid, versionId: vid, revertedFrom: vid }, draft: null });
   r.json({ reverted: vid });
 }));
+// ===== Remote UI config (AppUiConfig) — published by admins for all users; stored as a JSON string (RTDB-safe) =====
+const RUI = () => db.ref('appConfig/remoteUi');
+function validRemoteUi(cfg) {
+  if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) return 'config object required';
+  const json = JSON.stringify(cfg);
+  if (Buffer.byteLength(json) > 100 * 1024) return 'config too large (max 100KB)';
+  return json;
+}
+app.get('/ui/config', w(async (_q, r) => {
+  const c = (await RUI().child('current').get()).val();
+  if (!c) return r.json({ config: null });
+  r.json({ config: JSON.parse(c.configJson), versionId: c.versionId, label: c.label || '', publishedAt: c.publishedAt, notes: c.notes || '' });
+}));
+app.get('/admin/ui/config/versions', perm('config_edit'), w(async (_q, r) => {
+  const v = (await RUI().get()).val() || {};
+  const versions = Object.entries(v.versions || {}).map(([id, x]) => ({ versionId: id, label: x.label || '', savedAt: x.savedAt, savedBy: x.savedByName || x.savedBy, notes: x.notes || '', config: JSON.parse(x.configJson) }))
+    .sort((a, b) => b.savedAt - a.savedAt);
+  r.json({ currentVersionId: v.current?.versionId || null, versions });
+}));
+app.put('/admin/ui/config', perm('config_edit'), w(notBanned), w(async (q, r) => {
+  const json = validRemoteUi(q.body?.config); if (!json.startsWith('{')) return r.status(400).json({ error: json });
+  const notes = String(q.body?.notes || '').slice(0, 300), label = String(q.body?.label || '').slice(0, 40), byName = String(q.body?.byName || '').slice(0, 80);
+  const t = Date.now(), id = String(t);
+  await RUI().update({ current: { configJson: json, versionId: id, label, notes, publishedAt: t, publishedBy: q.uid },
+    [`versions/${id}`]: { configJson: json, label, notes, savedAt: t, savedBy: q.uid, savedByName: byName } });
+  const vs = Object.keys((await RUI().child('versions').get()).val() || {}).sort();
+  if (vs.length > 10) await Promise.all(vs.slice(0, vs.length - 10).map(k => RUI().child(`versions/${k}`).remove()));
+  r.json({ published: id, label });
+}));
+app.post('/admin/ui/config/revert', perm('config_edit'), w(notBanned), w(async (q, r) => {
+  const vid = q.body?.versionId;
+  if (typeof vid !== 'string' || !/^\d{1,20}$/.test(vid)) return r.status(400).json({ error: 'versionId required' });
+  const v = (await RUI().child(`versions/${vid}`).get()).val();
+  if (!v) return r.status(404).json({ error: 'version not found' });
+  await RUI().child('current').set({ configJson: v.configJson, versionId: vid, label: v.label || '', notes: v.notes || '', publishedAt: Date.now(), publishedBy: q.uid, revertedFrom: vid });
+  r.json({ reverted: vid });
+}));
 // ===== Phase 1: real chats, swipe match =====
 const STORAGE_BUCKET = process.env.STORAGE_BUCKET || 'friendtalk-4e623.firebasestorage.app';
 const UID_RE = /^[A-Za-z0-9]{10,128}$/;

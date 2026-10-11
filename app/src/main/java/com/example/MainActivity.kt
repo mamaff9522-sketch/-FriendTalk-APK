@@ -93,6 +93,7 @@ fun FriendTalkRoot(
             viewModel.syncFirebaseUser(user)
             if (com.example.social.SocialRepo.upsertOnSignIn(user)) com.example.ui.social.InterestsPrompt.show.value = true
             com.example.social.SocialRepo.startPresence(context)
+            viewModel.refreshRemoteUiConfig() // published Remote UI config for everyone
             com.example.service.UiLayoutRepository.refreshHome()
         }
     }

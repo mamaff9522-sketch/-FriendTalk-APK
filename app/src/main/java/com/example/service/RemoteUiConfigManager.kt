@@ -9,11 +9,44 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 class RemoteUiConfigManager(private val context: Context? = null) {
+
+    // Published config lives on the backend (brain /ui/config, appConfig/remoteUi) so every user gets it without a new APK.
+    private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main)
+    private val adapter = com.squareup.moshi.Moshi.Builder().add(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory()).build().adapter(AppUiConfig::class.java)
+    private val versionIds = mutableMapOf<String, String>() // label -> server versionId
+    private val _publishStatus = MutableStateFlow("")
+    val publishStatus: StateFlow<String> = _publishStatus.asStateFlow()
+    private fun fbUser() = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser
+
+    private suspend fun pushPublished(cfg: AppUiConfig, notes: String, author: String) {
+        val u = fbUser() ?: run { _publishStatus.value = "ยังไม่ได้เข้าสู่ระบบ: เผยแพร่เฉพาะในเครื่องนี้"; return }
+        val body = org.json.JSONObject().put("config", org.json.JSONObject(adapter.toJson(cfg))).put("notes", notes).put("label", cfg.configVersion).put("byName", author)
+        val r = com.example.network.BrainApi.call(u, "PUT", "/admin/ui/config", body)
+        _publishStatus.value = if (r.code == 200) "เผยแพร่ให้ผู้ใช้ทุกคนแล้ว" else "เผยแพร่ไม่สำเร็จ (${r.code}) ${r.json?.optString("error").orEmpty()}"
+        if (r.code == 200) loadVersions()
+    }
+
+    private suspend fun loadVersions() {
+        val u = fbUser() ?: return
+        val r = com.example.network.BrainApi.call(u, "GET", "/admin/ui/config/versions")
+        val arr = r.json?.optJSONArray("versions") ?: return // non-admins get 403: keep local list
+        val cur = r.json?.optString("currentVersionId")
+        val fmt = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+        versionIds.clear()
+        _versionHistory.value = (0 until arr.length()).mapNotNull { i ->
+            val o = arr.getJSONObject(i)
+            val cfg = runCatching { adapter.fromJson(o.getJSONObject("config").toString()) }.getOrNull() ?: return@mapNotNull null
+            val id = o.optString("versionId"); val label = o.optString("label").ifBlank { id }
+            versionIds[label] = id
+            ConfigVersionRecord(label, fmt.format(Date(o.optLong("savedAt"))), o.optString("savedBy"), o.optString("notes"), cfg, id == cur)
+        }
+    }
 
     private val prefs: SharedPreferences? = context?.getSharedPreferences("friendtalk_ui_config", Context.MODE_PRIVATE)
 
@@ -141,6 +174,8 @@ class RemoteUiConfigManager(private val context: Context? = null) {
 
         _activeConfig.value = publishedConfig
         _draftConfig.value = null
+        _publishStatus.value = "กำลังเผยแพร่…"
+        scope.launch { pushPublished(publishedConfig, publishedConfig.versionNotes, author) }
 
         val newRecord = ConfigVersionRecord(
             version = nextVersionNumber,
@@ -171,6 +206,14 @@ class RemoteUiConfigManager(private val context: Context? = null) {
 
         _activeConfig.value = rolledBackConfig
         _draftConfig.value = null
+        versionIds[version]?.let { vid ->
+            scope.launch {
+                val u = fbUser() ?: return@launch
+                val r = com.example.network.BrainApi.call(u, "POST", "/admin/ui/config/revert", org.json.JSONObject().put("versionId", vid))
+                _publishStatus.value = if (r.code == 200) "ย้อนกลับให้ผู้ใช้ทุกคนแล้ว" else "ย้อนกลับไม่สำเร็จ (${r.code})"
+                if (r.code == 200) loadVersions()
+            }
+        }
 
         val updatedHistory = _versionHistory.value.map {
             it.copy(isActive = (it.version == version))
@@ -187,7 +230,13 @@ class RemoteUiConfigManager(private val context: Context? = null) {
     suspend fun refreshRemoteConfig(): Boolean {
         _isRefreshing.value = true
         try {
-            kotlinx.coroutines.delay(600)
+            val u = fbUser() ?: return false
+            val r = com.example.network.BrainApi.call(u, "GET", "/ui/config")
+            if (r.code != 200) return false
+            r.json?.optJSONObject("config")?.let { c ->
+                runCatching { adapter.fromJson(c.toString()) }.getOrNull()?.let { _activeConfig.value = it }
+            }
+            loadVersions()
             return true
         } catch (e: Exception) {
             return false
