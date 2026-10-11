@@ -65,7 +65,7 @@ private fun RealChatListInner() {
     val me = FirebaseAuth.getInstance().currentUser?.uid
     if (me == null) { Text(tr("กรุณาเข้าสู่ระบบ"), color = Slate400, modifier = Modifier.padding(16.dp)); return }
     val chats by remember(me) { SocialRepo.chatList(me) }.collectAsState(initial = null)
-    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
+    com.example.ui.components.UiAutoColumn("cl", "ส่วน", Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
         var aiHub by remember { mutableStateOf(false) }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(tr("แชท"), fontWeight = FontWeight.ExtraBold, fontSize = 30.sp, color = White, modifier = Modifier.weight(1f))

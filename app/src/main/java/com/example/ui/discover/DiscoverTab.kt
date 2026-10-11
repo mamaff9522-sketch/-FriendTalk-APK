@@ -116,7 +116,7 @@ private fun FindFriendsHome(onTile: (String) -> Unit, showCompanion: Boolean) {
     LaunchedEffect(Unit) { online = NearbyRepo.friendsWithOnline().filter { it.second }.map { it.first } }
     LaunchedEffect(granted, radius) { loadNearby() }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
+    com.example.ui.components.UiAutoColumn("dc", "ส่วน", Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
         OutlinedTextField(value = query, onValueChange = { query = it.take(50); if (it.isBlank()) { results = null; searchMsg = "" } },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), singleLine = true, shape = RoundedCornerShape(18.dp),
             leadingIcon = { Text("🔍", fontSize = 18.sp) },

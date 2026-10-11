@@ -257,7 +257,18 @@ fun FeedTab(
             // Server-driven Home layout (UI Builder). Falls back to the built-in order when none/invalid.
             val layout = homeLayout
             if (layout == null) {
-                secTabs(); secBanners(); secStories(); secClubs(); secSdc(); secFeed()
+                val hsp = com.example.ui.components.UiPages.spec("home").sections
+                val editingH = com.example.ui.components.UiEdit.active && !com.example.ui.components.UiEdit.preview
+                val hs = listOf(Triple("h_tabs", "แท็บ", secTabs), Triple("h_banners", "แบนเนอร์", secBanners), Triple("h_stories", "สตอรี่", secStories),
+                    Triple("h_clubs", "คลับ", secClubs), Triple("h_sdc", "การ์ดเซิร์ฟเวอร์", secSdc), Triple("h_feed", "ฟีดโพสต์", secFeed))
+                val hsorted = hs.withIndex().sortedBy { (i, x) -> hsp[x.first]?.order?.takeIf { o -> o > 0 } ?: (i + 1) * 10 }.map { it.value }
+                com.example.ui.components.UiPages.orderOf["home"] = hsorted.map { it.first }
+                com.example.ui.components.UiPages.seenSections["home"] = (com.example.ui.components.UiPages.seenSections["home"] ?: emptyMap()) + hs.associate { it.first to it.second }
+                hsorted.forEach { (id, label, sec) ->
+                    val hidden = hsp[id]?.hidden == true
+                    if (editingH) item(key = "hh_$id") { com.example.ui.components.SectionHandle("home", id, (if (hidden) "⊘ " else "") + label, Modifier) }
+                    if (!hidden || id == "h_feed") sec() // feed is always kept
+                }
             } else {
                 var feedShown = false
                 layout.blocks.filter { it.visible }.forEach { b ->

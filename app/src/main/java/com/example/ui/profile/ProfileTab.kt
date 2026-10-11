@@ -94,7 +94,7 @@ fun ProfileTab(
 
         // Profile Info
         uiItem("pr2", "Profile Info #2") {
-            Column(
+            com.example.ui.components.UiAutoColumn("pf", "ส่วน", 
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp)

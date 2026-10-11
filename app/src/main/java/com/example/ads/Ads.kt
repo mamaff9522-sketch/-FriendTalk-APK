@@ -281,7 +281,7 @@ fun AdsPageContent(feature: String?, onClose: (() -> Unit)?, returnAfterReward: 
     var msg by remember { mutableStateOf("") }
     var vipInfo by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { AdRoom.refresh() }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
+    com.example.ui.components.UiAutoColumn("ad", "ส่วน", Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         val lim = l
         val vip = lim?.tier == "vip"
         Row(verticalAlignment = Alignment.CenterVertically) {
