@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import com.example.ui.components.LocalUiPage
 import com.example.ui.components.UiPages
+import com.example.ui.components.uiEditOutline
 
 /** Drop-in for material3 Text: applies admin overrides (content, size, colour, weight) from the UI Builder. */
 @Composable
@@ -26,9 +27,14 @@ fun Text(
     overflow: TextOverflow = TextOverflow.Clip, softWrap: Boolean = true, maxLines: Int = Int.MAX_VALUE, minLines: Int = 1,
     onTextLayout: ((TextLayoutResult) -> Unit)? = null, style: TextStyle = androidx.compose.material3.LocalTextStyle.current
 ) {
-    val o = UiPages.textFor(LocalUiPage.current, text)
+    val page = LocalUiPage.current
+    val o = UiPages.textFor(page, text)
+    val editing = com.example.ui.components.UiEdit.active && !com.example.ui.components.UiEdit.preview && text.isNotBlank()
+    val shown = o?.t?.let { if (it.isEmpty() && editing) "⊘ $text" else it } ?: text
+    val m = if (!editing) modifier else { val k = UiPages.key(text); val me = com.example.ui.components.UiEdit.Sel(page, k, text)
+        modifier.then(Modifier.uiEditOutline(com.example.ui.components.UiEdit.selected == me) { com.example.ui.components.UiEdit.selected = me }) }
     val c = o?.c?.let { runCatching { Color(android.graphics.Color.parseColor(it)) }.getOrNull() } ?: color
-    androidx.compose.material3.Text(text = o?.t ?: text, modifier = modifier, color = c, fontSize = o?.s?.sp ?: fontSize, fontStyle = fontStyle,
+    androidx.compose.material3.Text(text = shown, modifier = m, color = c, fontSize = o?.s?.sp ?: fontSize, fontStyle = fontStyle,
         fontWeight = o?.w?.let { FontWeight(it) } ?: fontWeight, fontFamily = fontFamily, letterSpacing = letterSpacing, textDecoration = textDecoration,
         textAlign = textAlign, lineHeight = if (o?.s != null) TextUnit.Unspecified else lineHeight, overflow = overflow, softWrap = softWrap,
         maxLines = maxLines, minLines = minLines, onTextLayout = onTextLayout ?: {}, style = style)

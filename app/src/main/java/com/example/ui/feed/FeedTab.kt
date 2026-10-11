@@ -116,7 +116,7 @@ fun FeedTab(
             // Remote Banners & SDUI Announcements
             val visibleBanners = uiConfig.banners.filter { it.isVisible }
             if (visibleBanners.isNotEmpty()) {
-                item {
+                com.example.ui.components.uiItem("fd1", "Remote Banners & SDUI Announce #1") {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -167,7 +167,7 @@ fun FeedTab(
             val secClubs: LazyListScope.() -> Unit = {
             // 3. Optional Clubs Snippet (if enabled in UI config)
             if (false && feedConfig.showClubsSnippet && clubs.isNotEmpty() && selectedCategory == "ทั้งหมด" && searchQuery.isBlank()) {
-                item {
+                com.example.ui.components.uiItem("fd2", "3. Optional Clubs Snippet (if  #2") {
                     ClubsSnippetRow(clubs = clubs, onClubClick = {})
                 }
             }
@@ -215,7 +215,7 @@ fun FeedTab(
             @Suppress("UNUSED_VARIABLE") val secFeedLegacyMock: LazyListScope.() -> Unit = {
             // 4. Post Feed List
             if (filteredPosts.isEmpty()) {
-                item {
+                com.example.ui.components.uiItem("fd3", "4. Post Feed List #3") {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
