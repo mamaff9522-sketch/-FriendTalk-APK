@@ -94,7 +94,7 @@ fun CoinWalletDialog(
                             Text(text = "เหรียญคงเหลือ", fontSize = 12.sp, color = Slate400)
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "🪙 ${currentUser.coins}",
+                                text = "🪙 ${com.example.social.Wallet.coins}",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 20.sp,
                                 color = Amber400

@@ -1136,7 +1136,7 @@ class AuthService private constructor() {
             isVerified = true,
             isOnline = true,
             lastActive = "ออนไลน์ขณะนี้",
-            coins = 1000,
+            coins = 0, // real balance comes from server wallets/{uid} (Wallet)
             diamonds = 0,
             followersCount = 0,
             followingCount = 0,

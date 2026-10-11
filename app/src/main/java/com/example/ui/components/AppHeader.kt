@@ -169,34 +169,14 @@ fun AppHeader(
                         }
                     }
 
-                    // Coins Button
-                    Surface(
-                        shape = RoundedCornerShape(22.dp),
-                        color = Color(0xFF3A2A06),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Amber500.copy(alpha = 0.7f)),
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .clickable { onOpenCoins() }
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                        ) {
-                            Box(Modifier.size(24.dp).clip(CircleShape).background(Brush.radialGradient(listOf(Color(0xFFFFE680), Color(0xFFE0A800)))), contentAlignment = Alignment.Center) {
-                                Text("1", fontSize = 12.sp, fontWeight = FontWeight.Black, color = Color(0xFF8A5A00))
-                            }
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "${currentUser.coins}",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFFFFD54A)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Box(Modifier.size(22.dp).clip(CircleShape).background(Pink500), contentAlignment = Alignment.Center) {
-                                Text("+", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = PureWhite)
-                            }
+                    // Live wallet pills (server wallets/{uid}); tap opens the store tab for that currency
+                    if (com.google.firebase.auth.FirebaseAuth.getInstance().currentUser == null) {
+                        Surface(shape = RoundedCornerShape(20.dp), color = Pink500, modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable { onOpenCoins() }) {
+                            Text(tr("เข้าสู่ระบบ"), color = PureWhite, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
                         }
+                    } else Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        WalletPill("🪙", com.example.social.Wallet.coins, Color(0xFFB45309), Amber500) { com.example.ui.shop.Shop.open.value = "coins" }
+                        WalletPill("💎", com.example.social.Wallet.diamonds, Color(0xFF0369A1), Cyan400) { com.example.ui.shop.Shop.open.value = "diamonds" }
                     }
 
                     // Admin Quick Tools (If Admin/SuperAdmin/Moderator)
@@ -239,6 +219,26 @@ fun AppHeader(
                     }
                 }
             }
+        }
+    }
+}
+
+
+fun compactNum(n: Int): String = when {
+    n >= 1_000_000 -> String.format("%.1fM", n / 1_000_000.0).replace(".0M", "M")
+    n >= 10_000 -> "${n / 1000}K"
+    n >= 1_000 -> String.format("%.1fK", n / 1000.0).replace(".0K", "K")
+    else -> n.toString()
+}
+
+@Composable
+private fun WalletPill(icon: String, value: Int, textColor: Color, border: Color, onClick: () -> Unit) {
+    Surface(shape = RoundedCornerShape(18.dp), color = border.copy(alpha = 0.14f), border = androidx.compose.foundation.BorderStroke(1.dp, border.copy(alpha = 0.6f)),
+        modifier = Modifier.clip(RoundedCornerShape(18.dp)).clickable(onClick = onClick)) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)) {
+            Text(icon, fontSize = 13.sp); Spacer(Modifier.width(3.dp))
+            Text(compactNum(value), fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = textColor)
+            Text(" +", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Pink500)
         }
     }
 }

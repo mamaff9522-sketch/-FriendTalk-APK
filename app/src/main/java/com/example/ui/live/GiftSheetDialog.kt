@@ -61,7 +61,7 @@ fun GiftSheetDialog(
                 Spacer(modifier = Modifier.height(10.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(text = "เหรียญของคุณ: ", fontSize = 12.sp, color = Slate400)
-                    Text(text = "🪙 ${currentUser.coins}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Amber400)
+                    Text(text = "🪙 ${com.example.social.Wallet.coins}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Amber400)
                 }
                 Spacer(modifier = Modifier.height(14.dp))
 
@@ -71,7 +71,7 @@ fun GiftSheetDialog(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(gifts) { gift ->
-                        val canAfford = currentUser.coins >= gift.coins
+                        val canAfford = com.example.social.Wallet.coins >= gift.coins
                         Surface(
                             shape = RoundedCornerShape(14.dp),
                             color = Slate800,

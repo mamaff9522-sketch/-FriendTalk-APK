@@ -185,7 +185,7 @@ fun FriendTalkApp(
     com.example.ui.social.ProfileNav.openOwn = { viewModel.setActiveTab("profile") }
     FriendTalkTheme(themeConfig = uiState.uiConfig.theme) {
         // Maintenance mode from published Remote UI config: blocks normal users, admins still get in.
-        LaunchedEffect(uiState.currentUser.id) { com.example.ui.components.AppGates.start() }
+        LaunchedEffect(uiState.currentUser.id) { com.example.ui.components.AppGates.start(); com.example.social.Wallet.start() }
         if (com.example.ui.components.AppGates.lock.locked && !com.example.ui.components.AppGates.isStaff) {
             com.example.ui.components.AppLockScreen(uiState.uiConfig.appName); return@FriendTalkTheme
         }
@@ -291,25 +291,7 @@ fun FriendTalkApp(
                     // Real 1:1 chats from Firebase RTDB (the old mock ChatTab is kept in code but no longer shown)
                     "chat" -> com.example.ui.social.RealChatListScreen()
 
-                    "companion" -> CompanionMainScreen(
-                        currentUser = uiState.currentUser,
-                        profiles = uiState.companionProfiles,
-                        wallets = uiState.companionWallets,
-                        pricingConfig = uiState.companionPricingConfig,
-                        onOpenApply = { isCompanionApplyOpen = true },
-                        onOpenKyc = { isCompanionKycOpen = true },
-                        onOpenAdmin = { isCompanionAdminOpen = true },
-                        onOpenWallet = { activeCompanionWalletId = it },
-                        onStartSession = { comp, serviceType, rate ->
-                            viewModel.startCompanionSession(comp, serviceType, rate)
-                        },
-                        onSendGiftRequest = { compId, gift, note ->
-                            viewModel.sendCompanionGiftRequest(compId, gift, note)
-                        },
-                        onReportSafety = { compId, name ->
-                            viewModel.submitSafetyReport(compId, name, "INAPPROPRIATE", "รายงานความปลอดภัย")
-                        }
-                    )
+                    "companion" -> com.example.ui.social.RealCompanionScreen() // real partners (companions/), legacy mock CompanionMainScreen no longer shown
 
                     "ads" -> com.example.ads.AdsPage()
                     "profile" -> ProfileTab(
@@ -325,6 +307,7 @@ fun FriendTalkApp(
                 } } }
                 if (uiState.activeTab == "discover") com.example.ads.PlacementBanner("discover", Modifier.align(androidx.compose.ui.Alignment.BottomCenter))
 
+                com.example.ui.shop.ShopHost()
                 // Global Gift Animation Overlay
                 GiftAnimationOverlay(activeGift = uiState.activeGiftAnimation)
             }
@@ -513,10 +496,7 @@ fun FriendTalkApp(
     }
 
     if (isCreatorStudioOpen) {
-        CreatorStudioDialog(
-            currentUser = uiState.currentUser,
-            onDismiss = { isCreatorStudioOpen = false }
-        )
+        com.example.ui.social.CreatorEntryDialog { isCreatorStudioOpen = false }
     }
 
     if (isCreateGroupOpen) {

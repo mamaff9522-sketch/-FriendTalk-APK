@@ -50,14 +50,17 @@ fun Avatar(url: String, name: String, size: Int) {
 }
 
 @Composable
-private fun rememberProfile(uid: String): RealProfile? {
+internal fun rememberProfile(uid: String): RealProfile? {
     val p by produceState<RealProfile?>(null, uid) { value = if (uid.isBlank()) null else SocialRepo.profile(uid) }
     return p
 }
 
 /** Real chat list from RTDB userChats/{uid}. */
 @Composable
-fun RealChatListScreen() {
+fun RealChatListScreen() { ChatRulesGate { RealChatListInner() } }
+
+@Composable
+private fun RealChatListInner() {
     val me = FirebaseAuth.getInstance().currentUser?.uid
     if (me == null) { Text(tr("กรุณาเข้าสู่ระบบ"), color = Slate400, modifier = Modifier.padding(16.dp)); return }
     val chats by remember(me) { SocialRepo.chatList(me) }.collectAsState(initial = null)
@@ -116,6 +119,13 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
     val context = LocalContext.current
     val otherUid by produceState("", chatId) { value = SocialRepo.chatOther(chatId, me).orEmpty() }
     val other = rememberProfile(otherUid)
+    val paid by produceState<Pair<Boolean, String>?>(null, chatId) { value = PaidChat.info(chatId) }
+    var reportU by remember { mutableStateOf(false) }
+    var showRules by remember { mutableStateOf(false) }
+    if (showRules) ChatRulesDialog { showRules = false }
+    LaunchedEffect(otherUid) { if (otherUid.isNotBlank()) { val u = FirebaseAuth.getInstance().currentUser; if (u != null) blocked = com.example.network.BrainApi.call(u, "GET", "/blocks").json?.optJSONArray("blocked")?.let { a -> (0 until a.length()).any { a.optString(it) == otherUid } } == true } }
+    var blocked by remember { mutableStateOf(false) }
+    if (reportU && otherUid.isNotBlank()) ReportDialog("user", otherUid, otherUid) { reportU = false }
     val messages by remember(chatId) { SocialRepo.messages(chatId) }.collectAsState(initial = emptyList())
     val otherRead by remember(chatId, otherUid) { if (otherUid.isBlank()) kotlinx.coroutines.flow.flowOf(0L) else SocialRepo.otherReadAt(chatId, otherUid) }.collectAsState(initial = 0L)
     val token by produceState<String?>(null) { value = idToken() }
@@ -166,6 +176,12 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                             TextButton(onClick = { menu = true }) { Text("⋮", color = White, fontSize = 18.sp) }
                             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                                 val c = cs
+                                DropdownMenuItem(text = { Text(tr("🚩 รายงานผู้ใช้")) }, onClick = { menu = false; reportU = true })
+                                DropdownMenuItem(text = { Text(if (blocked) tr("✅ เลิกบล็อก") else tr("⛔ บล็อกผู้ใช้")) }, onClick = { menu = false; scope.launch {
+                                    val u = FirebaseAuth.getInstance().currentUser ?: return@launch
+                                    val r = com.example.network.BrainApi.call(u, "POST", "/blocks/$otherUid", org.json.JSONObject().put("block", !blocked))
+                                    if (r.code == 200) { blocked = !blocked; status = if (blocked) tr("บล็อกแล้ว — อีกฝ่ายส่งข้อความ/ของขวัญหาคุณไม่ได้") else tr("เลิกบล็อกแล้ว") } else status = tr("ไม่สำเร็จ") } })
+                                DropdownMenuItem(text = { Text(tr("🛡 กติกาการแชท")) }, onClick = { menu = false; showRules = true })
                                 if (c?.closed == true && c.closedByMe) DropdownMenuItem(text = { Text(tr("🔓 เปิดแชทอีกครั้ง")) }, onClick = { menu = false; scope.launch { status = SocialRepo.setClosed(chatId, false).orEmpty(); csTick++ } })
                                 else if (c?.closed != true) DropdownMenuItem(text = { Text(tr("🔒 ปิดแชทนี้")) }, onClick = { menu = false; scope.launch { status = SocialRepo.setClosed(chatId, true).orEmpty(); csTick++ } })
                                 val ds = decorState
@@ -223,7 +239,10 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                     Spacer(Modifier.width(6.dp))
                     Button(enabled = input.isNotBlank(), colors = ButtonDefaults.buttonColors(containerColor = Pink500), onClick = {
                         val t = input; input = ""
-                        scope.launch { if (!SocialRepo.sendText(chatId, t)) { input = t; cs = SocialRepo.chatStatus(chatId); status = if (cs?.canSend == false) "" else tr("ส่งไม่สำเร็จ (ยืนยันอีเมลแล้วหรือยัง?)") } else status = "" }
+                        scope.launch {
+                            val pc = paid
+                            if (pc != null && pc.first && pc.second != me) { PaidChat.send(chatId, t)?.let { e -> input = t; status = e }; return@launch }
+                            if (!SocialRepo.sendText(chatId, t)) { input = t; cs = SocialRepo.chatStatus(chatId); status = if (cs?.canSend == false) "" else tr("ส่งไม่สำเร็จ (ยืนยันอีเมลแล้วหรือยัง?)") } else status = "" }
                     }) { Text(tr("ส่ง")) }
                 }
             }

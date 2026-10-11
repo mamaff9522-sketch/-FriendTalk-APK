@@ -177,7 +177,7 @@ fun ProfileTab(
                             Spacer(modifier = Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(tr("ยอดเหรียญ & เพชร"), fontWeight = FontWeight.Bold, fontSize = 14.sp, color = White)
-                                Text("${currentUser.coins} เหรียญ • ${currentUser.diamonds} เพชร", fontSize = 12.sp, color = Amber400)
+                                Text("${com.example.social.Wallet.coins} เหรียญ • ${com.example.social.Wallet.diamonds} เพชร", fontSize = 12.sp, color = Amber400)
                             }
                             Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Slate400)
                         }
@@ -243,6 +243,18 @@ fun ProfileTab(
                             }
                             Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Slate400)
                         }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    run {
+                        var rules by remember { mutableStateOf(false) }
+                        if (rules) com.example.ui.social.ChatRulesDialog { rules = false }
+                        Surface(shape = RoundedCornerShape(14.dp), color = Slate900, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable { rules = true }) {
+                            Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text("🛡", fontSize = 22.sp); Spacer(Modifier.width(12.dp))
+                                Text(tr("กติกาการแชทและเพื่อนคุย"), fontWeight = FontWeight.Bold, fontSize = 14.sp, color = White, modifier = Modifier.weight(1f))
+                                Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Slate400)
+                            }
+                        }
+                    }
                     Spacer(modifier = Modifier.height(10.dp))
                     run {
                         val act = androidx.compose.ui.platform.LocalContext.current

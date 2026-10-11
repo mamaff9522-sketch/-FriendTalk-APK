@@ -83,7 +83,7 @@ fun AdminConsole(onDismiss: () -> Unit, onOpenUiBuilder: () -> Unit, onOpenApkDo
                 val tabs = buildList {
                     if (p.has("app_lock")) add("system" to "⚙️ ระบบ (ล็อกแอป)")
                     add("overview" to "📊 ภาพรวม"); add("members" to "👥 สมาชิก & สิทธิ์")
-                    if (p.has("manage_content")) add("reports" to "🚨 รายงาน")
+                    if (p.has("manage_content")) { add("reports" to "🚨 รายงาน"); add("applications" to "📝 ใบสมัคร") }
                     if (p.has("config_edit") || p.has("manage_content")) add("economy" to "💰 เศรษฐกิจ")
                     if (p.has("config_edit")) { add("content" to "🎨 เนื้อหา & UI"); add("bots" to "🤖 บอท AI") }
                 }
@@ -98,6 +98,7 @@ fun AdminConsole(onDismiss: () -> Unit, onOpenUiBuilder: () -> Unit, onOpenApkDo
                         "overview" -> OverviewPane(overview, p, onOpenApkDownload) { tick++ }
                         "members" -> MembersPane(p)
                         "reports" -> ReportsPane(p)
+                        "applications" -> com.example.ui.social.AdminApplicationsPane()
                         "economy" -> EconomyPane(p)
                         "content" -> Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text("ปรับหน้าตาแอปทั้งหมดในที่เดียว: ลากวางหน้าแรก, ธีม & สี, จัด Feed, ชื่อแอป/คำโปรย, โหมดปิดปรับปรุง, ประวัติเวอร์ชัน", color = Slate300, fontSize = 13.sp)
@@ -282,7 +283,7 @@ private fun MemberDetail(uid: String, p: Perms, onClose: (Boolean) -> Unit) {
                 if (p.has("coins_confirm")) Section("เหรียญ / เพชร (บันทึกในสมุดบัญชีพร้อมเหตุผล)") {
                     var cur by remember { mutableStateOf("coins") }
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(value = amount, onValueChange = { amount = it.filter { c -> c.isDigit() || c == '-' }.take(7) }, label = { Text("จำนวน (+/-)") }, singleLine = true, modifier = Modifier.width(150.dp),
+                        OutlinedTextField(value = amount, onValueChange = { amount = it.filter { c -> c.isDigit() || (p.superadmin && c == '-') }.take(7) }, label = { Text(if (p.superadmin) "จำนวน (+/-)" else "จำนวน (+ เพิ่มเท่านั้น)") }, singleLine = true, modifier = Modifier.width(150.dp),
                             colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White))
                         Button(enabled = (amount.toIntOrNull() ?: 0) != 0 && reason.trim().length >= 3, onClick = {
                             act("POST", "/admin/users/$uid/coins", JSONObject().put("amount", amount.toInt()).put("reason", reason).put("currency", cur), if (cur == "diamonds") "ปรับเพชรแล้ว" else "ปรับเหรียญแล้ว"); amount = "" },
@@ -376,11 +377,12 @@ private fun ReportsPane(p: Perms) {
 
 @Composable
 private fun EconomyPane(p: Perms) {
-    val subs = buildList { if (p.has("config_edit")) { add("limits" to "ลิมิต & โฆษณา"); add("placements" to "ตำแหน่งโฆษณา") }; if (p.has("manage_content")) add("gifts" to "ของขวัญ & สติกเกอร์") }
+    val subs = buildList { if (p.has("config_edit")) { add("limits" to "ลิมิต & โฆษณา"); add("placements" to "ตำแหน่งโฆษณา"); add("rates" to "อัตราค่าเพื่อนคุย"); add("packs" to "ราคาแพ็กเพชร/เหรียญ") }; if (p.has("manage_content")) add("gifts" to "ของขวัญ & สติกเกอร์") }
     var sub by remember { mutableStateOf(subs.firstOrNull()?.first ?: "") }
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.padding(12.dp, 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) { subs.forEach { (k, l) -> FilterChip(selected = sub == k, onClick = { sub = k }, label = { Text(l) }) } }
-        Box(Modifier.fillMaxSize()) { when (sub) { "limits" -> AdminLimitsTab(); "placements" -> AdPlacementsCard(); "gifts" -> AdminGiftsTab() } }
+        Text(com.example.ui.social.AD_REVENUE_NOTE, color = Slate400, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 12.dp))
+        Row(Modifier.horizontalScroll(rememberScrollState()).padding(12.dp, 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) { subs.forEach { (k, l) -> FilterChip(selected = sub == k, onClick = { sub = k }, label = { Text(l) }) } }
+        Box(Modifier.fillMaxSize()) { when (sub) { "limits" -> AdminLimitsTab(); "placements" -> AdPlacementsCard(); "rates" -> com.example.ui.social.AdminCompanionRatesPane(); "packs" -> com.example.ui.social.AdminShopPacksPane(); "gifts" -> AdminGiftsTab() } }
     }
 }
 

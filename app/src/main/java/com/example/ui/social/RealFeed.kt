@@ -380,7 +380,7 @@ fun ReportDialog(type: String, targetId: String, targetUid: String?, onClose: ()
     var msg by remember { mutableStateOf("") }
     AlertDialog(onDismissRequest = onClose, title = { Text(if (type == "post") tr("รายงานโพสต์") else tr("รายงานผู้ใช้")) },
         text = { Column {
-            listOf(tr("สแปม"), tr("เนื้อหาไม่เหมาะสม"), tr("คุกคาม/กลั่นแกล้ง"), tr("หลอกลวง"), tr("บัญชีปลอม")).forEach { r ->
+            listOf(tr("สแปม"), tr("เนื้อหาไม่เหมาะสม"), "เนื้อหาลามก/ทางเพศ", tr("คุกคาม/กลั่นแกล้ง"), "ข่มขู่/ความรุนแรง", "ถ้อยคำแสดงความเกลียดชัง", "เปิดเผยข้อมูลส่วนตัวผู้อื่น", tr("หลอกลวง"), "ขอเงิน/ฉ้อโกง", tr("บัญชีปลอม"), "แอบอ้างเป็นผู้อื่น", "ผู้เยาว์ / ชักชวนผู้เยาว์", "ยาเสพติด/ผิดกฎหมาย").forEach { r ->
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { reason = r }) { RadioButton(selected = reason == r, onClick = { reason = r }); Text(r) }
             }
             if (msg.isNotBlank()) Text(msg, color = Amber400, fontSize = 12.sp)

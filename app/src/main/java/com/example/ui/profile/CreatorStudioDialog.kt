@@ -48,7 +48,7 @@ fun CreatorStudioDialog(
                     Column(modifier = Modifier.padding(14.dp)) {
                         Text("เพชรรายได้ทั้งหมดจากไลฟ์และของขวัญ:", fontSize = 12.sp, color = Slate400)
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text("💎 ${currentUser.diamonds} เพชร (ประมาณ ฿${currentUser.diamonds / 5})", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Cyan400)
+                        Text("💎 ${com.example.social.Wallet.diamonds} เพชร", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Cyan400)
                         Spacer(modifier = Modifier.height(6.dp))
                         Text("ของขวัญที่ได้รับทั้งหมด: ${currentUser.giftsReceivedTotal} ชิ้น 🎁", fontSize = 12.sp, color = Slate300)
                     }

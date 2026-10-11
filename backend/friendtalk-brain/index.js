@@ -55,7 +55,7 @@ async function isSuper(req, res, next) {
   req.role = r; next();
 }
 const w = fn => (q, r, n) => fn(q, r, n).catch(e => { console.error(e.message); r.status(e.code === 404 ? 404 : 500).json({ error: e.code === 404 ? 'user not found' : 'internal' }); });
-app.use(['/coins', '/age', '/config', '/admin', '/superadmin', '/me', '/match', '/bot', '/ui', '/chats', '/swipe', '/posts', '/feed', '/friends', '/radar', '/shake', '/limits', '/quota', '/search', '/users', '/interests', '/bots', '/gifts', '/rooms', '/reports'], w(auth));
+app.use(['/coins', '/age', '/config', '/admin', '/superadmin', '/me', '/match', '/bot', '/ui', '/chats', '/swipe', '/posts', '/feed', '/friends', '/radar', '/shake', '/limits', '/quota', '/search', '/users', '/interests', '/bots', '/gifts', '/rooms', '/reports', '/creator', '/blocks', '/chat-rules', '/companion-apply', '/companion', '/shop'], w(auth));
 app.get('/me', w(async (q, r) => {
   const role = await loadRole(q.uid);
   const raw = role ? (await db.ref(`roles/${q.uid}/label`).get()).val() : null;
@@ -114,6 +114,266 @@ app.put('/admin/ad-placements', perm('config_edit'), w(notBanned), w(async (q, r
   for (const k of AD_PLACES) if (typeof b[k] === 'boolean') v[k] = b[k];
   v.inFeedEvery = Math.max(2, Math.min(50, parseInt(b.inFeedEvery) || 5)); v.by = q.uid; v.at = Date.now();
   await db.ref('appConfig/adPlacements').set(v); r.json(v);
+}));
+// ===== Creator applications: creatorApplications/{uid} {status pending|approved|rejected, ...}; creators/{uid} = approved.
+const CR_CATS = ['music', 'singing', 'talk', 'gaming', 'dance', 'art', 'cooking', 'fitness', 'education', 'lifestyle', 'other'];
+const DEFAULT_CR_RULES = ['ต้องลงคลิปอย่างต่อเนื่อง', 'ลงคลิปสม่ำเสมอ อย่างน้อยวันละ 1 คลิป (ประมาณ 30 คลิป/เดือน) และห้ามเว้นเกิน 2 วัน', 'ภายใน 30 วัน ต้องมีผู้ชมไม่ซ้ำกัน 100,000 คน (1 คน = 1 วิว ไม่นับซ้ำ ไม่ว่าดูกี่ครั้ง)', 'สิทธิ์รับรายได้จากโฆษณาเฉพาะครีเอเตอร์ที่ได้รับอนุมัติและผ่านเกณฑ์เท่านั้น เริ่มตั้งแต่วันถัดไปหลังได้รับอนุมัติ (ผู้ใช้ทั่วไปไม่มีรายได้จากโฆษณา เป็นผู้ชมโฆษณาเท่านั้น)', 'ต้องมีผู้ติดตาม 5,000 คน', 'คลิปต้องเป็นผลงานของตัวเอง', 'ครีเอเตอร์เป็นผู้รับผิดชอบลิขสิทธิ์ทั้งหมดด้วยตนเอง แอปและผู้โฆษณาไม่รับผิดชอบ', 'โฆษณาหรือเนื้อหาโปรโมตที่ครีเอเตอร์ลง ต้องไม่ละเมิดลิขสิทธิ์', 'หากปฏิบัติตามกติกาครบทุกข้อ ครีเอเตอร์จึงเริ่มได้รับการพิจารณารายได้จากโฆษณา', 'จ่ายรายได้ทุกสิ้นเดือน', 'ยอดขั้นต่ำในการถอน 100 {currency} หากยังไม่ถึงจะสะสมยกยอดไปเดือนถัดไปจนครบ 100 {currency} จึงถอนได้', 'ฉันอายุ 18 ปีขึ้นไป', 'ยอมรับกติกาชุมชน: ไม่มีเนื้อหาลามก ความรุนแรง หลอกลวง หรือละเมิดลิขสิทธิ์'];
+async function creatorRules() { const v = (await db.ref('appConfig/creatorRules').get()).val(); const cur = (v && v.payoutCurrency) || 'เหรียญ', base = v && Array.isArray(v.rules) && v.rules.length ? v.rules : DEFAULT_CR_RULES;
+  return { version: (v && v.version) || 1, payoutCurrency: cur, rawRules: base, rules: base.map(x => String(x).split('{currency}').join(cur)) }; }
+app.put('/admin/creator-rules', perm('manage_content'), w(notBanned), w(async (q, r) => {
+  const rules = (Array.isArray(q.body?.rules) ? q.body.rules : []).map(x => String(x).trim().slice(0, 200)).filter(Boolean).slice(0, 15);
+  if (!rules.length) return r.status(400).json({ error: 'rules required' });
+  const cur = await creatorRules(), v = { version: (cur.version || 1) + 1, rules, payoutCurrency: String(q.body?.payoutCurrency || cur.payoutCurrency || 'เหรียญ').trim().slice(0, 20) || 'เหรียญ', by: q.uid, at: Date.now() };
+  await db.ref('appConfig/creatorRules').set(v); r.json(v);
+}));
+const httpsOk = u => !u || /^https:\/\/[^\s]{3,300}$/.test(u);
+app.get('/creator/status', w(async (q, r) => {
+  const [c, a] = await Promise.all([db.ref(`creators/${q.uid}`).get(), db.ref(`creatorApplications/${q.uid}`).get()]);
+  r.json({ isCreator: c.exists(), application: a.val() || null, rules: await creatorRules(), categories: CR_CATS });
+}));
+app.post('/creator/apply', w(notBanned), w(async (q, r) => {
+  const b = q.body || {};
+  if ((await db.ref(`creators/${q.uid}`).get()).exists()) return r.status(409).json({ error: 'already a creator' });
+  const cur = (await db.ref(`creatorApplications/${q.uid}`).get()).val();
+  if (cur && cur.status === 'pending') return r.status(409).json({ error: 'ใบสมัครกำลังรอตรวจสอบ' });
+  const name = String(b.displayName || '').trim().slice(0, 40), bio = String(b.bio || '').trim().slice(0, 300), cat = String(b.category || '');
+  const links = (Array.isArray(b.links) ? b.links : []).map(x => String(x).trim()).filter(Boolean).slice(0, 5), sample = String(b.sampleUrl || '').trim();
+  if (name.length < 2) return r.status(400).json({ error: 'ต้องใส่ชื่อที่แสดง' });
+  if (!CR_CATS.includes(cat)) return r.status(400).json({ error: 'เลือกหมวดหมู่' });
+  if (bio.length < 10) return r.status(400).json({ error: 'แนะนำตัวอย่างน้อย 10 ตัวอักษร' });
+  if (!links.every(httpsOk) || !httpsOk(sample)) return r.status(400).json({ error: 'ลิงก์ต้องขึ้นต้นด้วย https://' });
+  if (b.adult !== true || b.agree !== true) return r.status(400).json({ error: 'ต้องยืนยันอายุ 18+ และยอมรับกติกา' });
+  const cr = await creatorRules(), agreed = Array.isArray(b.agreedRules) ? b.agreedRules.map(Number) : [];
+  if (+b.rulesVersion !== cr.version) return r.status(409).json({ error: 'กติกามีการเปลี่ยนแปลง กรุณาโหลดใหม่', rules: cr });
+  if (!cr.rules.every((_, i) => agreed.includes(i))) return r.status(400).json({ error: 'ต้องติ๊กยอมรับกติกาทุกข้อ' });
+  const v = { uid: q.uid, displayName: name, category: cat, bio, links, sampleUrl: sample.slice(0, 300), adult: true, agree: true, rulesVersion: cr.version, rulesAgreed: cr.rules, agreedAt: Date.now(), status: 'pending', submittedAt: Date.now(), reason: '' };
+  await db.ref(`creatorApplications/${q.uid}`).set(v); r.json(v);
+}));
+app.get('/admin/creator-applications', perm('manage_content'), w(async (q, r) => {
+  const st = ['pending', 'approved', 'rejected'].includes(q.query.status) ? q.query.status : 'pending';
+  const v = (await db.ref('creatorApplications').get()).val() || {};
+  r.json({ applications: Object.values(v).filter(x => x.status === st).sort((a, b) => b.submittedAt - a.submittedAt).slice(0, 100) });
+}));
+app.post('/admin/creator-applications/:uid/decide', perm('manage_content'), w(notBanned), w(async (q, r) => {
+  const uid = q.params.uid, approve = q.body?.approve === true, reason = String(q.body?.reason || '').trim().slice(0, 300);
+  const ref = db.ref(`creatorApplications/${uid}`), a = (await ref.get()).val();
+  if (!a) return r.status(404).json({ error: 'not found' });
+  if (!approve && reason.length < 3) return r.status(400).json({ error: 'ต้องใส่เหตุผลที่ปฏิเสธ' });
+  const t = Date.now(), upd = { [`creatorApplications/${uid}/status`]: approve ? 'approved' : 'rejected', [`creatorApplications/${uid}/reason`]: reason,
+    [`creatorApplications/${uid}/decidedAt`]: t, [`creatorApplications/${uid}/decidedBy`]: q.uid };
+  if (approve) { upd[`creators/${uid}`] = { at: t, by: q.uid, category: a.category }; upd[`users/${uid}/isCreator`] = true; }
+  else { upd[`creators/${uid}`] = null; upd[`users/${uid}/isCreator`] = null; }
+  await db.ref().update(upd);
+  await db.ref('adminLog').push({ action: approve ? 'creator_approve' : 'creator_reject', target: uid, by: q.uid, at: t, message: reason });
+  r.json({ uid, status: approve ? 'approved' : 'rejected', reason });
+}));
+// ===== User blocks (blocks/{me}/{other}); blocked pair: no messages (RTDB rule via chatBlocked/{chatId}), no gifts, no new chat.
+app.get('/blocks', w(async (q, r) => r.json({ blocked: Object.keys((await db.ref(`blocks/${q.uid}`).get()).val() || {}) })));
+app.post('/blocks/:uid', w(async (q, r) => {
+  const other = q.params.uid; if (!UID_RE.test(other) || other === q.uid) return r.status(400).json({ error: 'bad uid' });
+  const block = q.body?.block !== false, cid = directChatId(q.uid, other), t = Date.now();
+  const upd = { [`blocks/${q.uid}/${other}`]: block ? t : null };
+  const otherBlocks = (await db.ref(`blocks/${other}/${q.uid}`).get()).exists();
+  upd[`chatBlocked/${cid}`] = (block || otherBlocks) ? true : null;
+  await db.ref().update(upd); r.json({ uid: other, blocked: block });
+}));
+// ===== Chat / companion safety rules (appConfig/chatRules {version, rules}); acceptance chatRulesAccepted/{uid} {version, at}
+const DEFAULT_CHAT_RULES = ['ผู้ใช้ต้องมีอายุ 18 ปีขึ้นไปเท่านั้น', 'ห้ามส่งหรือขอเนื้อหาลามก/เรื่องทางเพศ', 'ห้ามคุกคาม กลั่นแกล้ง หรือข่มขู่', 'ห้ามใช้ถ้อยคำแสดงความเกลียดชัง',
+  'ห้ามเปิดเผยข้อมูลส่วนตัวของผู้อื่น', 'ห้ามหลอกลวง ฉ้อโกง หรือขอเงิน', 'ห้ามแอบอ้างเป็นบุคคลอื่น', 'ห้ามติดต่อหรือชักชวนผู้เยาว์ (อายุต่ำกว่า 18 ปี)',
+  'ห้ามความรุนแรง กิจกรรมผิดกฎหมาย หรือยาเสพติด', 'ห้ามสแปมหรือโฆษณา', 'อย่าโอนเงินให้คนแปลกหน้า', 'กดรายงานหรือบล็อกได้ทุกเมื่อจากเมนู ⋯ ในห้องแชท'];
+async function chatRules() { const v = (await db.ref('appConfig/chatRules').get()).val(); return v && Array.isArray(v.rules) && v.rules.length ? { version: v.version || 1, rules: v.rules } : { version: 1, rules: DEFAULT_CHAT_RULES }; }
+app.get('/chat-rules', w(async (q, r) => { const cr = await chatRules(); const a = (await db.ref(`chatRulesAccepted/${q.uid}`).get()).val(); r.json({ ...cr, accepted: !!(a && a.version === cr.version), acceptedAt: a?.at || 0 }); }));
+app.post('/chat-rules/accept', w(async (q, r) => {
+  const cr = await chatRules(); if (+q.body?.version !== cr.version) return r.status(409).json({ error: 'rules changed', ...cr });
+  await db.ref(`chatRulesAccepted/${q.uid}`).set({ version: cr.version, at: Date.now() }); r.json({ accepted: true, version: cr.version });
+}));
+app.put('/admin/chat-rules', perm('manage_content'), w(notBanned), w(async (q, r) => {
+  const rules = (Array.isArray(q.body?.rules) ? q.body.rules : []).map(x => String(x).trim().slice(0, 200)).filter(Boolean).slice(0, 25);
+  if (!rules.length) return r.status(400).json({ error: 'rules required' });
+  const cur = await chatRules(), v = { version: cur.version + 1, rules, by: q.uid, at: Date.now() }; await db.ref('appConfig/chatRules').set(v); r.json(v);
+}));
+// ===== เพื่อนคุย partner applications: public part companionApplications/{uid}; private part private/{uid}/companion (real name, phone) — never returned to other users.
+const SLOTS = ['morning', 'afternoon', 'evening', 'night'], DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+const HR = /^([01]\d|2[0-3]):[0-5]\d-([01]\d|2[0-3]):[0-5]\d$/;
+app.get('/companion-apply', w(async (q, r) => {
+  const [a, pv] = await Promise.all([db.ref(`companionApplications/${q.uid}`).get(), db.ref(`private/${q.uid}/companion`).get()]);
+  r.json({ application: a.val() || null, private: pv.val() || null }); // own data only
+}));
+app.post('/companion-apply', w(notBanned), w(async (q, r) => {
+  const b = q.body || {};
+  const cur = (await db.ref(`companionApplications/${q.uid}`).get()).val(); if (cur && cur.status === 'pending') return r.status(409).json({ error: 'ใบสมัครกำลังรอตรวจสอบ' });
+  const realName = String(b.realName || '').trim().slice(0, 80), occ = String(b.occupation || '').trim().slice(0, 60), dn = String(b.displayName || '').trim().slice(0, 40);
+  const age = parseInt(b.age), phone = String(b.phone || '').replace(/[\s-]/g, '');
+  if (realName.length < 2) return r.status(400).json({ error: 'กรอกชื่อจริง' });
+  if (occ.length < 2) return r.status(400).json({ error: 'กรอกอาชีพ' });
+  if (dn.length < 2) return r.status(400).json({ error: 'กรอกชื่อที่แสดงในแอป' });
+  if (!(age >= 18 && age <= 99)) return r.status(400).json({ error: 'ต้องมีอายุ 18 ปีขึ้นไป' });
+  if (!/^(0[689]\d{8}|0[2-7]\d{7}|\+66[689]\d{8})$/.test(phone)) return r.status(400).json({ error: 'เบอร์โทรไม่ถูกต้อง (เช่น 0812345678)' });
+  const slots = (Array.isArray(b.slots) ? b.slots : []).filter(x => SLOTS.includes(x)); if (!slots.length) return r.status(400).json({ error: 'เลือกช่วงเวลาที่สะดวกอย่างน้อย 1 ช่วง' });
+  const hours = {}; for (const d of DAYS) { const v = String(b.hours?.[d] || '').trim(); if (v) { if (!HR.test(v)) return r.status(400).json({ error: `เวลา ${d} ต้องเป็นรูปแบบ 18:00-22:00` }); hours[d] = v; } }
+  const modes = (Array.isArray(b.modes) ? b.modes : []).filter(x => ['text', 'voice', 'video'].includes(x)); if (!modes.length) return r.status(400).json({ error: 'เลือกรูปแบบการคุยอย่างน้อย 1 แบบ' });
+  const t = Date.now(), talkStyle = String(b.talkStyle || '').trim().slice(0, 300), personality = String(b.personality || '').trim().slice(0, 300);
+  await db.ref().update({
+    [`companionApplications/${q.uid}`]: { uid: q.uid, displayName: dn, occupation: occ, age, slots, hours, talkStyle, personality, modes: [...new Set(modes)], status: 'pending', submittedAt: t, reason: '' },
+    [`private/${q.uid}/companion`]: { realName, phone, updatedAt: t }
+  });
+  r.json({ status: 'pending' });
+}));
+app.get('/admin/companion-applications', perm('manage_content'), w(async (q, r) => {
+  const st = ['pending', 'approved', 'rejected'].includes(q.query.status) ? q.query.status : 'pending';
+  const v = (await db.ref('companionApplications').get()).val() || {};
+  const list = Object.values(v).filter(x => x.status === st).sort((a, b) => b.submittedAt - a.submittedAt).slice(0, 100);
+  const withPriv = await Promise.all(list.map(async a => ({ ...a, private: (await db.ref(`private/${a.uid}/companion`).get()).val() || null })));
+  r.json({ applications: withPriv });
+}));
+app.post('/admin/companion-applications/:uid/decide', perm('manage_content'), w(notBanned), w(async (q, r) => {
+  const uid = q.params.uid, approve = q.body?.approve === true, reason = String(q.body?.reason || '').trim().slice(0, 300);
+  const a = (await db.ref(`companionApplications/${uid}`).get()).val(); if (!a) return r.status(404).json({ error: 'not found' });
+  if (!approve && reason.length < 3) return r.status(400).json({ error: 'ต้องใส่เหตุผลที่ปฏิเสธ' });
+  const t = Date.now(), upd = { [`companionApplications/${uid}/status`]: approve ? 'approved' : 'rejected', [`companionApplications/${uid}/reason`]: reason, [`companionApplications/${uid}/decidedAt`]: t, [`companionApplications/${uid}/decidedBy`]: q.uid };
+  upd[`companions/${uid}`] = approve ? { displayName: a.displayName, occupation: a.occupation, age: a.age, slots: a.slots, hours: a.hours || {}, talkStyle: a.talkStyle || '', personality: a.personality || '', modes: a.modes || ['text'], at: t } : null; // public card only
+  await db.ref().update(upd);
+  await db.ref('adminLog').push({ action: approve ? 'companion_approve' : 'companion_reject', target: uid, by: q.uid, at: t, message: reason });
+  r.json({ uid, status: approve ? 'approved' : 'rejected' });
+}));
+// ===== เพื่อนคุย rates (admin only) + server-side text-chat charging. appConfig/companionRates.
+const RATE_DEF = { textMode: 'per_message', textAmount: 1, sessionMinutes: 60, voicePerMin: 0, videoPerMin: 0, currency: 'diamonds', partnerPercent: 80 };
+async function companionRates() { return { ...RATE_DEF, ...((await db.ref('appConfig/companionRates').get()).val() || {}) }; }
+app.get('/companion/rates', w(async (_q, r) => r.json(await companionRates())));
+app.put('/admin/companion-rates', perm('config_edit'), w(notBanned), w(async (q, r) => {
+  const b = q.body || {}, int = (x, lo, hi, d) => { const n = parseInt(x); return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : d; };
+  const v = { textMode: b.textMode === 'per_session' ? 'per_session' : 'per_message', textAmount: int(b.textAmount, 0, 100000, 1), sessionMinutes: int(b.sessionMinutes, 5, 1440, 60),
+    voicePerMin: int(b.voicePerMin, 0, 100000, 0), videoPerMin: int(b.videoPerMin, 0, 100000, 0), currency: b.currency === 'coins' ? 'coins' : 'diamonds',
+    partnerPercent: int(b.partnerPercent, 0, 100, 80), by: q.uid, at: Date.now() };
+  await db.ref('appConfig/companionRates').set(v); r.json(v);
+}));
+async function chargeCompanion(payer, partner, amount, rates, memo) {
+  if (amount <= 0) return { ok: true, charged: 0 };
+  const cur = rates.currency;
+  const d = await db.ref(`wallets/${payer}/${cur}`).transaction(c => (c === null ? null : num(c) >= amount ? num(c) - amount : undefined));
+  if (!d.committed || d.snapshot.val() === null) return { ok: false };
+  const share = Math.floor(amount * rates.partnerPercent / 100);
+  await Promise.all([db.ref(`wallets/${partner}/${cur}`).transaction(c => num(c) + share), db.ref(`wallets/_system/${cur}`).transaction(c => num(c) + (amount - share)),
+    db.ref('companionLedger').push({ payer, partner, amount, share, currency: cur, memo, at: Date.now() }), db.ref(`companionPaid/${partner}/${payer}`).set(Date.now())]);
+  return { ok: true, charged: amount, balance: d.snapshot.val() };
+}
+app.post('/companion/:uid/open', w(notBanned), w(async (q, r) => {
+  const partner = q.params.uid; if (!UID_RE.test(partner) || partner === q.uid) return r.status(400).json({ error: 'bad uid' });
+  const cp = (await db.ref(`companions/${partner}`).get()).val(); if (!cp) return r.status(404).json({ error: 'ไม่ใช่เพื่อนคุยที่ได้รับอนุมัติ' });
+  if (!(cp.modes || ['text']).includes('text')) return r.status(400).json({ error: 'เพื่อนคุยคนนี้ไม่รับคุยข้อความ' });
+  if (await blockedEither(q.uid, partner)) return r.status(403).json({ code: 'blocked', error: 'ไม่สามารถแชทกับผู้ใช้นี้ได้' });
+  const rt = await companionRates(), bal = num((await db.ref(`wallets/${q.uid}/${rt.currency}`).get()).val());
+  if (bal <= 0 || bal < rt.textAmount) return r.status(402).json({ code: 'insufficient', error: rt.currency === 'diamonds' ? 'เติมเพชรก่อนเริ่มคุย' : 'เติมเหรียญก่อนเริ่มคุย', balance: bal, price: rt.textAmount, currency: rt.currency });
+  const o = await openDirectChat(q.uid, partner);
+  await db.ref(`chats/${o.chatId}`).update({ paid: true, companion: partner });
+  r.json({ ...o, rates: await companionRates() });
+}));
+async function paidChat(chatId, uid) {
+  const c = (await db.ref(`chats/${chatId}`).get()).val(); if (!c || !c.paid) return null;
+  if (!(await db.ref(`chatMembers/${chatId}/${uid}`).get()).exists()) return null;
+  return c;
+}
+app.post('/companion/chats/:chatId/session', w(notBanned), w(async (q, r) => {
+  const { chatId } = q.params, c = await paidChat(chatId, q.uid); if (!c) return r.status(404).json({ error: 'not a paid chat' });
+  const rates = await companionRates(); if (rates.textMode !== 'per_session') return r.status(400).json({ error: 'not session mode' });
+  const sref = db.ref(`companionSessions/${chatId}/${q.uid}`), cur = (await sref.get()).val();
+  if (cur && cur.until > Date.now()) return r.json({ active: true, until: cur.until, charged: 0 });
+  const ch = await chargeCompanion(q.uid, c.companion, rates.textAmount, rates, `session ${chatId}`);
+  if (!ch.ok) return r.status(402).json({ code: 'insufficient', error: rates.currency === 'diamonds' ? 'เพชรไม่พอ' : 'เหรียญไม่พอ', price: rates.textAmount, currency: rates.currency });
+  const until = Date.now() + rates.sessionMinutes * 60e3; await sref.set({ until, at: Date.now() });
+  r.json({ active: true, until, charged: ch.charged, balance: ch.balance });
+}));
+app.post('/companion/chats/:chatId/send', w(notBanned), w(async (q, r) => {
+  const { chatId } = q.params, c = await paidChat(chatId, q.uid); if (!c) return r.status(404).json({ error: 'not a paid chat' });
+  const text = String(q.body?.text || '').trim().slice(0, 2000); if (!text) return r.status(400).json({ error: 'text required' });
+  if ((await db.ref(`chatBlocked/${chatId}`).get()).exists() || (await db.ref(`chats/${chatId}/closed`).get()).exists()) return r.status(403).json({ error: 'แชทนี้ส่งไม่ได้' });
+  const rates = await companionRates(); let charged = 0, balance;
+  if (q.uid !== c.companion) {
+    if (rates.textMode === 'per_message') {
+      const ch = await chargeCompanion(q.uid, c.companion, rates.textAmount, rates, `msg ${chatId}`);
+      if (!ch.ok) return r.status(402).json({ code: 'insufficient', error: rates.currency === 'diamonds' ? 'เพชรไม่พอ ส่งข้อความไม่ได้' : 'เหรียญไม่พอ ส่งข้อความไม่ได้', price: rates.textAmount, currency: rates.currency });
+      charged = ch.charged; balance = ch.balance;
+    } else {
+      const sv = (await db.ref(`companionSessions/${chatId}/${q.uid}`).get()).val();
+      if (!sv || sv.until < Date.now()) return r.status(402).json({ code: 'session_required', error: 'เริ่มรอบคุยก่อน', price: rates.textAmount, currency: rates.currency, minutes: rates.sessionMinutes });
+    }
+  }
+  const t = Date.now(), id = db.ref(`messages/${chatId}`).push().key;
+  await db.ref().update({ [`messages/${chatId}/${id}`]: { senderUid: q.uid, at: t, text }, [`chats/${chatId}/lastMessage`]: text.slice(0, 100), [`chats/${chatId}/lastAt`]: t, [`chats/${chatId}/lastSenderUid`]: q.uid });
+  r.json({ id, charged, balance });
+}));
+// เพื่อนคุย ratings: only payers (companionPaid) can rate; one per user per partner (editable); aggregate on companions/{p}/rating.
+async function recomputeRating(partner) {
+  const v = Object.values((await db.ref(`companionRatings/${partner}`).get()).val() || {});
+  const count = v.length, avg = count ? Math.round(v.reduce((s, x) => s + num(x.stars), 0) / count * 10) / 10 : 0;
+  if ((await db.ref(`companions/${partner}`).get()).exists()) await db.ref(`companions/${partner}/rating`).set({ avg, count });
+  return { avg, count };
+}
+app.post('/companion/:uid/rate', w(notBanned), w(async (q, r) => {
+  const partner = q.params.uid, stars = parseInt(q.body?.stars), comment = String(q.body?.comment || '').trim().slice(0, 200);
+  if (!UID_RE.test(partner) || !(stars >= 1 && stars <= 5)) return r.status(400).json({ error: 'stars 1-5 required' });
+  if (!(await db.ref(`companionPaid/${partner}/${q.uid}`).get()).exists()) return r.status(403).json({ error: 'ให้คะแนนได้เฉพาะผู้ที่เคยคุยแบบชำระเงินแล้ว' });
+  await db.ref(`companionRatings/${partner}/${q.uid}`).set({ stars, comment, at: Date.now() });
+  r.json(await recomputeRating(partner));
+}));
+app.get('/companion/:uid/my-rating', w(async (q, r) => r.json({ rating: (await db.ref(`companionRatings/${q.params.uid}/${q.uid}`).get()).val(), canRate: (await db.ref(`companionPaid/${q.params.uid}/${q.uid}`).get()).exists() })));
+app.get('/admin/companion-ratings/:uid', perm('manage_content'), w(async (q, r) => {
+  const v = (await db.ref(`companionRatings/${q.params.uid}`).get()).val() || {};
+  r.json({ ratings: Object.entries(v).map(([uid, x]) => ({ uid, ...x })).sort((a, b) => b.at - a.at) });
+}));
+app.delete('/admin/companion-ratings/:partner/:user', perm('manage_content'), w(async (q, r) => {
+  await db.ref(`companionRatings/${q.params.partner}/${q.params.user}`).remove();
+  await db.ref('adminLog').push({ action: 'companion_rating_remove', target: q.params.partner, user: q.params.user, by: q.uid, at: Date.now() });
+  r.json(await recomputeRating(q.params.partner));
+}));
+// ===== Shop (Google Play Billing). appConfig/shopProducts {enabled, diamonds:[{productId, amount}], coins:[...]}; server verifies tokens via androidpublisher.
+const PLAY_PACKAGE = process.env.PLAY_PACKAGE || 'com.example';
+const crypto2 = require('crypto');
+async function shopCfg() { const v = (await db.ref('appConfig/shopProducts').get()).val() || {}; return { enabled: v.enabled === true, diamonds: v.diamonds || [], coins: v.coins || [], packageName: v.packageName || PLAY_PACKAGE }; }
+app.get('/shop/products', w(async (_q, r) => r.json(await shopCfg())));
+app.put('/admin/shop-products', perm('config_edit'), w(notBanned), w(async (q, r) => {
+  const clean = l => (Array.isArray(l) ? l : []).map((x, i) => ({ productId: String(x.productId || '').trim(), amount: parseInt(x.amount) || 0, label: String(x.label || '').slice(0, 40),
+      bonus: Math.max(0, Math.min(1e6, parseInt(x.bonus) || 0)), priceTHB: Math.max(0, Math.min(100000, Number(x.priceTHB) || 0)), enabled: x.enabled !== false, order: Number.isFinite(+x.order) ? +x.order : i }))
+    .filter(x => /^[a-z0-9][a-z0-9._]{0,98}$/.test(x.productId) && x.amount > 0 && x.amount <= 1e6).slice(0, 12);
+  const pk = String(q.body?.packageName || '').trim();
+  const v = { enabled: q.body?.enabled === true, diamonds: clean(q.body?.diamonds), coins: clean(q.body?.coins), packageName: /^[a-zA-Z][\w.]{2,100}$/.test(pk) ? pk : PLAY_PACKAGE, by: q.uid, at: Date.now() };
+  await db.ref('appConfig/shopProducts').set(v);
+  // Push THB prices to Play Console (only works once the app + products exist in Play and ft-brain-sa has Play Console access).
+  const sync = [];
+  if (q.body?.syncPlay === true) for (const x of [...v.diamonds, ...v.coins]) {
+    if (!(x.priceTHB > 0)) continue;
+    const res = await playApi('PATCH', `applications/${encodeURIComponent(v.packageName)}/inappproducts/${encodeURIComponent(x.productId)}?autoConvertMissingPrices=true&body=`.replace('&body=', ''), {
+      packageName: v.packageName, sku: x.productId, status: x.enabled ? 'active' : 'inactive', defaultPrice: { priceMicros: String(Math.round(x.priceTHB * 1e6)), currency: 'THB' } }).catch(e => ({ status: 0, j: { error: e.message } }));
+    sync.push({ productId: x.productId, status: res.status, error: res.status === 200 ? '' : JSON.stringify(res.j?.error?.message || res.j?.error || '').slice(0, 200) });
+  }
+  r.json({ ...v, playSync: sync });
+}));
+async function playApi(method, path, body) {
+  const tok = (await admin.credential.applicationDefault().getAccessToken()).access_token;
+  const res = await fetch(`https://androidpublisher.googleapis.com/androidpublisher/v3/${path}`, { method, headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  const txt = await res.text(); let j = null; try { j = txt ? JSON.parse(txt) : {}; } catch (_) {}
+  return { status: res.status, j };
+}
+app.post('/shop/verify', w(notBanned), w(async (q, r) => {
+  const cfg = await shopCfg(); if (!cfg.enabled) return r.status(403).json({ code: 'shop_closed', error: 'ยังไม่เปิดขาย' });
+  const productId = String(q.body?.productId || ''), token = String(q.body?.purchaseToken || '');
+  if (!token || token.length > 1000) return r.status(400).json({ error: 'purchaseToken required' });
+  const cur = cfg.diamonds.find(x => x.productId === productId) ? 'diamonds' : cfg.coins.find(x => x.productId === productId) ? 'coins' : null;
+  if (!cur) return r.status(400).json({ error: 'unknown product' });
+  const pk = cfg[cur].find(x => x.productId === productId), amount = pk.amount + (pk.bonus || 0);
+  const key = crypto2.createHash('sha256').update(token).digest('hex').slice(0, 40), pref = db.ref(`shopPurchases/${key}`);
+  const done = (await pref.get()).val(); if (done && done.status === 'credited') return r.json({ already: true, currency: done.currency, amount: done.amount, uid: done.uid === q.uid });
+  const g = await playApi('GET', `applications/${encodeURIComponent(cfg.packageName)}/purchases/products/${encodeURIComponent(productId)}/tokens/${encodeURIComponent(token)}`);
+  if (g.status !== 200 || !g.j) return r.status(402).json({ error: 'verify failed', playStatus: g.status });
+  if (g.j.purchaseState !== 0) return r.status(402).json({ error: 'purchase not completed', purchaseState: g.j.purchaseState });
+  if (g.j.obfuscatedExternalAccountId && g.j.obfuscatedExternalAccountId !== q.uid.slice(0, 64)) return r.status(403).json({ error: 'purchase belongs to another account' });
+  const lock = await pref.transaction(v => (v === null ? { status: 'crediting', uid: q.uid, at: Date.now() } : undefined));
+  if (!lock.committed) return r.status(409).json({ error: 'already processing' });
+  await db.ref(`wallets/${q.uid}/${cur}`).transaction(c => num(c) + amount);
+  await pref.update({ status: 'credited', currency: cur, amount, productId, orderId: g.j.orderId || '', creditedAt: Date.now() });
+  const c = await playApi('POST', `applications/${encodeURIComponent(cfg.packageName)}/purchases/products/${encodeURIComponent(productId)}/tokens/${encodeURIComponent(token)}:consume`);
+  await pref.update({ consumed: c.status === 200 || c.status === 204 });
+  r.json({ credited: true, currency: cur, amount, consumed: c.status === 200 || c.status === 204 });
 }));
 app.get('/lock', w(async (_q, r) => { const l = await lockState(); r.json({ locked: l.locked === true, message: l.message || '', imageUrl: l.imageUrl || '' }); }));
 app.use('/admin', w(isAdmin));
@@ -783,6 +1043,7 @@ app.post('/chats/open', w(notBanned), w(async (q, r) => {
   if (typeof other !== 'string' || !UID_RE.test(other) || other === q.uid) return r.status(400).json({ error: 'valid otherUid required' });
   if (!(await db.ref(`users/${other}`).get()).exists()) return r.status(404).json({ error: 'user not found' });
   if (await isBanned(other)) return r.status(403).json({ error: 'user unavailable' });
+  if (await blockedEither(q.uid, other)) return r.status(403).json({ code: 'blocked', error: 'ไม่สามารถแชทกับผู้ใช้นี้ได้' });
   { const cf = await chatFor(q.uid, (await tierOf(q.uid)).tier, await getLimits()); if (!cf.canChat) return r.status(403).json({ code: 'chat_disabled', error: cf.reason }); }
   r.json(await openDirectChat(q.uid, other));
 }));
@@ -1508,6 +1769,7 @@ app.post('/admin/users/:uid/coins', perm('coins_confirm'), w(notBanned), w(async
   const uid = q.params.uid, amount = Math.trunc(Number(q.body?.amount)), reason = String(q.body?.reason || '').trim().slice(0, 200);
   if (!Number.isFinite(amount) || amount === 0 || Math.abs(amount) > 100000) return r.status(400).json({ error: 'amount must be a non-zero integer within ±100000' });
   if (reason.length < 3) return r.status(400).json({ error: 'reason required' });
+  if (amount < 0 && (await loadRole(q.uid))?.role !== 'superadmin') return r.status(403).json({ error: 'only superadmin can decrease balances' });
   if (!(await db.ref(`users/${uid}`).get()).exists()) return r.status(404).json({ error: 'user not found' });
   let insufficient = false; const cur = q.body?.currency === 'diamonds' ? 'diamonds' : 'coins';
   const res = await db.ref(`wallets/${uid}/${cur}`).transaction(c => { const v = Number(c) || 0; if (v + amount < 0) { insufficient = true; return; } insufficient = false; return v + amount; });
@@ -1530,7 +1792,7 @@ app.put('/superadmin/users/:uid/role', w(notBanned), w(async (q, r) => {
 // reports: users file, admins with manage_content resolve
 app.post('/reports', w(notBanned), w(async (q, r) => {
   const b = q.body || {}, type = String(b.targetType || '');
-  if (!['post', 'user', 'comment'].includes(type) || typeof b.targetId !== 'string' || !b.targetId || b.targetId.length > 128) return r.status(400).json({ error: 'targetType and targetId required' });
+  if (!['post', 'user', 'comment', 'chat'].includes(type) || typeof b.targetId !== 'string' || !b.targetId || b.targetId.length > 128) return r.status(400).json({ error: 'targetType and targetId required' });
   const today = new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
   const cnt = await db.ref(`usage/${q.uid}/${today.replace(/-/g, '')}/reports`).transaction(c => (Number(c) || 0) + 1);
   if (cnt.snapshot.val() > 30) return r.status(429).json({ error: 'too many reports today' });

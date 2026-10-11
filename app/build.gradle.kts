@@ -88,6 +88,7 @@ secrets {
 googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.ERROR }
 
 dependencies {
+  implementation("com.android.billingclient:billing-ktx:7.1.1")
   implementation(platform(libs.androidx.compose.bom))
   implementation(platform(libs.firebase.bom))
 implementation("com.google.firebase:firebase-auth")

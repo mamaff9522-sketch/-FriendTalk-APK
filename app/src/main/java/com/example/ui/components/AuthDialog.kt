@@ -427,7 +427,7 @@ fun AuthDialog(
                     Surface(modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp), color = Slate800) {
                         Column(modifier = Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(text = "🪙 เหรียญ", fontSize = 11.sp, color = Amber400)
-                            Text(text = "${currentUser.coins}", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = White)
+                            Text(text = "${com.example.social.Wallet.coins}", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = White)
                         }
                     }
                     Surface(modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp), color = Slate800) {

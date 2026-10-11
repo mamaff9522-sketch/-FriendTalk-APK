@@ -32,7 +32,7 @@ data class User(
     val isVerified: Boolean = false,
     val isOnline: Boolean = true,
     val lastActive: String = "ออนไลน์ขณะนี้",
-    val coins: Int = 1000,
+    val coins: Int = 0,
     val diamonds: Int = 0,
     val followersCount: Int = 0,
     val followingCount: Int = 0,
