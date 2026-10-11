@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.WifiTethering
 import androidx.compose.material3.*
+import com.example.ui.components.ft.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import com.example.ui.social.realFeedItems
 import androidx.compose.runtime.*

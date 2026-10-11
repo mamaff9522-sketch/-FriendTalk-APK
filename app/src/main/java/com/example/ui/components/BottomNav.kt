@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
+import com.example.ui.components.ft.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,7 +39,7 @@ fun BottomNavBar(
     activeLiveCount: Int,
     currentUserAge: Int,
     uiConfig: AppUiConfig
-) {
+) = UiPage("nav") {
     val items = mutableListOf<NavItem>()
 
     if (uiConfig.bottomNav.showHomeTab) {

@@ -148,6 +148,9 @@ fun AdminUiBuilderDialog(
                     }
                 }
 
+                var showPages by remember { mutableStateOf(false) }
+                if (showPages) PageBuilderDialog { showPages = false }
+                Button(onClick = { showPages = true }, modifier = Modifier.fillMaxWidth()) { Text("📄 แก้ทุกหน้า: เลือกหน้า · ส่วน · ข้อความ · เผยแพร่/ย้อนกลับ") }
                 if (selectedBuilderTab != "visual_dnd") {
                 Spacer(modifier = Modifier.height(12.dp))
                 Divider(color = Slate800)

@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
+import com.example.ui.components.ft.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -208,7 +209,7 @@ fun ProfileTab(
                     }
 
                     var showWithdraw by remember { mutableStateOf(false) }
-                    if (showWithdraw) com.example.ui.wallet.WithdrawDialog(isStaff = currentUser.role != com.example.model.UserRole.USER) { showWithdraw = false }
+                    if (showWithdraw) com.example.ui.components.UiPage("wallet") { com.example.ui.wallet.WithdrawDialog(isStaff = currentUser.role != com.example.model.UserRole.USER) { showWithdraw = false } }
                     OutlinedButton(onClick = { showWithdraw = true }, modifier = Modifier.fillMaxWidth()) { Text("💸 ถอนเงิน") }
                     Surface(
                         shape = RoundedCornerShape(14.dp),

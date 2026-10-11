@@ -9,6 +9,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import com.example.ui.components.ft.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -186,7 +187,7 @@ fun RealCompanionScreen() {
         }
         if (signup) CompanionSignupDialog { signup = false }
         pick?.let { p -> ModeSelectDialog(p, onClose = { pick = null }) { chatId -> pick = null; openChat = chatId to p.uid } }
-        openChat?.let { (cid, puid) -> RealChatRoomDialog(cid) { openChat = null; CompanionRating.maybeAsk(puid) } }
+        openChat?.let { (cid, puid) -> com.example.ui.components.UiPage("chatroom") { RealChatRoomDialog(cid) { openChat = null; CompanionRating.maybeAsk(puid) } } }
         CompanionRating.Host()
         LazyColumn(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
             item {

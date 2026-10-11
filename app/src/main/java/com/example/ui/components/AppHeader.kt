@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.*
+import com.example.ui.components.ft.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,7 +53,7 @@ fun AppHeader(
     onOpenAdminDashboard: () -> Unit,
     onOpenUiBuilder: () -> Unit,
     onOpenApkDownload: () -> Unit
-) {
+) = UiPage("header") {
     val primaryColor = MaterialTheme.colorScheme.primary
     val secondaryColor = MaterialTheme.colorScheme.secondary
 

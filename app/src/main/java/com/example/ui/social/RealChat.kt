@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
+import com.example.ui.components.ft.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,7 +72,7 @@ private fun RealChatListInner() {
             com.example.ui.components.FeatureLockGate("ai", compact = true) { OutlinedButton(onClick = { aiHub = true }, shape = RoundedCornerShape(24.dp),
                 border = androidx.compose.foundation.BorderStroke(1.5.dp, androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Purple500, Pink500)))) { Text(tr("🤖 คุยกับ AI"), color = White, fontSize = 15.sp, fontWeight = FontWeight.Bold) } }
         }
-        if (aiHub) com.example.ui.ai.AiHubDialog { aiHub = false }
+        if (aiHub) com.example.ui.components.UiPage("ai") { com.example.ui.ai.AiHubDialog { aiHub = false } }
         com.example.ads.PlacementBanner("chatList")
         Spacer(Modifier.height(8.dp))
         val previews by produceState(emptyMap<String, com.example.social.GiftRepo.Decor>(), chats?.size) { chats?.let { value = com.example.social.GiftRepo.previews(it.map { c -> c.chatId }) } }

@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material3.*
+import com.example.ui.components.ft.Text
 import androidx.compose.runtime.*
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
@@ -96,6 +97,7 @@ fun FriendTalkRoot(
             com.example.social.SocialRepo.startPresence(context)
             viewModel.refreshRemoteUiConfig() // published Remote UI config for everyone
             com.example.service.UiLayoutRepository.refreshHome()
+            com.example.ui.components.UiPages.refresh()
         }
     }
 
@@ -246,7 +248,7 @@ fun FriendTalkApp(
                     .fillMaxSize()
                     .padding(innerPadding)
             ) {
-                com.example.ui.components.ComingSoonGate("tab_" + uiState.activeTab, Modifier.fillMaxSize()) { com.example.ui.components.FeatureLockGate(when (uiState.activeTab) { "movie" -> "video"; else -> uiState.activeTab }, Modifier.fillMaxSize()) { when (uiState.activeTab) {
+                com.example.ui.components.UiPage(uiState.activeTab) { com.example.ui.components.UiSection("page", "ทั้งหน้า") { com.example.ui.components.ComingSoonGate("tab_" + uiState.activeTab, Modifier.fillMaxSize()) { com.example.ui.components.FeatureLockGate(when (uiState.activeTab) { "movie" -> "video"; else -> uiState.activeTab }, Modifier.fillMaxSize()) { when (uiState.activeTab) {
                     "home" -> FeedTab(
                         onOpenFindFriends = { viewModel.setActiveTab("discover") },
                         onOpenLive = { viewModel.setActiveTab("live") },
@@ -307,10 +309,10 @@ fun FriendTalkApp(
                         onOpenCompanionApply = { isCompanionApplyOpen = true },
                         onLogout = onSignOut
                     )
-                } } }
+                } } } } }
                 if (uiState.activeTab == "discover") com.example.ads.PlacementBanner("discover", Modifier.align(androidx.compose.ui.Alignment.BottomCenter))
 
-                com.example.ui.shop.ShopHost()
+                com.example.ui.components.UiPage("shop") { com.example.ui.shop.ShopHost() }
                 // Global Gift Animation Overlay
                 GiftAnimationOverlay(activeGift = uiState.activeGiftAnimation)
             }
@@ -478,7 +480,7 @@ fun FriendTalkApp(
     }
 
     val openChatId by com.example.social.SocialRepo.openChat.collectAsStateWithLifecycle()
-    openChatId?.let { id -> com.example.ui.social.RealChatRoomDialog(chatId = id, onClose = { com.example.social.SocialRepo.openChat.value = null }) }
+    openChatId?.let { id -> com.example.ui.components.UiPage("chatroom") { com.example.ui.social.RealChatRoomDialog(chatId = id, onClose = { com.example.social.SocialRepo.openChat.value = null }) } }
 
     com.example.ads.AdRoomHost()
     val askInterests by com.example.ui.social.InterestsPrompt.show.collectAsStateWithLifecycle()
