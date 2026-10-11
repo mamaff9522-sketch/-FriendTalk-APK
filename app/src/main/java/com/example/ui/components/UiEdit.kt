@@ -30,14 +30,6 @@ object UiEdit {
     val undo = ArrayDeque<Map<String, PageSpec>>()
     fun snapshot() { undo.addLast(UiPages.drafts.toMap()); if (undo.size > 50) undo.removeFirst() }
     fun update(page: String, f: (PageSpec) -> PageSpec) { snapshot(); UiPages.drafts[page] = f(UiPages.spec(page)) }
-    /** Move a section by delta positions within the page's current render order; writes explicit orders for all. */
-    fun move(page: String, id: String, delta: Int) {
-        val ids = UiPages.orderOf[page]?.toMutableList() ?: return
-        val i = ids.indexOf(id); if (i < 0) return
-        val j = (i + delta).coerceIn(0, ids.size - 1); if (i == j) return
-        ids.removeAt(i); ids.add(j, id)
-        update(page) { sp -> sp.copy(sections = sp.sections + ids.mapIndexed { k, x -> x to (sp.sections[x] ?: SectionSpec()).copy(order = (k + 1) * 10) }) }
-    }
 }
 
 /** Outline + tap-to-select that wins over the parent's click (Initial pass), so tapping a button's text edits it instead of navigating. */
@@ -90,15 +82,9 @@ fun UiEditOverlay() {
         if (UiEdit.preview && UiEdit.selected == null) Text("โหมดดู/ใช้งาน: กดปุ่มนำทางได้ตามปกติ · กด ✏️ ที่แถบเพื่อกลับไปแก้", fontSize = 11.sp, color = Color.White,
             modifier = Modifier.align(Alignment.BottomCenter).background(Color(0xAA000000)).padding(6.dp))
         val sel = UiEdit.selected ?: return@Box
-        androidx.compose.ui.window.Popup(alignment = Alignment.BottomCenter, onDismissRequest = { UiEdit.selected = null }, properties = androidx.compose.ui.window.PopupProperties(focusable = true)) {
-        Surface(Modifier.fillMaxWidth().imePadding(), shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp), shadowElevation = 12.dp) {
+        Surface(Modifier.align(Alignment.BottomCenter).fillMaxWidth().imePadding(), shape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp), shadowElevation = 12.dp) {
             Column(Modifier.padding(12.dp)) {
                 val page = sel.page; val spec = UiPages.spec(page)
-                Row { // compact bar inside the panel (stays above pop-up screens)
-                    TextButton({ UiEdit.undo.removeLastOrNull()?.let { UiPages.drafts.clear(); UiPages.drafts.putAll(it) } }) { Text("↶ เลิกทำ", fontSize = 12.sp) }
-                    TextButton({ saveAll(false) }) { Text("บันทึกร่าง", fontSize = 12.sp) }
-                    TextButton({ saveAll(true) }) { Text("เผยแพร่", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("${UiPages.PAGES[page] ?: page} · " + if (sel.key.startsWith("s:")) "ส่วน: ${sel.src}" else "ข้อความ", fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.weight(1f))
                     TextButton({ UiEdit.selected = null }) { Text("✕") }
@@ -111,9 +97,8 @@ fun UiEditOverlay() {
                     }
                     Text("ขนาด ${(s.scale * 100).toInt()}%", fontSize = 12.sp)
                     Slider(s.scale, { put(s.copy(scale = (it * 20).toInt() / 20f)) }, valueRange = 0.5f..2f)
-                    val canMove = UiPages.orderOf[page]?.contains(id) == true
-                    Row { OutlinedButton({ UiEdit.move(page, id, -1) }, enabled = canMove) { Text("▲ เลื่อนขึ้น") }; Spacer(Modifier.width(8.dp))
-                        OutlinedButton({ UiEdit.move(page, id, 1) }, enabled = canMove) { Text("▼ เลื่อนลง") }; Spacer(Modifier.width(8.dp))
+                    Row { OutlinedButton({ put(s.copy(order = (s.order.takeIf { it > 0 } ?: 500) - 15)) }) { Text("▲ เลื่อนขึ้น") }; Spacer(Modifier.width(8.dp))
+                        OutlinedButton({ put(s.copy(order = (s.order.takeIf { it > 0 } ?: 500) + 15)) }) { Text("▼ เลื่อนลง") }; Spacer(Modifier.width(8.dp))
                         TextButton({ UiEdit.update(page) { it.copy(sections = it.sections - id) } }) { Text("คืนค่า") } }
                 } else {
                     val k = sel.key; val t = spec.texts[k] ?: TextSpec(sel.src)
@@ -138,6 +123,6 @@ fun UiEditOverlay() {
                     if (pickColor) com.example.ui.admin.ColorPickerDialog("สีข้อความ", t.c ?: "#FF222222", onPick = { put(t.copy(c = it)); pickColor = false }, onDismiss = { pickColor = false })
                 }
             }
-        } }
+        }
     }
 }

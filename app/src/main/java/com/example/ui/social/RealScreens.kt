@@ -35,7 +35,7 @@ import com.example.ui.theme.*
 fun RealLiveScreen() {
     var info by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxSize()) {
-        com.example.ui.components.UiAutoColumn("lv", "ส่วน", Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
             Text(tr("ห้องไลฟ์สดที่กำลังออกอากาศ 🔴"), color = White, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp, modifier = Modifier.padding(end = 72.dp))
             Text(tr("ดูไลฟ์สุดฮิต พบสตรีมเมอร์ที่คุณชอบได้ที่นี่"), color = Slate300, fontSize = 14.sp)
             Spacer(Modifier.height(14.dp))
