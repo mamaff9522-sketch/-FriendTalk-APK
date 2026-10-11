@@ -1,5 +1,6 @@
 package com.example.ui.admin
 
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -751,5 +752,4 @@ private val UI_PALETTES = listOf(
     UiPalette("Ocean Sky", "#3B82F6", "#06B6D4", "#6366F1", "#F2F7FE", "#FFFFFF", "#E0ECFD", "#122139", "#4D6283"),
     UiPalette("Sunset", "#F97316", "#EC4899", "#F59E0B", "#FFF8F1", "#FFFFFF", "#FFEBD9", "#3A2213", "#7A5A45"),
     UiPalette("Midnight Gold (มืด)", "#F59E0B", "#D97706", "#FCD34D", "#0C0A09", "#1C1917", "#292524", "#FAFAF9", "#D6D3D1")
-)
 )
