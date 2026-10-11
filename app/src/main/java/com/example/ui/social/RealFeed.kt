@@ -233,6 +233,10 @@ fun RealPostCard(p: FeedPost, onLike: () -> Unit, onComments: () -> Unit, onDele
                         }
                     }
                     TextButton(onClick = { confirm = true }) { Text("ลบ", color = Rose500, fontSize = 12.sp) }
+                } else {
+                    var rep by remember { mutableStateOf(false) }
+                    TextButton(onClick = { rep = true }) { Text("⋯", color = Slate400, fontSize = 16.sp) }
+                    if (rep) ReportDialog("post", p.id, p.authorId) { rep = false }
                 }
             }
             if (p.text.isNotBlank()) Text(p.text, color = White, fontSize = (14 * fs.textSizeScale.coerceIn(0.7f, 1.6f)).sp, modifier = Modifier.padding(vertical = 6.dp))
@@ -364,3 +368,24 @@ fun FilteredFeedDialog(title: String, tag: String?, author: String?, onClose: ()
 
 /** Feed style from the published Remote UI config (admin 'จัด Feed': corner radius, spacing, text size). */
 object FeedStyle { var cfg by androidx.compose.runtime.mutableStateOf(com.example.model.FeedSectionConfig()) }
+
+/** Report a post/user to the admins (brain POST /reports). */
+@Composable
+fun ReportDialog(type: String, targetId: String, targetUid: String?, onClose: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var reason by remember { mutableStateOf("สแปม") }
+    var msg by remember { mutableStateOf("") }
+    AlertDialog(onDismissRequest = onClose, title = { Text(if (type == "post") "รายงานโพสต์" else "รายงานผู้ใช้") },
+        text = { Column {
+            listOf("สแปม", "เนื้อหาไม่เหมาะสม", "คุกคาม/กลั่นแกล้ง", "หลอกลวง", "บัญชีปลอม").forEach { r ->
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { reason = r }) { RadioButton(selected = reason == r, onClick = { reason = r }); Text(r) }
+            }
+            if (msg.isNotBlank()) Text(msg, color = Amber400, fontSize = 12.sp)
+        } },
+        confirmButton = { TextButton(onClick = { scope.launch {
+            val u = FirebaseAuth.getInstance().currentUser ?: return@launch
+            val r = com.example.network.BrainApi.call(u, "POST", "/reports", org.json.JSONObject().put("targetType", type).put("targetId", targetId).put("targetUid", targetUid ?: "").put("reason", reason))
+            if (r.code == 201) onClose() else msg = r.json?.optString("error") ?: "ส่งไม่สำเร็จ"
+        } }) { Text("ส่งรายงาน") } },
+        dismissButton = { TextButton(onClick = onClose) { Text("ยกเลิก") } })
+}

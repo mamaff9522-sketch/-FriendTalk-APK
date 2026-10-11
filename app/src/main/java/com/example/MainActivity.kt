@@ -25,7 +25,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.companion.ui.*
 import com.example.model.parseHexColor
 import com.example.service.AuthService
-import com.example.ui.admin.AdminDashboardDialog
 import com.example.ui.admin.AdminUiBuilderDialog
 import com.example.ui.admin.ApkDownloadDialog
 import com.example.ui.auth.AuthScreen
@@ -185,6 +184,10 @@ fun FriendTalkApp(
     com.example.ui.social.ProfileNav.openOwn = { viewModel.setActiveTab("profile") }
     FriendTalkTheme(themeConfig = uiState.uiConfig.theme) {
         // Maintenance mode from published Remote UI config: blocks normal users, admins still get in.
+        LaunchedEffect(uiState.currentUser.id) { com.example.ui.components.AppGates.start() }
+        if (com.example.ui.components.AppGates.lock.locked && !com.example.ui.components.AppGates.isStaff) {
+            com.example.ui.components.AppLockScreen(uiState.uiConfig.appName); return@FriendTalkTheme
+        }
         if (uiState.uiConfig.maintenanceMode && uiState.currentUser.role == com.example.model.UserRole.USER) {
             androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(appBgColor).padding(32.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
                 androidx.compose.material3.Text("🛠 " + uiState.uiConfig.maintenanceMessage.ifBlank { "ระบบกำลังปรับปรุง กรุณากลับมาใหม่ภายหลัง" },
@@ -238,7 +241,7 @@ fun FriendTalkApp(
                     .padding(innerPadding)
                     .background(appBgColor)
             ) {
-                when (uiState.activeTab) {
+                com.example.ui.components.ComingSoonGate("tab_" + uiState.activeTab, Modifier.fillMaxSize()) { when (uiState.activeTab) {
                     "home" -> FeedTab(
                         onOpenFindFriends = { viewModel.setActiveTab("discover") },
                         onOpenLive = { viewModel.setActiveTab("live") },
@@ -317,7 +320,7 @@ fun FriendTalkApp(
                         onOpenCompanionApply = { isCompanionApplyOpen = true },
                         onLogout = onSignOut
                     )
-                }
+                } }
 
                 // Global Gift Animation Overlay
                 GiftAnimationOverlay(activeGift = uiState.activeGiftAnimation)
@@ -460,37 +463,10 @@ fun FriendTalkApp(
     }
 
     if (isAdminDashboardOpen) {
-        AdminDashboardDialog(
-            currentUser = uiState.currentUser,
-            users = uiState.users,
-            reports = uiState.reports,
-            withdrawals = uiState.withdrawals,
-            adminLogs = uiState.adminLogs,
-            onUpdateUserRole = { userId, newRole ->
-                viewModel.updateUserRole(userId, newRole)
-            },
-            onBanUser = { userId, reason ->
-                viewModel.banUser(userId, reason)
-            },
-            onUnbanUser = { userId ->
-                viewModel.unbanUser(userId)
-            },
-            onAdjustWallet = { userId, coins, diamonds ->
-                viewModel.adjustUserWallet(userId, coins, diamonds)
-            },
-            onUpdateReportStatus = { repId, status ->
-                viewModel.updateReportStatus(repId, status)
-            },
-            onApproveWithdrawal = { wdId ->
-                viewModel.approveWithdrawal(wdId)
-            },
-            onRejectWithdrawal = { wdId, reason ->
-                viewModel.rejectWithdrawal(wdId, reason)
-            },
+        com.example.ui.admin.AdminConsole(
             onDismiss = { isAdminDashboardOpen = false },
             onOpenUiBuilder = { isUiBuilderOpen = true },
-            onOpenApkDownload = { isApkDownloadOpen = true },
-            onOpenCompanionAdmin = { isCompanionAdminOpen = true }
+            onOpenApkDownload = { isApkDownloadOpen = true }
         )
     }
 

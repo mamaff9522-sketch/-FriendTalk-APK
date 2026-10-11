@@ -187,6 +187,9 @@ class FriendTalkViewModel : ViewModel() {
             if (_uiState.value.currentUser.id != firebaseUser.uid) return@launch
             val isPrivileged = me.role == UserRole.SUPERADMIN || me.role == UserRole.ADMIN
             com.example.ads.AdUnits.adminTestAds = me.role != UserRole.USER || me.rawRole.lowercase() in listOf("superadmin", "admin", "moderator")
+            com.example.ui.components.AppGates.isSuper = me.role == UserRole.SUPERADMIN
+            com.example.ui.components.AppGates.isStaff = me.rawRole.lowercase() in listOf("superadmin", "admin", "moderator")
+            com.example.ui.components.AppGates.start()
             val updated = _uiState.value.currentUser.copy(
                 role = me.role,
                 backendRoleStatus = "สิทธิ์จาก Backend: ${me.rawRole}",

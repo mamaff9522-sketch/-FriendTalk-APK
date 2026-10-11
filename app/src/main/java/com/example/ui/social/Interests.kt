@@ -144,6 +144,9 @@ fun UserProfileDialog(uid: String, distance: String? = null, onDismiss: () -> Un
                 }
                 if (msg.isNotBlank()) Text(msg, color = Amber400, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
                 OutlinedButton(onClick = { showPosts = true }) { Text("📝 ดูโพสต์ทั้งหมด", color = White) }
+                var repU by remember { mutableStateOf(false) }
+                TextButton(onClick = { repU = true }) { Text("🚩 รายงานผู้ใช้", color = Slate400, fontSize = 12.sp) }
+                if (repU) ReportDialog("user", uid, uid) { repU = false }
                 TextButton(onClick = onDismiss) { Text("ปิด", color = Slate400) }
             }
         }

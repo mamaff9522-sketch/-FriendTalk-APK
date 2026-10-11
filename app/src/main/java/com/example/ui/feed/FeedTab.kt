@@ -158,8 +158,8 @@ fun FeedTab(
 
             val secStories: LazyListScope.() -> Unit = {
             if (feedConfig.showStoryRow) {
-                item { LiveNowSection(onSeeAll = onOpenLive) }
-                item { NearbyStoriesSection(onSeeAll = onOpenFindFriends) }
+                item { com.example.ui.components.ComingSoonGate("home_live", Modifier.fillMaxWidth()) { LiveNowSection(onSeeAll = onOpenLive) } }
+                item { com.example.ui.components.ComingSoonGate("home_nearby", Modifier.fillMaxWidth()) { NearbyStoriesSection(onSeeAll = onOpenFindFriends) } }
             }
             }
 

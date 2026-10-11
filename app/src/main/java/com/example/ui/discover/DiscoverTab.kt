@@ -167,8 +167,9 @@ private fun FindFriendsHome(onTile: (String) -> Unit, showCompanion: Boolean) {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         row.forEach { (k, label) ->
                             val tint = TILE_TINT[k] ?: Color(0xFF8B5CF6)
+                            com.example.ui.components.ComingSoonGate("tile_$k", Modifier.weight(1f).height(150.dp).clip(RoundedCornerShape(16.dp)), compact = true) {
                             Surface(shape = RoundedCornerShape(16.dp), color = Slate900, onClick = { onTile(k) },
-                                border = androidx.compose.foundation.BorderStroke(1.dp, tint.copy(alpha = 0.55f)), modifier = Modifier.weight(1f).height(150.dp)) {
+                                border = androidx.compose.foundation.BorderStroke(1.dp, tint.copy(alpha = 0.55f)), modifier = Modifier.fillMaxSize()) {
                                 Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.radialGradient(listOf(tint.copy(alpha = 0.35f), Color.Transparent)))) {
                                     val art = TILE_ART[k]
                                     if (art != null) androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(art), null, modifier = Modifier.align(Alignment.Center).padding(bottom = 30.dp).size(88.dp))
@@ -178,6 +179,7 @@ private fun FindFriendsHome(onTile: (String) -> Unit, showCompanion: Boolean) {
                                         Text("›", color = Slate300, fontSize = 15.sp)
                                     }
                                 }
+                            }
                             }
                         }
                         repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }

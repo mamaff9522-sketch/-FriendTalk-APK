@@ -3,9 +3,9 @@
     ".read": false,
     ".write": false,
     "users": {
-      ".read": "auth != null",
+      ".read": "(auth != null) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
       "$uid": {
-        ".write": "auth != null && auth.uid === $uid && !root.child('bans').child(auth.uid).exists() && (auth.token.email_verified === true || auth.token.firebase.sign_in_provider !== 'password')",
+        ".write": "(auth != null && auth.uid === $uid && !root.child('bans').child(auth.uid).exists() && (auth.token.email_verified === true || auth.token.firebase.sign_in_provider !== 'password')) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
         ".validate": "newData.hasChildren(['displayName'])",
         "displayName": {
           ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 50"
@@ -56,9 +56,9 @@
       ]
     },
     "usernames": {
-      ".read": "auth != null",
+      ".read": "(auth != null) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
       "$name": {
-        ".write": "auth != null && !root.child('bans').child(auth.uid).exists() && ((!data.exists() && newData.val() === auth.uid) || (data.val() === auth.uid && !newData.exists()))"
+        ".write": "(auth != null && !root.child('bans').child(auth.uid).exists() && ((!data.exists() && newData.val() === auth.uid) || (data.val() === auth.uid && !newData.exists()))) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())"
       }
     },
     "roles": {
@@ -66,18 +66,18 @@
       ".write": false
     },
     "bans": {
-      ".read": "auth != null",
+      ".read": "(auth != null) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
       ".write": false
     },
     "wallets": {
       "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
+        ".read": "(auth != null && auth.uid === $uid) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
         ".write": false
       }
     },
     "coinTransactions": {
       "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
+        ".read": "(auth != null && auth.uid === $uid) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
         ".write": false
       }
     },
@@ -95,44 +95,44 @@
     },
     "userFeeds": {
       "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
+        ".read": "(auth != null && auth.uid === $uid) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
         ".write": false
       }
     },
     "chats": {
       "$chatId": {
-        ".read": "auth != null && root.child('chatMembers').child($chatId).child(auth.uid).exists()",
+        ".read": "(auth != null && root.child('chatMembers').child($chatId).child(auth.uid).exists()) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
         "lastMessage": {
-          ".write": "auth != null && !root.child('bans').child(auth.uid).exists() && (auth.token.email_verified === true || auth.token.firebase.sign_in_provider !== 'password') && root.child('chatMembers').child($chatId).child(auth.uid).exists()",
+          ".write": "(auth != null && !root.child('bans').child(auth.uid).exists() && (auth.token.email_verified === true || auth.token.firebase.sign_in_provider !== 'password') && root.child('chatMembers').child($chatId).child(auth.uid).exists()) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
           ".validate": "newData.isString() && newData.val().length <= 200"
         },
         "lastAt": {
-          ".write": "auth != null && !root.child('bans').child(auth.uid).exists() && (auth.token.email_verified === true || auth.token.firebase.sign_in_provider !== 'password') && root.child('chatMembers').child($chatId).child(auth.uid).exists()",
+          ".write": "(auth != null && !root.child('bans').child(auth.uid).exists() && (auth.token.email_verified === true || auth.token.firebase.sign_in_provider !== 'password') && root.child('chatMembers').child($chatId).child(auth.uid).exists()) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
           ".validate": "newData.isNumber() && newData.val() <= now + 60000"
         },
         "lastSenderUid": {
-          ".write": "auth != null && !root.child('bans').child(auth.uid).exists() && (auth.token.email_verified === true || auth.token.firebase.sign_in_provider !== 'password') && root.child('chatMembers').child($chatId).child(auth.uid).exists()",
+          ".write": "(auth != null && !root.child('bans').child(auth.uid).exists() && (auth.token.email_verified === true || auth.token.firebase.sign_in_provider !== 'password') && root.child('chatMembers').child($chatId).child(auth.uid).exists()) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
           ".validate": "newData.val() === auth.uid"
         }
       }
     },
     "chatMembers": {
       "$chatId": {
-        ".read": "auth != null && data.child(auth.uid).exists()",
+        ".read": "(auth != null && data.child(auth.uid).exists()) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
         ".write": false
       }
     },
     "userChats": {
       "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
+        ".read": "(auth != null && auth.uid === $uid) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
         ".write": false
       }
     },
     "messages": {
       "$chatId": {
-        ".read": "auth != null && root.child('chatMembers').child($chatId).child(auth.uid).exists()",
+        ".read": "(auth != null && root.child('chatMembers').child($chatId).child(auth.uid).exists()) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
         "$msgId": {
-          ".write": "auth != null && !data.exists() && !root.child('bans').child(auth.uid).exists() && (auth.token.email_verified === true || auth.token.firebase.sign_in_provider !== 'password') && root.child('chatMembers').child($chatId).child(auth.uid).exists() && !root.child('chats').child($chatId).child('closed').exists() && !root.child('chatBlocks').child(auth.uid).exists() && root.child('appConfig').child('limits').child('chat').child('enabled').val() !== false && (((root.child('vip').child(auth.uid).child('until').isNumber() && root.child('vip').child(auth.uid).child('until').val() > now) && root.child('appConfig').child('limits').child('chat').child('vipEnabled').val() !== false) || (!(root.child('vip').child(auth.uid).child('until').isNumber() && root.child('vip').child(auth.uid).child('until').val() > now) && root.child('appConfig').child('limits').child('chat').child('freeEnabled').val() !== false))",
+          ".write": "(auth != null && !data.exists() && !root.child('bans').child(auth.uid).exists() && (auth.token.email_verified === true || auth.token.firebase.sign_in_provider !== 'password') && root.child('chatMembers').child($chatId).child(auth.uid).exists() && !root.child('chats').child($chatId).child('closed').exists() && !root.child('chatBlocks').child(auth.uid).exists() && root.child('appConfig').child('limits').child('chat').child('enabled').val() !== false && (((root.child('vip').child(auth.uid).child('until').isNumber() && root.child('vip').child(auth.uid).child('until').val() > now) && root.child('appConfig').child('limits').child('chat').child('vipEnabled').val() !== false) || (!(root.child('vip').child(auth.uid).child('until').isNumber() && root.child('vip').child(auth.uid).child('until').val() > now) && root.child('appConfig').child('limits').child('chat').child('freeEnabled').val() !== false))) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
           ".validate": "newData.hasChildren(['senderUid','at']) && (newData.hasChild('text') || newData.hasChild('imagePath')) && (!(((root.child('vip').child(auth.uid).child('until').isNumber() && root.child('vip').child(auth.uid).child('until').val() > now) && (root.child('appConfig').child('limits').child('tiers').child('vip').child('chatMessagesPerDay').isNumber() && root.child('appConfig').child('limits').child('tiers').child('vip').child('chatMessagesPerDay').val() > 0)) || (!(root.child('vip').child(auth.uid).child('until').isNumber() && root.child('vip').child(auth.uid).child('until').val() > now) && (root.child('appConfig').child('limits').child('tiers').child('free').child('chatMessagesPerDay').isNumber() && root.child('appConfig').child('limits').child('tiers').child('free').child('chatMessagesPerDay').val() > 0))) || newData.parent().parent().parent().child('chatCount').child(auth.uid).child('last').val() === $msgId)",
           "senderUid": {
             ".validate": "newData.val() === auth.uid"
@@ -153,49 +153,49 @@
       }
     },
     "lives": {
-      ".read": "auth != null",
+      ".read": "(auth != null) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
       ".write": false
     },
     "liveViewers": {
-      ".read": "auth != null",
+      ".read": "(auth != null) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
       "$liveId": {
         "$uid": {
-          ".write": "auth != null && auth.uid === $uid && !root.child('bans').child(auth.uid).exists()"
+          ".write": "(auth != null && auth.uid === $uid && !root.child('bans').child(auth.uid).exists()) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())"
         }
       }
     },
     "liveComments": {
-      ".read": "auth != null",
+      ".read": "(auth != null) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
       "$liveId": {
         "$cid": {
-          ".write": "auth != null && !data.exists() && !root.child('bans').child(auth.uid).exists() && newData.child('authorUid').val() === auth.uid"
+          ".write": "(auth != null && !data.exists() && !root.child('bans').child(auth.uid).exists() && newData.child('authorUid').val() === auth.uid) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())"
         }
       }
     },
     "liveGifts": {
-      ".read": "auth != null",
+      ".read": "(auth != null) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
       ".write": false
     },
     "clubs": {
-      ".read": "auth != null",
+      ".read": "(auth != null) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
       ".write": false
     },
     "clubMembers": {
-      ".read": "auth != null",
+      ".read": "(auth != null) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
       ".write": false
     },
     "userClubs": {
       "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
+        ".read": "(auth != null && auth.uid === $uid) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
         ".write": false
       }
     },
     "gifts": {
-      ".read": "auth != null",
+      ".read": "(auth != null) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
       ".write": false
     },
     "coinPackages": {
-      ".read": "auth != null",
+      ".read": "(auth != null) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
       ".write": false
     },
     "appConfig": {
@@ -204,48 +204,48 @@
     },
     "reports": {
       "$rid": {
-        ".write": "auth != null && !data.exists() && !root.child('bans').child(auth.uid).exists() && newData.child('reporterUid').val() === auth.uid"
+        ".write": "(auth != null && !data.exists() && !root.child('bans').child(auth.uid).exists() && newData.child('reporterUid').val() === auth.uid) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())"
       }
     },
     "aiBots": {
-      ".read": "auth != null",
+      ".read": "(auth != null) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
       ".write": false
     },
     "botChats": {
       "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
+        ".read": "(auth != null && auth.uid === $uid) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
         ".write": false
       }
     },
     "uiLayouts": {
       "$screen": {
         "current": {
-          ".read": "auth != null"
+          ".read": "(auth != null) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())"
         },
         ".write": false
       }
     },
     "readReceipts": {
       "$chatId": {
-        ".read": "auth != null && root.child('chatMembers').child($chatId).child(auth.uid).exists()",
+        ".read": "(auth != null && root.child('chatMembers').child($chatId).child(auth.uid).exists()) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
         "$uid": {
-          ".write": "auth != null && auth.uid === $uid && root.child('chatMembers').child($chatId).child(auth.uid).exists()",
+          ".write": "(auth != null && auth.uid === $uid && root.child('chatMembers').child($chatId).child(auth.uid).exists()) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
           ".validate": "newData.isNumber() && newData.val() <= now + 60000"
         }
       }
     },
     "matches": {
       "$pairId": {
-        ".read": "auth != null && data.child('members').child(auth.uid).exists()",
+        ".read": "(auth != null && data.child('members').child(auth.uid).exists()) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
         ".write": false
       }
     },
     "matchNotifications": {
       "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
+        ".read": "(auth != null && auth.uid === $uid) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
         "$pairId": {
           "seen": {
-            ".write": "auth != null && auth.uid === $uid",
+            ".write": "(auth != null && auth.uid === $uid) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
             ".validate": "newData.isBoolean()"
           }
         }
@@ -272,13 +272,13 @@
     },
     "friendRequests": {
       "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
+        ".read": "(auth != null && auth.uid === $uid) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
         ".write": false
       }
     },
     "friends": {
       "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
+        ".read": "(auth != null && auth.uid === $uid) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
         ".write": false
       }
     },
@@ -300,7 +300,7 @@
     },
     "vip": {
       "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
+        ".read": "(auth != null && auth.uid === $uid) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
         ".write": false
       }
     },
@@ -318,8 +318,8 @@
     },
     "chatCount": {
       "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null && auth.uid === $uid",
+        ".read": "(auth != null && auth.uid === $uid) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
+        ".write": "(auth != null && auth.uid === $uid) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
         ".validate": "newData.hasChildren(['day','n','last']) && newData.child('day').isNumber() && newData.child('n').isNumber() && newData.child('last').isString() && newData.child('last').val().length <= 40 && newData.child('day').val() * 86400000 - 25200000 <= now && now < newData.child('day').val() * 86400000 + 61200000 && ((data.child('day').val() === newData.child('day').val() && newData.child('n').val() === data.child('n').val() + 1) || (data.child('day').val() !== newData.child('day').val() && newData.child('n').val() === 1)) && (!((root.child('vip').child(auth.uid).child('until').isNumber() && root.child('vip').child(auth.uid).child('until').val() > now) && (root.child('appConfig').child('limits').child('tiers').child('vip').child('chatMessagesPerDay').isNumber() && root.child('appConfig').child('limits').child('tiers').child('vip').child('chatMessagesPerDay').val() > 0)) || newData.child('n').val() <= root.child('appConfig').child('limits').child('tiers').child('vip').child('chatMessagesPerDay').val()) && (!(!(root.child('vip').child(auth.uid).child('until').isNumber() && root.child('vip').child(auth.uid).child('until').val() > now) && (root.child('appConfig').child('limits').child('tiers').child('free').child('chatMessagesPerDay').isNumber() && root.child('appConfig').child('limits').child('tiers').child('free').child('chatMessagesPerDay').val() > 0)) || newData.child('n').val() <= root.child('appConfig').child('limits').child('tiers').child('free').child('chatMessagesPerDay').val())",
         "day": {
           ".validate": "newData.isNumber()"
@@ -345,8 +345,8 @@
     },
     "status": {
       "$uid": {
-        ".read": "auth != null && (auth.uid === $uid || root.child('friends').child($uid).child(auth.uid).exists())",
-        ".write": "auth != null && auth.uid === $uid",
+        ".read": "(auth != null && (auth.uid === $uid || root.child('friends').child($uid).child(auth.uid).exists())) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
+        ".write": "(auth != null && auth.uid === $uid) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
         ".validate": "newData.hasChildren(['online','lastSeen'])",
         "online": {
           ".validate": "newData.isBoolean()"
@@ -363,7 +363,7 @@
       }
     },
     "catalog": {
-      ".read": "auth != null",
+      ".read": "(auth != null) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
       ".write": false
     },
     "giftTx": {
@@ -372,13 +372,13 @@
     },
     "giftPending": {
       "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
+        ".read": "(auth != null && auth.uid === $uid) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
         ".write": false
       }
     },
     "giftNotifications": {
       "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
+        ".read": "(auth != null && auth.uid === $uid) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
         ".write": false
       }
     },
@@ -391,7 +391,7 @@
       "$chatId": {
         ".read": false,
         "rev": {
-          ".read": "auth != null && root.child('chatMembers').child($chatId).child(auth.uid).exists()"
+          ".read": "(auth != null && root.child('chatMembers').child($chatId).child(auth.uid).exists()) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())"
         }
       }
     }

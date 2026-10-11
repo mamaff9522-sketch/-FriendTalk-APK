@@ -49,6 +49,7 @@ object BrainApi {
                     val role = when (raw.lowercase()) {
                         "superadmin" -> UserRole.SUPERADMIN
                         "admin" -> UserRole.ADMIN
+                        "moderator" -> UserRole.MODERATOR
                         else -> UserRole.USER
                     }
                     MeResult(role, raw)

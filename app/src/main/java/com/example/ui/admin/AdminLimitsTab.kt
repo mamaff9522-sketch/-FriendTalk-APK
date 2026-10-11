@@ -106,21 +106,6 @@ fun AdminLimitsTab() {
             }
         }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Pink500)) { Text("บันทึก") }
         AdminAdOffersSection()
-        Spacer(Modifier.height(16.dp))
-        Text("จำกัดสิทธิ์รายผู้ใช้ (ห้ามโพสต์ / ห้ามแชท)", color = White, fontWeight = FontWeight.Bold)
-        OutlinedTextField(value = rUid, onValueChange = { rUid = it.trim().take(128); rState = null }, label = { Text("UID ผู้ใช้") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White))
-        OutlinedTextField(value = rReason, onValueChange = { if (it.length <= 200) rReason = it }, label = { Text("เหตุผล (แสดงให้ผู้ใช้เห็น)") }, modifier = Modifier.fillMaxWidth(),
-            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White))
-        fun restrict(body: JSONObject?) { scope.launch {
-            val u = FirebaseAuth.getInstance().currentUser ?: return@launch
-            val r = if (body == null) BrainApi.call(u, "GET", "/admin/restrict/$rUid") else BrainApi.call(u, "PUT", "/admin/restrict/$rUid", body.put("reason", rReason))
-            if (r.code == 200) rState = r.json else msg = r.json?.optString("error") ?: "ไม่สำเร็จ (${r.code})"
-        } }
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { OutlinedButton(enabled = rUid.isNotBlank(), onClick = { restrict(null) }) { Text("ดูสถานะ", color = White) } }
-        rState?.let { st ->
-            Row(verticalAlignment = Alignment.CenterVertically) { Text("ห้ามโพสต์", color = White, modifier = Modifier.weight(1f)); Switch(checked = st.optBoolean("noPost"), onCheckedChange = { restrict(JSONObject().put("noPost", it)) }) }
-            Row(verticalAlignment = Alignment.CenterVertically) { Text("ห้ามแชท", color = White, modifier = Modifier.weight(1f)); Switch(checked = st.optBoolean("noChat"), onCheckedChange = { restrict(JSONObject().put("noChat", it)) }) }
-        }
+        Text("จำกัดสิทธิ์รายผู้ใช้ (ห้ามโพสต์/ห้ามแชท) ย้ายไปที่ สมาชิก → แตะผู้ใช้", color = Slate400, fontSize = 12.sp, modifier = Modifier.padding(top = 12.dp))
     }
 }
