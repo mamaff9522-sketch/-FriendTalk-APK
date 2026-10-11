@@ -59,11 +59,16 @@ fun RealChatListScreen() {
     if (me == null) { Text("กรุณาเข้าสู่ระบบ", color = Slate400, modifier = Modifier.padding(16.dp)); return }
     val chats by remember(me) { SocialRepo.chatList(me) }.collectAsState(initial = null)
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Text("แชท", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = White)
+        var aiHub by remember { mutableStateOf(false) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("แชท", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = White, modifier = Modifier.weight(1f))
+            OutlinedButton(onClick = { aiHub = true }) { Text("🤖 คุยกับ AI", color = White, fontSize = 12.sp) }
+        }
+        if (aiHub) com.example.ui.ai.AiHubDialog { aiHub = false }
         Spacer(Modifier.height(8.dp))
         when {
             chats == null -> Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Pink500) }
-            chats!!.isEmpty() -> Text("ยังไม่มีแชท ลองปัดหาคู่หรือสุ่มคุยในแท็บค้นหา", color = Slate400, fontSize = 13.sp)
+            chats!!.isEmpty() -> Text("ยังไม่มีแชท ไปที่หน้า หาเพื่อน เพื่อปัด สุ่ม หรือเขย่าหาเพื่อน", color = Slate400, fontSize = 13.sp)
             else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(chats!!, key = { it.chatId }) { c -> ChatRow(c) }
             }

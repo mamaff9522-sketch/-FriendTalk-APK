@@ -53,7 +53,8 @@ fun FeedTab(
     onCreatePost: (content: String, type: PostType, images: List<String>, videoUrl: String?, tags: List<String>) -> Unit,
     onAddStory: (imageUrl: String) -> Unit,
     onEnterLiveRoom: (String) -> Unit,
-    onSubmitReport: (Report) -> Unit
+    onSubmitReport: (Report) -> Unit,
+    onOpenFindFriends: () -> Unit = {}
 ) {
     var isCreatePostOpen by remember { mutableStateOf(false) }
     var activeCommentPost by remember { mutableStateOf<Post?>(null) }
@@ -176,7 +177,9 @@ fun FeedTab(
                         },
                         onStoryClick = { /* View Story */ },
                         onQuickFilterClick = { tabName ->
-                            if (availableTabs.contains(tabName)) onSelectCategory(tabName)
+                            // People shortcuts now open the 'หาเพื่อน' page (all friend-finding lives there)
+                            if (tabName in listOf("ออนไลน์", "คนใกล้เคียง", "หาเพื่อน")) onOpenFindFriends()
+                            else if (availableTabs.contains(tabName)) onSelectCategory(tabName)
                         },
                         onLiveClick = { hostUserId ->
                             onEnterLiveRoom("live_linlin_01")

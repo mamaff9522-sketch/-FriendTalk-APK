@@ -62,6 +62,21 @@ object NearbyRepo {
         return arr(BrainApi.call(u, "GET", "/friends/requests").json?.optJSONArray("requests")).map { FriendRequest(parseProfile(it), it.optLong("at"),
             if (it.isNull("similarity")) null else Similarity(it.optInt("similarity"), InterestsRepo.strMap(it.optJSONObject("shared")), true)) }
     }
+    data class SearchResult(val users: List<NearbyUser>, val nearby: List<NearbyUser>, val nearbyStatus: String, val code: Int)
+    /** Name search and/or nearby people (near = radar). Nearby name matches come first with a distance. */
+    suspend fun search(q: String, near: Boolean, radiusKm: Double): SearchResult? {
+        val u = user() ?: return null
+        val r = BrainApi.call(u, "GET", "/search/users?q=" + android.net.Uri.encode(q) + (if (near) "&near=1&radiusKm=${rStr(radiusKm)}" else ""))
+        val j = r.json ?: return SearchResult(emptyList(), emptyList(), "error", r.code)
+        if (r.code != 200) return SearchResult(emptyList(), emptyList(), j.optString("code", "error"), r.code)
+        return SearchResult(arr(j.optJSONArray("users")).map { NearbyUser(parseProfile(it), it.optString("distance")) },
+            arr(j.optJSONArray("nearby")).map { NearbyUser(parseProfile(it), it.optString("distance")) }, j.optString("nearbyStatus"), 200)
+    }
+    /** Friends with live online flag (presence; hidden users never show online). */
+    suspend fun friendsWithOnline(): List<Pair<RealProfile, Boolean>> {
+        val u = user() ?: return emptyList()
+        return arr(BrainApi.call(u, "GET", "/friends").json?.optJSONArray("friends")).map { parseProfile(it) to it.optBoolean("online") }
+    }
     suspend fun friends(): List<RealProfile> {
         val u = user() ?: return emptyList()
         return arr(BrainApi.call(u, "GET", "/friends").json?.optJSONArray("friends")).map { parseProfile(it) }

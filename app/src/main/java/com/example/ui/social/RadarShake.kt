@@ -67,7 +67,7 @@ internal suspend fun currentLocation(ctx: Context): Location? {
 }
 
 @Composable
-private fun RadiusPicker(radius: Double, onPick: (Double) -> Unit) {
+internal fun RadiusPicker(radius: Double, onPick: (Double) -> Unit) {
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         NearbyRepo.RADII.forEach { r ->
             FilterChip(selected = r == radius, onClick = { onPick(r) }, label = { Text(NearbyRepo.radiusLabel(r), fontSize = 12.sp) })
@@ -76,13 +76,13 @@ private fun RadiusPicker(radius: Double, onPick: (Double) -> Unit) {
 }
 
 @Composable
-private fun rememberRadius(): MutableState<Double> {
+internal fun rememberRadius(): MutableState<Double> {
     val ctx = LocalContext.current
     return remember { mutableStateOf(NearbyRepo.loadRadius(ctx)) }
 }
 
 @Composable
-private fun LocationPermissionCard(onGranted: () -> Unit) {
+internal fun LocationPermissionCard(onGranted: () -> Unit) {
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { res ->
         if (res.values.any { it }) onGranted()
     }

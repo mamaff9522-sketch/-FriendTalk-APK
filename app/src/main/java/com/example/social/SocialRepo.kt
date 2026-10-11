@@ -196,6 +196,37 @@ object SocialRepo {
         return if (r.code == 200) null else (r.json?.optString("error") ?: "ไม่สำเร็จ (${r.code})")
     }
     var lastOpenError = ""
+    // ===== Presence: status/{uid} {online, lastSeen, hidden}; onDisconnect marks offline =====
+    private var presenceListener: com.google.firebase.database.ValueEventListener? = null
+    fun startPresence(ctx: android.content.Context) {
+        val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
+        if (presenceListener != null) return
+        val hidden = ctx.getSharedPreferences("friendtalk", 0).getBoolean("hideOnline", false)
+        val ref = db.getReference("status/$uid")
+        val l = object : com.google.firebase.database.ValueEventListener {
+            override fun onDataChange(s: DataSnapshot) {
+                if (s.getValue(Boolean::class.java) != true) return
+                ref.onDisconnect().updateChildren(mapOf("online" to false, "lastSeen" to com.google.firebase.database.ServerValue.TIMESTAMP))
+                ref.setValue(mapOf("online" to true, "lastSeen" to com.google.firebase.database.ServerValue.TIMESTAMP, "hidden" to hidden))
+            }
+            override fun onCancelled(e: DatabaseError) {}
+        }
+        presenceListener = l
+        db.getReference(".info/connected").addValueEventListener(l)
+    }
+    fun setOnlineHidden(ctx: android.content.Context, hidden: Boolean) {
+        ctx.getSharedPreferences("friendtalk", 0).edit().putBoolean("hideOnline", hidden).apply()
+        val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
+        db.getReference("status/$uid/hidden").setValue(hidden)
+    }
+    fun isOnlineHidden(ctx: android.content.Context) = ctx.getSharedPreferences("friendtalk", 0).getBoolean("hideOnline", false)
+    /** On logout: mark offline and stop listening. */
+    fun stopPresence() {
+        presenceListener?.let { db.getReference(".info/connected").removeEventListener(it) }; presenceListener = null
+        val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
+        db.getReference("status/$uid").updateChildren(mapOf("online" to false, "lastSeen" to com.google.firebase.database.ServerValue.TIMESTAMP))
+    }
+
     suspend fun openChatWith(otherUid: String): String? {
         val u = FirebaseAuth.getInstance().currentUser ?: return null
         val r = BrainApi.call(u, "POST", "/chats/open", JSONObject().put("otherUid", otherUid))

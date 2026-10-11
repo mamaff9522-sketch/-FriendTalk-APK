@@ -55,4 +55,11 @@ object AiRepo {
 
     suspend fun setBotEnabled(user: FirebaseUser, botId: String, enabled: Boolean): Boolean =
         BrainApi.call(user, "PUT", "/admin/bots/$botId", JSONObject().put("enabled", enabled)).code == 200
+
+    /** Enabled AI characters for the AI hub (empty when bots are off). */
+    suspend fun bots(user: FirebaseUser): List<AiBot> {
+        val r = BrainApi.call(user, "GET", "/bots")
+        val arr = r.json?.optJSONArray("bots") ?: return emptyList()
+        return (0 until arr.length()).map { parseBot(arr.getJSONObject(it)) }
+    }
 }

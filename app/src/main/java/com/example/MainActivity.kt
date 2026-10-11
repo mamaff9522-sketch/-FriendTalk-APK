@@ -92,6 +92,7 @@ fun FriendTalkRoot(
         firebaseUser?.let { user ->
             viewModel.syncFirebaseUser(user)
             if (com.example.social.SocialRepo.upsertOnSignIn(user)) com.example.ui.social.InterestsPrompt.show.value = true
+            com.example.social.SocialRepo.startPresence(context)
             com.example.service.UiLayoutRepository.refreshHome()
         }
     }
@@ -123,6 +124,7 @@ fun FriendTalkRoot(
                 onSignOut = {
                     coroutineScope.launch {
                         // Mark inactive + hide from radar, then sign out (Firebase + Credential Manager)
+                        runCatching { com.example.social.SocialRepo.stopPresence() }
                         runCatching {
                             com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.let { u ->
                                 com.google.firebase.database.FirebaseDatabase.getInstance(com.example.social.SocialRepo.DB_URL)
@@ -229,6 +231,7 @@ fun FriendTalkApp(
             ) {
                 when (uiState.activeTab) {
                     "home" -> FeedTab(
+                        onOpenFindFriends = { viewModel.setActiveTab("discover") },
                         posts = uiState.posts,
                         stories = uiState.stories,
                         users = uiState.users,
@@ -254,6 +257,8 @@ fun FriendTalkApp(
                     "discover" -> DiscoverTab(
                         users = uiState.users,
                         currentUser = uiState.currentUser,
+                        showCompanion = uiState.uiConfig.bottomNav.showCompanionTab && uiState.uiConfig.isCompanionFeatureEnabled && uiState.currentUser.age >= 18,
+                        onOpenCompanion = { viewModel.setActiveTab("companion") },
                         onStartChat = { user ->
                             val conv = uiState.conversations.find { it.participantIds.contains(user.id) }
                             if (conv != null) {

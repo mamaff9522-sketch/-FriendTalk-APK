@@ -56,9 +56,7 @@ fun BottomNavBar(
     if (uiConfig.bottomNav.showChatTab) {
         items.add(NavItem("chat", "แชต", Icons.Filled.ChatBubble, Icons.Outlined.ChatBubbleOutline, badgeCount = totalUnreadMessages))
     }
-    if (uiConfig.bottomNav.showCompanionTab && uiConfig.isCompanionFeatureEnabled && currentUserAge >= 18) {
-        items.add(NavItem("companion", "เพื่อนคุย", Icons.Filled.Favorite, Icons.Outlined.FavoriteBorder, isSpecial = true))
-    }
+    // 'เพื่อนคุย' (companion, 18+) moved to a tile on the 'หาเพื่อน' page.
     // Profile moved to the header avatar; this slot is the standalone ads page.
     items.add(NavItem("ads", "โฆษณา", Icons.Filled.Star, Icons.Outlined.StarBorder))
 

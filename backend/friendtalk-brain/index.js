@@ -55,7 +55,7 @@ async function isSuper(req, res, next) {
   req.role = r; next();
 }
 const w = fn => (q, r, n) => fn(q, r, n).catch(e => { console.error(e.message); r.status(e.code === 404 ? 404 : 500).json({ error: e.code === 404 ? 'user not found' : 'internal' }); });
-app.use(['/coins', '/age', '/config', '/admin', '/superadmin', '/me', '/match', '/bot', '/ui', '/chats', '/swipe', '/posts', '/feed', '/friends', '/radar', '/shake', '/limits', '/quota', '/search', '/users', '/interests'], w(auth));
+app.use(['/coins', '/age', '/config', '/admin', '/superadmin', '/me', '/match', '/bot', '/ui', '/chats', '/swipe', '/posts', '/feed', '/friends', '/radar', '/shake', '/limits', '/quota', '/search', '/users', '/interests', '/bots'], w(auth));
 app.get('/me', w(async (q, r) => {
   const role = await loadRole(q.uid);
   r.json({ uid: q.uid, role: role?.role || 'user', permissions: role?.permissions || {} });
@@ -389,12 +389,29 @@ app.get('/admob/ssv', w(async (q, r) => {
   r.status(x.status === 429 ? 200 : x.status).json(x.body); // 200 so AdMob does not retry a capped reward
 }));
 // Simple real user search (by display name prefix), quota-limited.
-app.get('/search/users', w(notBanned), w(quota('searchPerDay')), w(async (q, r) => {
-  const term = String(q.query.q || '').trim().slice(0, 50);
-  if (term.length < 1) return r.status(400).json({ error: 'q required' });
+// Friend search: name prefix (searchPerDay) and/or nearby people from radar (near=1, radarPerDay). Nearby name matches ranked first.
+app.get('/search/users', w(notBanned), w(async (q, r) => {
+  const term = String(q.query.q || '').trim().slice(0, 50), near = q.query.near === '1';
+  if (term.length < 1 && !near) return r.status(400).json({ error: 'q required' });
+  let nearby = null, nearbyStatus = 'off';
+  if (near) {
+    const lim = await consume(q.uid, 'radarPerDay');
+    if (lim !== null) { if (!term) return r.status(429).json({ code: 'quota', feature: 'radarPerDay', limit: lim, error: 'quota exceeded' }); nearbyStatus = 'quota'; }
+    else { nearby = await nearbyFor(q.uid, pickRadius(q.query.radiusKm)); nearbyStatus = nearby ? 'ok' : 'no_location'; }
+  }
+  if (!term) return r.json({ users: [], nearby: (nearby || []).map(({ _km, ...x }) => x), nearbyStatus, radiusKm: pickRadius(q.query.radiusKm) });
+  { const lim = await consume(q.uid, 'searchPerDay'); if (lim !== null) return r.status(429).json({ code: 'quota', feature: 'searchPerDay', limit: lim, error: 'quota exceeded' }); }
   const s = await db.ref('users').orderByChild('displayName').startAt(term).endAt(term + '\uf8ff').limitToFirst(20).get();
-  const out = []; s.forEach(c => { if (c.key !== q.uid && c.val()?.displayName) out.push(publicProfile(c.key, c.val())); });
-  r.json({ users: out });
+  const byName = []; s.forEach(c => { if (c.key !== q.uid && c.val()?.displayName) byName.push(publicProfile(c.key, c.val())); });
+  const lc = term.toLowerCase(), nearMap = new Map((nearby || []).map(u => [u.uid, u]));
+  const nearMatches = (nearby || []).filter(u => String(u.displayName || '').toLowerCase().includes(lc));
+  const out = [...nearMatches.map(({ _km, ...x }) => ({ ...x, nearby: true }))];
+  for (const u of byName) {
+    if (out.some(x => x.uid === u.uid)) continue;
+    if (await isBanned(u.uid) || await blockedEither(q.uid, u.uid)) continue;
+    const n = nearMap.get(u.uid); out.push(n ? { ...u, distance: n.distance, nearby: true } : { ...u, nearby: false });
+  }
+  r.json({ users: out, nearbyStatus });
 }));
 
 // ===== Interest profile + similarity (appConfig/interests; seed only) =====
@@ -552,6 +569,12 @@ app.post('/bot/chat', w(notBanned), w(async (q, r) => {
 app.delete('/bot/chat/:botId', w(async (q, r) => {
   if (!/^[A-Za-z0-9_-]{1,40}$/.test(q.params.botId)) return r.status(400).json({ error: 'bad botId' });
   await db.ref(`botChats/${q.uid}/${q.params.botId}`).remove(); r.json({ ended: q.params.botId });
+}));
+// Public list of enabled AI characters (for the AI hub); empty when bots are globally off.
+app.get('/bots', w(async (_q, r) => {
+  if (!(await botsEnabled())) return r.json({ enabled: false, bots: [] });
+  const all = (await db.ref('aiBots').get()).val() || {};
+  r.json({ enabled: true, bots: Object.entries(all).filter(([, b]) => b && b.enabled === true).map(([id, b]) => publicBot(id, b)) });
 }));
 app.get('/admin/bots', perm('config_edit'), w(async (_q, r) => {
   const all = (await db.ref('aiBots').get()).val() || {};
@@ -977,7 +1000,8 @@ app.post('/friends/respond', w(notBanned), w(async (q, r) => {
 }));
 app.get('/friends', w(async (q, r) => {
   const ids = Object.keys((await db.ref(`friends/${q.uid}`).get()).val() || {}).slice(0, 500);
-  r.json({ friends: (await Promise.all(ids.map(summary))).filter(Boolean) });
+  const [profiles, st] = await Promise.all([Promise.all(ids.map(summary)), Promise.all(ids.map(id => db.ref(`status/${id}`).get()))]);
+  r.json({ friends: profiles.map((p, i) => p && { ...p, online: (s => !!s && s.online === true && s.hidden !== true)(st[i].val()) }).filter(Boolean) });
 }));
 app.get('/friends/requests', w(async (q, r) => {
   const reqs = (await db.ref(`friendRequests/${q.uid}`).get()).val() || {};
@@ -994,10 +1018,10 @@ app.post('/radar/location', w(notBanned), w(async (q, r) => {
   r.json({ ok: true, visible: true });
 }));
 app.delete('/radar/location', w(async (q, r) => { await db.ref(`radar/${q.uid}`).remove(); r.json({ ok: true, visible: false }); }));
-app.get('/radar/nearby', w(notBanned), w(quota('radarPerDay')), w(async (q, r) => {
-  const radius = pickRadius(q.query.radiusKm);
-  const me = (await db.ref(`radar/${q.uid}`).get()).val();
-  if (!me) return r.status(409).json({ error: 'location not shared' });
+/** Nearby visible users around uid (coarse distance only). Returns null if uid has no shared location. */
+async function nearbyFor(uid, radius) {
+  const me = (await db.ref(`radar/${uid}`).get()).val();
+  if (!me) return null;
   const prec = radius <= 2 ? 5 : radius <= 20 ? 4 : 3; // geohash5 cell ~4.9x4.9 km
   const cellDeg = { 5: 0.044, 4: 0.18, 3: 1.4 }[prec];
   const step = Math.max(cellDeg, radius / 111);
@@ -1007,21 +1031,27 @@ app.get('/radar/nearby', w(notBanned), w(quota('radarPerDay')), w(async (q, r) =
     prefixes.add(geohash(la, lo, prec));
   }
   const cutoff = Date.now() - 30 * 60 * 1000, seen = new Map();
-  for (const p of prefixes) {
+  await Promise.all([...prefixes].map(async p => {
     const s = await db.ref('radar').orderByChild('gh').startAt(p).endAt(p + '\uf8ff').limitToFirst(500).get();
     s.forEach(c => { seen.set(c.key, c.val()); });
-  }
+  }));
   const out = [];
-  for (const [uid, v] of seen) {
-    if (uid === q.uid || !v || v.at < cutoff) continue;
+  for (const [id, v] of seen) {
+    if (id === uid || !v || v.at < cutoff) continue;
     const km = distKm(me.lat, me.lng, v.lat, v.lng);
     if (km > radius) continue;
-    if (await isBanned(uid) || await blockedEither(q.uid, uid)) continue;
-    const p = await summary(uid); if (!p) continue;
+    if (await isBanned(id) || await blockedEither(uid, id)) continue;
+    const p = await summary(id); if (!p) continue;
     out.push({ ...p, distance: roundDist(km), _km: km });
   }
   out.sort((a, b) => a._km - b._km);
-  r.json({ radiusKm: radius, users: out.slice(0, 50).map(({ _km, ...x }) => x) });
+  return out.slice(0, 50);
+}
+app.get('/radar/nearby', w(notBanned), w(quota('radarPerDay')), w(async (q, r) => {
+  const radius = pickRadius(q.query.radiusKm);
+  const list = await nearbyFor(q.uid, radius);
+  if (!list) return r.status(409).json({ error: 'location not shared' });
+  r.json({ radiusKm: radius, users: list.map(({ _km, ...x }) => x) });
 }));
 // --- shake (15 s window)
 const SHAKE_MS = 15000;

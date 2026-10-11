@@ -64,14 +64,9 @@ fun RandomMatchView(users: List<User>, onStartChatWithUser: (User) -> Unit) {
         return
     }
 
-    var isAdmin by remember { mutableStateOf(false) }
-    var manageBots by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { FirebaseAuth.getInstance().currentUser?.let { isAdmin = AiRepo.adminBots(it) != null } }
-
-    // AI hub: one scrollable screen, grouped into sections (chat / my quota / admin)
+    // Random friend match (human first, labeled AI character only if no human is free). Lives in 'หาเพื่อน'.
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("🤖 ศูนย์ AI & สุ่มเพื่อน", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = White)
-        HubCard("🎲 สุ่มหาเพื่อนคุย / คุยกับ AI") {
+        HubCard("🎲 สุ่มหาเพื่อน") {
             Text("ระบบจะหาผู้ใช้จริงที่ว่างก่อน ถ้าไม่มี อาจเจอตัวละคร AI (มีป้าย AI กำกับเสมอ) ฟรี ไม่ใช้เหรียญ", fontSize = 12.sp, color = Slate400)
             if (b != null) {
                 Column(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -95,29 +90,11 @@ fun RandomMatchView(users: List<User>, onStartChatWithUser: (User) -> Unit) {
             if (b == null) Button(onClick = { doMatch() }, enabled = !loading, modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Pink500)) { Text(if (loading) "กำลังสุ่ม…" else "สุ่มเลย") }
         }
-        // Ads live on their own page; only a link here.
-        TextButton(onClick = { com.example.ads.AdRoom.open.value = "aiBotMessagesPerDay" }) { Text("🎁 โควตาหมด? ไปหน้าโฆษณา →", color = Pink400) }
-        if (isAdmin) HubCard("🛠 จัดการบอท (แอดมิน)") {
-            Text("เปิด/ปิดบอททั้งหมด และรายตัว", color = Slate400, fontSize = 12.sp)
-            OutlinedButton(onClick = { manageBots = true }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) { Text("จัดการบอท AI", color = White) }
-        }
-    }
-    if (manageBots) androidx.compose.ui.window.Dialog(onDismissRequest = { manageBots = false },
-        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.fillMaxSize().systemBarsPadding(), color = Slate950) {
-            Column(Modifier.padding(12.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("🤖 จัดการบอท AI", color = White, fontWeight = FontWeight.Bold, fontSize = 17.sp, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { manageBots = false }) { Text("ปิด", color = Slate300) }
-                }
-                AdminBotsTab()
-            }
-        }
     }
 }
 
 @Composable
-private fun HubCard(title: String, content: @Composable ColumnScope.() -> Unit) {
+internal fun HubCard(title: String, content: @Composable ColumnScope.() -> Unit) {
     Surface(shape = RoundedCornerShape(16.dp), color = Slate800, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp)) {
             Text(title, color = White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
