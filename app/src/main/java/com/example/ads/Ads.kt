@@ -133,7 +133,7 @@ object AdsManager {
         val uid = FirebaseAuth.getInstance().currentUser?.uid
         if (format == "rewarded_interstitial") {
             val ad = suspendCancellableCoroutine<com.google.android.gms.ads.rewardedinterstitial.RewardedInterstitialAd?> { c ->
-                com.google.android.gms.ads.rewardedinterstitial.RewardedInterstitialAd.load(activity, BuildConfig.ADMOB_REWARDED_INTERSTITIAL_ID, AdRequest.Builder().build(),
+                com.google.android.gms.ads.rewardedinterstitial.RewardedInterstitialAd.load(activity, AdUnits.unit(BuildConfig.ADMOB_REWARDED_INTERSTITIAL_ID, BuildConfig.ADMOB_TEST_REWARDED_INTERSTITIAL_ID), AdRequest.Builder().build(),
                     object : com.google.android.gms.ads.rewardedinterstitial.RewardedInterstitialAdLoadCallback() {
                         override fun onAdLoaded(a: com.google.android.gms.ads.rewardedinterstitial.RewardedInterstitialAd) { c.resume(a) }
                         override fun onAdFailedToLoad(e: LoadAdError) { c.resume(null) }
@@ -151,7 +151,7 @@ object AdsManager {
         }
         val feature = customData
         val ad = suspendCancellableCoroutine<RewardedAd?> { c ->
-            RewardedAd.load(activity, BuildConfig.ADMOB_REWARDED_ID, AdRequest.Builder().build(), object : RewardedAdLoadCallback() {
+            RewardedAd.load(activity, AdUnits.unit(BuildConfig.ADMOB_REWARDED_ID, BuildConfig.ADMOB_TEST_REWARDED_ID), AdRequest.Builder().build(), object : RewardedAdLoadCallback() {
                 override fun onAdLoaded(a: RewardedAd) { c.resume(a) }
                 override fun onAdFailedToLoad(e: LoadAdError) { c.resume(null) }
             })
@@ -175,7 +175,8 @@ object AdsManager {
         val l = AdRoom.limits.value ?: return
         if (activity == null || !l.showAds || !l.interstitialEnabled || l.interstitialEverySwipes <= 0) return
         if (++swipeCount % l.interstitialEverySwipes != 0) return
-        InterstitialAd.load(activity, BuildConfig.ADMOB_INTERSTITIAL_ID, AdRequest.Builder().build(), object : InterstitialAdLoadCallback() {
+        if (AdUnits.unit(BuildConfig.ADMOB_INTERSTITIAL_ID, BuildConfig.ADMOB_TEST_INTERSTITIAL_ID).isBlank()) return // no real interstitial unit configured
+        InterstitialAd.load(activity, AdUnits.unit(BuildConfig.ADMOB_INTERSTITIAL_ID, BuildConfig.ADMOB_TEST_INTERSTITIAL_ID), AdRequest.Builder().build(), object : InterstitialAdLoadCallback() {
             override fun onAdLoaded(a: InterstitialAd) { a.show(activity) }
         })
     }
@@ -188,7 +189,7 @@ fun FeedBanner(modifier: Modifier = Modifier) {
     val lim = l ?: return
     if (!lim.showAds || !lim.bannerEnabled) return
     AndroidView(modifier = modifier.fillMaxWidth(), factory = { ctx ->
-        AdView(ctx).apply { setAdSize(AdSize.BANNER); adUnitId = BuildConfig.ADMOB_BANNER_ID; loadAd(AdRequest.Builder().build()) }
+        AdView(ctx).apply { setAdSize(AdSize.BANNER); adUnitId = AdUnits.unit(BuildConfig.ADMOB_BANNER_ID, BuildConfig.ADMOB_TEST_BANNER_ID); loadAd(AdRequest.Builder().build()) }
     })
 }
 
@@ -308,4 +309,10 @@ fun AdsPageContent(feature: String?, onClose: (() -> Unit)?, returnAfterReward: 
     if (vipInfo) AlertDialog(onDismissRequest = { vipInfo = false }, title = { Text("VIP เร็ว ๆ นี้") },
         text = { Text("ยังไม่เปิดให้ซื้อ VIP ในแอป หากต้องการ VIP กรุณาติดต่อแอดมิน") },
         confirmButton = { TextButton(onClick = { vipInfo = false }) { Text("ตกลง") } })
+}
+
+/** Admin/superadmin/moderator accounts always get Google TEST units, so the owner never views/clicks live ads. */
+object AdUnits {
+    @Volatile var adminTestAds = true // safe default until /me confirms a normal USER role
+    fun unit(real: String, test: String) = if (adminTestAds) test else real
 }

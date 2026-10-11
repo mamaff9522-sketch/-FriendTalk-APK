@@ -186,6 +186,7 @@ class FriendTalkViewModel : ViewModel() {
             val me = com.example.network.BrainApi.fetchMe(firebaseUser) ?: return@launch
             if (_uiState.value.currentUser.id != firebaseUser.uid) return@launch
             val isPrivileged = me.role == UserRole.SUPERADMIN || me.role == UserRole.ADMIN
+            com.example.ads.AdUnits.adminTestAds = me.role != UserRole.USER || me.rawRole.lowercase() in listOf("superadmin", "admin", "moderator")
             val updated = _uiState.value.currentUser.copy(
                 role = me.role,
                 backendRoleStatus = "สิทธิ์จาก Backend: ${me.rawRole}",

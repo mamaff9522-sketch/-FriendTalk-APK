@@ -17,13 +17,12 @@ android {
     minSdk = 24
     targetSdk = 36
     versionCode = (System.getenv("VERSION_CODE") ?: "4").toInt()
-    // AdMob: Google's official TEST ids by default; real ids come from GitHub secrets (env) at build time.
-    fun envOr(k: String, d: String) = System.getenv(k)?.takeIf { it.isNotBlank() } ?: d
-    manifestPlaceholders["admobAppId"] = envOr("ADMOB_APP_ID", "ca-app-pub-3940256099942544~3347511713")
-    buildConfigField("String", "ADMOB_REWARDED_INTERSTITIAL_ID", "\"" + envOr("ADMOB_REWARDED_INTERSTITIAL_ID", "ca-app-pub-3940256099942544/5354046379") + "\"")
-    buildConfigField("String", "ADMOB_REWARDED_ID", "\"" + envOr("ADMOB_REWARDED_ID", "ca-app-pub-3940256099942544/5224354917") + "\"")
-    buildConfigField("String", "ADMOB_BANNER_ID", "\"" + envOr("ADMOB_BANNER_ID", "ca-app-pub-3940256099942544/6300978111") + "\"")
-    buildConfigField("String", "ADMOB_INTERSTITIAL_ID", "\"" + envOr("ADMOB_INTERSTITIAL_ID", "ca-app-pub-3940256099942544/1033173712") + "\"")
+    // AdMob: debug builds always use Google's TEST ids; release uses the owner's real (public) ids, overridable via env/secrets.
+    // Test unit ids are also kept in every build so admin accounts get test ads at runtime (no invalid-traffic risk).
+    buildConfigField("String", "ADMOB_TEST_REWARDED_INTERSTITIAL_ID", "\"ca-app-pub-3940256099942544/5354046379\"")
+    buildConfigField("String", "ADMOB_TEST_REWARDED_ID", "\"ca-app-pub-3940256099942544/5224354917\"")
+    buildConfigField("String", "ADMOB_TEST_BANNER_ID", "\"ca-app-pub-3940256099942544/6300978111\"")
+    buildConfigField("String", "ADMOB_TEST_INTERSTITIAL_ID", "\"ca-app-pub-3940256099942544/1033173712\"")
     versionName = "1.2.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -40,8 +39,23 @@ android {
   
   }
 
+  fun envOr(k: String, d: String) = System.getenv(k)?.takeIf { it.isNotBlank() } ?: d
+  fun admob(t: com.android.build.api.dsl.ApplicationBuildType, app: String, ri: String, rw: String, bn: String, ins: String) {
+    t.manifestPlaceholders["admobAppId"] = app
+    t.buildConfigField("String", "ADMOB_REWARDED_INTERSTITIAL_ID", "\"$ri\"")
+    t.buildConfigField("String", "ADMOB_REWARDED_ID", "\"$rw\"")
+    t.buildConfigField("String", "ADMOB_BANNER_ID", "\"$bn\"")
+    t.buildConfigField("String", "ADMOB_INTERSTITIAL_ID", "\"$ins\"")
+  }
   buildTypes {
+    getByName("debug") {
+      admob(this, "ca-app-pub-3940256099942544~3347511713", "ca-app-pub-3940256099942544/5354046379", "ca-app-pub-3940256099942544/5224354917",
+        "ca-app-pub-3940256099942544/6300978111", "ca-app-pub-3940256099942544/1033173712")
+    }
     release {
+      // No real interstitial unit yet -> empty (interstitial is off by default; app skips loading when blank).
+      admob(this, envOr("ADMOB_APP_ID", "ca-app-pub-8235263673334341~5747162954"), envOr("ADMOB_REWARDED_INTERSTITIAL_ID", "ca-app-pub-8235263673334341/8303017417"),
+        envOr("ADMOB_REWARDED_ID", "ca-app-pub-8235263673334341/1504665618"), envOr("ADMOB_BANNER_ID", "ca-app-pub-8235263673334341/9427387669"), envOr("ADMOB_INTERSTITIAL_ID", ""))
       isCrunchPngs = false
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
