@@ -50,7 +50,10 @@
             ".validate": false
           }
         }
-      }
+      },
+      ".indexOn": [
+        "displayName"
+      ]
     },
     "usernames": {
       ".read": "auth != null",
