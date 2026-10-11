@@ -45,7 +45,7 @@ fun BottomNavBar(
         items.add(NavItem("home", "หน้าแรก", Icons.Filled.Home, Icons.Outlined.Home))
     }
     if (uiConfig.bottomNav.showDiscoverTab) {
-        items.add(NavItem("discover", "ค้นหา", Icons.Filled.Explore, Icons.Outlined.Explore))
+        items.add(NavItem("discover", "หาเพื่อน", Icons.Filled.People, Icons.Outlined.People))
     }
     if (uiConfig.bottomNav.showLiveTab && uiConfig.isLiveStreamingEnabled) {
         items.add(NavItem("live", "ไลฟ์สด", Icons.Filled.LiveTv, Icons.Outlined.LiveTv, badgeCount = activeLiveCount))

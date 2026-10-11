@@ -33,12 +33,17 @@ fun DiscoverTab(
     onStartChat: (User) -> Unit
 ) {
     var subTab by remember { mutableStateOf("radar") } // radar, nearby, swipe, shake
+    var query by remember { mutableStateOf("") }
+    var results by remember { mutableStateOf<List<com.example.ui.social.FoundUser>?>(null) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
+        // Search lives here at the top of the friend-discovery page (moved from the bottom bar)
+        com.example.ui.social.UserSearchBar(query, { query = it }, results, { results = it })
+        if (results != null) return@Column
         // Sub tabs
         Row(
             modifier = Modifier
