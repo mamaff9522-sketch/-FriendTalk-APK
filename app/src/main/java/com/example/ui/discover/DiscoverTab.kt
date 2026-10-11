@@ -80,7 +80,7 @@ private fun FindFriendsHome(onTile: (String) -> Unit, showCompanion: Boolean) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val focus = LocalFocusManager.current
-    var radius by rememberRadius()
+    val radius by rememberRadius()
     var query by rememberSaveable { mutableStateOf("") }
     var results by remember { mutableStateOf<List<NearbyUser>?>(null) }
     var searchMsg by remember { mutableStateOf("") }
@@ -139,7 +139,7 @@ private fun FindFriendsHome(onTile: (String) -> Unit, showCompanion: Boolean) {
             Section("📍 คนใกล้คุณ (${NearbyRepo.radiusLabel(radius)})") {}
             if (!granted) Box(Modifier.padding(horizontal = 16.dp)) { LocationPermissionCard { granted = true } }
             else {
-                Box(Modifier.padding(horizontal = 8.dp)) { RadiusPicker(radius) { radius = it; NearbyRepo.saveRadius(ctx, it) } }
+                Text("ใช้ระยะเดียวกับเรดาร์ · ปรับได้ในเรดาร์", color = Slate400, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 16.dp))
                 val nb = nearby
                 if (nb == null) Text("กำลังหา…", color = Slate400, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp))
                 else if (nb.isNotEmpty()) AvatarRow(nb.map { it.profile to it.distance }) { open = it }

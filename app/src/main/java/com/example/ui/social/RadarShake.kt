@@ -68,10 +68,19 @@ internal suspend fun currentLocation(ctx: Context): Location? {
 
 @Composable
 internal fun RadiusPicker(radius: Double, onPick: (Double) -> Unit) {
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        NearbyRepo.RADII.forEach { r ->
-            FilterChip(selected = r == radius, onClick = { onPick(r) }, label = { Text(NearbyRepo.radiusLabel(r), fontSize = 12.sp) })
+    // Slider over the allowed steps (0.5 … 50 km); snaps to each step, saves when released.
+    val steps = NearbyRepo.RADII
+    var idx by remember(radius) { mutableStateOf(steps.indexOf(radius).coerceAtLeast(0).toFloat()) }
+    val cur = steps[idx.toInt().coerceIn(0, steps.lastIndex)]
+    Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("ระยะค้นหา", color = Slate300, fontSize = 12.sp, modifier = Modifier.weight(1f))
+            Text(NearbyRepo.radiusLabel(cur), color = White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
         }
+        Slider(value = idx, onValueChange = { idx = Math.round(it).toFloat() }, valueRange = 0f..steps.lastIndex.toFloat(), steps = (steps.size - 2).coerceAtLeast(0),
+            onValueChangeFinished = { if (cur != radius) onPick(cur) },
+            colors = SliderDefaults.colors(thumbColor = Pink500, activeTrackColor = Pink500))
+        Row { Text(NearbyRepo.radiusLabel(steps.first()), color = Slate400, fontSize = 10.sp, modifier = Modifier.weight(1f)); Text(NearbyRepo.radiusLabel(steps.last()), color = Slate400, fontSize = 10.sp) }
     }
 }
 
