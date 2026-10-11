@@ -173,9 +173,9 @@ private fun FindFriendsHome(onTile: (String) -> Unit, showCompanion: Boolean) {
                                     val art = TILE_ART[k]
                                     if (art != null) androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(art), null, modifier = Modifier.align(Alignment.Center).padding(bottom = 30.dp).size(88.dp))
                                     else Text(TILE_ICONS[k] ?: "", fontSize = 54.sp, modifier = Modifier.align(Alignment.Center).padding(bottom = 26.dp))
-                                    Row(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        Text(label, color = White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                                        Text("›", color = Slate300, fontSize = 18.sp)
+                                    Row(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Text(label, color = White, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, letterSpacing = (-0.2).sp, modifier = Modifier.weight(1f))
+                                        Text("›", color = Slate300, fontSize = 15.sp)
                                     }
                                 }
                             }
