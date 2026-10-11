@@ -1,5 +1,6 @@
 package com.example.ui.profile
 
+import com.example.ui.components.uiItem
 import com.example.ui.components.tr
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -63,7 +64,7 @@ fun ProfileTab(
             }
         }
         // Cover Photo & Avatar
-        com.example.ui.components.uiItem("pr1", "Cover Photo & Avatar #1") {
+        uiItem("pr1", "Cover Photo & Avatar #1") {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -92,7 +93,7 @@ fun ProfileTab(
         }
 
         // Profile Info
-        com.example.ui.components.uiItem("pr2", "Profile Info #2") {
+        uiItem("pr2", "Profile Info #2") {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
