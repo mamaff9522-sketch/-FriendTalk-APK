@@ -9,9 +9,14 @@ import androidx.compose.ui.graphics.lerp
 /** Live app palette from the published Remote UI theme (admin 'ธีม & สี'); the named colours below read from it. */
 object AppPalette {
     var primary by mutableStateOf(Color(0xFFEC4899))
-    var background by mutableStateOf(Color(0xFF090D16))
-    var surface by mutableStateOf(Color(0xFF0F172A))
-    var card by mutableStateOf(Color(0xFF1E293B))
+    var background by mutableStateOf(Color(0xFFF7F4FA))
+    var surface by mutableStateOf(Color(0xFFFFFFFF))
+    var card by mutableStateOf(Color(0xFFF1ECF7))
+    var text by mutableStateOf(Color(0xFF1F1B2E))
+    var text2 by mutableStateOf(Color(0xFF5B5670))
+    val muted: Color get() = lerp(text2, background, 0.30f)
+    val muted2: Color get() = lerp(text2, background, 0.45f)
+    val line: Color get() = lerp(text2, background, 0.72f)
     val primaryDark: Color get() = lerp(primary, Color.Black, 0.12f)
     val primaryLight: Color get() = lerp(primary, Color.White, 0.25f)
 }
@@ -36,14 +41,16 @@ val Rose500 = Color(0xFFF43F5E)
 // Dark Palette
 val Slate950: Color get() = AppPalette.background
 val Slate900: Color get() = AppPalette.surface
-val Slate850 = Color(0xFF131C31)
+val Slate850: Color get() = AppPalette.card
 val Slate800: Color get() = AppPalette.card
-val Slate700 = Color(0xFF334155)
-val Slate600 = Color(0xFF475569)
-val Slate500 = Color(0xFF64748B)
-val Slate400 = Color(0xFF94A3B8)
-val Slate300 = Color(0xFFCBD5E1)
-val Slate200 = Color(0xFFE2E8F0)
-val Slate100 = Color(0xFFF1F5F9)
-val White = Color(0xFFFFFFFF)
+val Slate700: Color get() = AppPalette.line
+val Slate600: Color get() = AppPalette.line
+val Slate500: Color get() = AppPalette.muted2
+val Slate400: Color get() = AppPalette.muted
+val Slate300: Color get() = AppPalette.text2
+val Slate200: Color get() = AppPalette.text
+val Slate100: Color get() = AppPalette.text
+/** Primary text colour of the active theme (dark on Pearl White, white on dark presets). Use PureWhite for text on accent/photos. */
+val White: Color get() = AppPalette.text
+val PureWhite = Color(0xFFFFFFFF)
 val Black = Color(0xFF000000)

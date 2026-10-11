@@ -678,6 +678,11 @@ function validRemoteUi(cfg) {
   if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) return 'config object required';
   const json = JSON.stringify(cfg);
   if (Buffer.byteLength(json) > 100 * 1024) return 'config too large (max 100KB)';
+  const bgs = cfg.theme && cfg.theme.backgrounds;
+  if (bgs && typeof bgs === 'object') for (const [k, b] of Object.entries(bgs)) {
+    if (!/^(app|tab_[a-z_]{2,20}|sec_[A-Za-z0-9_-]{1,40})$/.test(k)) return 'bad background key ' + k;
+    if (b && b.imageUrl && !/^https:\/\//.test(String(b.imageUrl))) return 'background imageUrl must be https';
+  }
   return json;
 }
 app.get('/ui/config', w(async (_q, r) => {
@@ -1543,6 +1548,24 @@ app.get('/admin/lock/log', perm('app_lock'), w(async (_q, r) => {
 // Coming-soon placeholders (superadmin only). appConfig/comingSoon/{target} — clients read live via RTDB.
 const CS_ID = /^[a-z0-9_]{2,40}$/;
 const csUrl = id => `https://friendtalk-brain-123224091480.asia-southeast1.run.app/cs-assets/${id}`;
+// --- UI background images (admin config_edit). Stored in Storage uiBg/{key}-{ts}.jpg, served publicly (non-sensitive decor).
+const BG_KEY = /^(app|tab_[a-z_]{2,20}|sec_[A-Za-z0-9_-]{1,40})$/, BG_FILE = /^[A-Za-z0-9_-]{1,60}-\d{10,14}$/;
+app.get('/ui-bg/:f', w(async (q, r) => {
+  if (!BG_FILE.test(q.params.f)) return r.status(400).end();
+  const f = admin.storage().bucket(STORAGE_BUCKET).file(`uiBg/${q.params.f}`);
+  const [ok] = await f.exists(); if (!ok) return r.status(404).end();
+  const [meta] = await f.getMetadata(); r.set('Content-Type', meta.contentType || 'image/jpeg'); r.set('Cache-Control', 'public, max-age=86400, immutable');
+  f.createReadStream().on('error', () => r.status(500).end()).pipe(r);
+}));
+app.put('/admin/ui/bg/:key', perm('config_edit'), w(notBanned), express.raw({ type: 'image/*', limit: '3mb' }), w(async (q, r) => {
+  const key = q.params.key; if (!BG_KEY.test(key)) return r.status(400).json({ error: 'bad key' });
+  const buf = q.body; if (!Buffer.isBuffer(buf) || !buf.length) return r.status(400).json({ error: 'image body required' });
+  const isWebp = buf.slice(0, 4).toString() === 'RIFF' && buf.slice(8, 12).toString() === 'WEBP', isPng = buf[0] === 0x89 && buf[1] === 0x50, isJpg = buf[0] === 0xff && buf[1] === 0xd8;
+  if (!isWebp && !isPng && !isJpg) return r.status(400).json({ error: 'webp/png/jpeg only' });
+  const name = `${key}-${Date.now()}`;
+  await admin.storage().bucket(STORAGE_BUCKET).file(`uiBg/${name}`).save(buf, { contentType: isWebp ? 'image/webp' : isPng ? 'image/png' : 'image/jpeg', resumable: false });
+  r.json({ url: `https://friendtalk-brain-123224091480.asia-southeast1.run.app/ui-bg/${name}` });
+}));
 app.get('/cs-assets/:id', w(async (q, r) => {
   if (!CS_ID.test(q.params.id)) return r.status(400).end();
   const f = admin.storage().bucket(STORAGE_BUCKET).file(`comingSoon/${q.params.id}.webp`);

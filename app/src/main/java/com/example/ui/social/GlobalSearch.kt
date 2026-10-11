@@ -1,5 +1,6 @@
 package com.example.ui.social
 
+import com.example.ui.components.tr
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -45,7 +46,7 @@ fun GlobalSearchDialog(onClose: () -> Unit) {
         scope.launch {
             val r = NearbyRepo.search(t, false, 0.0)
             users = r?.users ?: emptyList()
-            msg = when { r == null -> "ค้นหาไม่สำเร็จ"; r.code == 429 -> "โควตาค้นหาวันนี้หมดแล้ว"; r.code != 200 -> "ค้นหาไม่สำเร็จ"; else -> "" }
+            msg = when { r == null -> tr("ค้นหาไม่สำเร็จ"); r.code == 429 -> tr("โควตาค้นหาวันนี้หมดแล้ว"); r.code != 200 -> tr("ค้นหาไม่สำเร็จ"); else -> "" }
             busy = false
         }
     }
@@ -55,7 +56,7 @@ fun GlobalSearchDialog(onClose: () -> Unit) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     TextButton(onClick = onClose) { Text("‹", color = White, fontSize = 26.sp) }
                     OutlinedTextField(value = q, onValueChange = { if (it.length <= 60) q = it }, singleLine = true, shape = RoundedCornerShape(18.dp),
-                        placeholder = { Text("ค้นหาเพื่อน หรือ #แฮชแท็ก…", color = Slate400) },
+                        placeholder = { Text(tr("ค้นหาเพื่อน หรือ #แฮชแท็ก…"), color = Slate400) },
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = { if (q.trim().startsWith("#")) { if (tagQ.isNotEmpty()) tag = tagQ } else run() }),
                         colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White, focusedBorderColor = Pink500, unfocusedBorderColor = Pink500.copy(alpha = 0.6f)),
                         modifier = Modifier.weight(1f).focusRequester(fr))
@@ -72,9 +73,9 @@ fun GlobalSearchDialog(onClose: () -> Unit) {
                 if (busy) LinearProgressIndicator(color = Pink500, modifier = Modifier.fillMaxWidth())
                 if (msg.isNotBlank()) Text(msg, color = Amber400, fontSize = 13.sp)
                 val u = users
-                if (u != null && u.isEmpty() && msg.isBlank() && !busy) Text("ไม่พบผู้ใช้", color = Slate400, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+                if (u != null && u.isEmpty() && msg.isBlank() && !busy) Text(tr("ไม่พบผู้ใช้"), color = Slate400, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
                 if (!u.isNullOrEmpty()) {
-                    Text("ผู้คน", color = White, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.padding(top = 8.dp, bottom = 6.dp))
+                    Text(tr("ผู้คน"), color = White, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.padding(top = 8.dp, bottom = 6.dp))
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(u, key = { it.profile.uid }) { n ->
                             Surface(shape = RoundedCornerShape(14.dp), color = Slate900, modifier = Modifier.fillMaxWidth().clickable { openUid = n.profile.uid }) {

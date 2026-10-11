@@ -35,6 +35,8 @@ fun AdminUiBuilderDialog(
     onRestoreDefault: () -> Unit
 ) {
     var draftConfig by remember { mutableStateOf(currentConfig.copy()) }
+    var showDraftPreview by remember { mutableStateOf(false) }
+    if (showDraftPreview) DraftPreviewDialog(draftConfig.theme) { showDraftPreview = false }
     var selectedBuilderTab by remember { mutableStateOf("visual_dnd") } // visual_dnd (default), feed, theme, remote, preview, history
     var releaseNotes by remember { mutableStateOf("ปรับแต่งหน้า Feed และระบบ UI") }
 
@@ -91,7 +93,6 @@ fun AdminUiBuilderDialog(
                         "feed" to "จัด Feed 📰",
                         "theme" to "ธีม & สี 🌈",
                         "remote" to "Config ⚙️",
-                        "preview" to "ตัวอย่าง 📱",
                         "history" to "ประวัติ ⏳"
                     ).forEach { (key, label) ->
                         val isSel = selectedBuilderTab == key
@@ -139,9 +140,6 @@ fun AdminUiBuilderDialog(
                                 draftConfig = updated
                             }
                         )
-                        "preview" -> DeviceLivePreview(
-                            draftConfig = draftConfig
-                        )
                         "history" -> VersionHistoryView(
                             history = versionHistory,
                             onRollback = onRollback
@@ -160,6 +158,9 @@ fun AdminUiBuilderDialog(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    OutlinedButton(onClick = { showDraftPreview = true }, shape = RoundedCornerShape(12.dp)) {
+                        Text("👁 ดูตัวอย่าง", fontSize = 11.sp, color = White)
+                    }
                     OutlinedButton(
                         onClick = onRestoreDefault,
                         shape = RoundedCornerShape(12.dp)
@@ -321,60 +322,69 @@ fun ThemeBuilder(
     themeConfig: AppUiThemeConfig,
     onUpdateThemeConfig: (AppUiThemeConfig) -> Unit
 ) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
+    var picking by remember { mutableStateOf<Pair<String, String>?>(null) } // field key -> label
+    val fields = listOf(
+        "backgroundColorHex" to "พื้นหลัง", "surfaceColorHex" to "พื้นผิว / แถบ", "cardColorHex" to "การ์ด",
+        "primaryColorHex" to "สีเน้น (Accent)", "secondaryColorHex" to "สีเน้น 2 / ไล่สี", "accentColorHex" to "สีเสริม",
+        "textPrimaryHex" to "ตัวอักษรหลัก", "textSecondaryHex" to "ตัวอักษรรอง")
+    fun get(k: String) = when (k) { "backgroundColorHex" -> themeConfig.backgroundColorHex; "surfaceColorHex" -> themeConfig.surfaceColorHex; "cardColorHex" -> themeConfig.cardColorHex
+        "primaryColorHex" -> themeConfig.primaryColorHex; "secondaryColorHex" -> themeConfig.secondaryColorHex; "accentColorHex" -> themeConfig.accentColorHex
+        "textPrimaryHex" -> themeConfig.textPrimaryHex; else -> themeConfig.textSecondaryHex }
+    fun set(k: String, v: String) = onUpdateThemeConfig(when (k) { "backgroundColorHex" -> themeConfig.copy(backgroundColorHex = v); "surfaceColorHex" -> themeConfig.copy(surfaceColorHex = v)
+        "cardColorHex" -> themeConfig.copy(cardColorHex = v); "primaryColorHex" -> themeConfig.copy(primaryColorHex = v); "secondaryColorHex" -> themeConfig.copy(secondaryColorHex = v)
+        "accentColorHex" -> themeConfig.copy(accentColorHex = v); "textPrimaryHex" -> themeConfig.copy(textPrimaryHex = v); else -> themeConfig.copy(textSecondaryHex = v) })
+    picking?.let { (k, label) ->
+        ColorPickerDialog(label, get(k), previewContent = { DraftHomePreview(themeConfig, compact = true) }, onPick = { set(k, it); picking = null }, onDismiss = { picking = null })
+    }
+    LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
-            Text(text = "ชุดสี Accent & พื้นหลัง:", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Pink400)
-            Spacer(modifier = Modifier.height(8.dp))
-            Surface(shape = RoundedCornerShape(14.dp), color = Slate900, modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("เลือก Palette สำเร็จรูป (แตะเพื่อเลือก แล้วกด 'เผยแพร่ UI เวอร์ชันใหม่'):", fontSize = 12.sp, color = Slate400)
-                    UI_PALETTES.chunked(2).forEach { row ->
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            row.forEach { pal ->
-                                val sel = themeConfig.primaryColorHex.equals(pal.primary, true) && themeConfig.backgroundColorHex.equals(pal.background, true)
-                                Surface(
-                                    onClick = { onUpdateThemeConfig(themeConfig.copy(primaryColorHex = pal.primary, secondaryColorHex = pal.secondary, accentColorHex = pal.accent,
-                                        backgroundColorHex = pal.background, surfaceColorHex = pal.surface, cardColorHex = pal.card)) },
-                                    shape = RoundedCornerShape(10.dp), color = parseHexColor(pal.background, Slate950),
-                                    border = androidx.compose.foundation.BorderStroke(if (sel) 3.dp else 1.dp, if (sel) White else Slate700),
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Column(Modifier.padding(10.dp)) {
-                                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                            listOf(pal.primary, pal.secondary, pal.accent, pal.card).forEach { Box(Modifier.size(16.dp).clip(RoundedCornerShape(4.dp)).background(parseHexColor(it, Pink500))) }
-                                        }
-                                        Text((if (sel) "✓ " else "") + pal.name, fontSize = 12.sp, color = White, fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal)
-                                    }
+            Text("ชุดสีสำเร็จรูป (แตะเพื่อเลือก):", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Pink400)
+            Spacer(Modifier.height(8.dp))
+            UI_PALETTES.chunked(2).forEach { row ->
+                Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    row.forEach { pal ->
+                        val sel = themeConfig.primaryColorHex.equals(pal.primary, true) && themeConfig.backgroundColorHex.equals(pal.background, true)
+                        Surface(
+                            onClick = { onUpdateThemeConfig(themeConfig.copy(primaryColorHex = pal.primary, secondaryColorHex = pal.secondary, accentColorHex = pal.accent,
+                                backgroundColorHex = pal.background, surfaceColorHex = pal.surface, cardColorHex = pal.card, textPrimaryHex = pal.text, textSecondaryHex = pal.text2)) },
+                            shape = RoundedCornerShape(10.dp), color = parseHexColor(pal.background, Slate950),
+                            border = androidx.compose.foundation.BorderStroke(if (sel) 3.dp else 1.dp, if (sel) Pink500 else Slate700),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Column(Modifier.padding(10.dp)) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    listOf(pal.primary, pal.secondary, pal.accent, pal.card).forEach { Box(Modifier.size(16.dp).clip(RoundedCornerShape(4.dp)).background(parseHexColor(it, Pink500))) }
                                 }
+                                Text((if (sel) "✓ " else "") + pal.name, fontSize = 12.sp, color = parseHexColor(pal.text, White), fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal, maxLines = 1)
                             }
-                            if (row.size == 1) Spacer(Modifier.weight(1f))
+                        }
+                    }
+                    if (row.size == 1) Spacer(Modifier.weight(1f))
+                }
+            }
+        }
+        item {
+            Text("ปรับสีเอง (แตะแถวเพื่อเปิดตัวเลือกสี):", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Pink400)
+            Spacer(Modifier.height(6.dp))
+            Surface(shape = RoundedCornerShape(14.dp), color = Slate900, modifier = Modifier.fillMaxWidth()) {
+                Column {
+                    fields.forEach { (k, label) ->
+                        Row(Modifier.fillMaxWidth().clickable { picking = k to label }.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(28.dp).clip(RoundedCornerShape(8.dp)).background(parseHexColor(get(k), Slate500)).border(1.dp, Slate700, RoundedCornerShape(8.dp)))
+                            Spacer(Modifier.width(12.dp))
+                            Text(label, color = White, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                            Text(get(k).uppercase(), color = Slate400, fontSize = 12.sp)
+                            Text("  ›", color = Slate400)
                         }
                     }
                 }
             }
         }
+        item { BackgroundEditor(themeConfig, onUpdateThemeConfig) }
         item {
-            // Live preview of the draft theme (the whole app switches after publishing)
-            val p = parseHexColor(themeConfig.primaryColorHex, Pink500)
             Text("ตัวอย่างสด (ยังไม่เผยแพร่):", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Pink400)
             Spacer(Modifier.height(6.dp))
-            Surface(shape = RoundedCornerShape(14.dp), color = parseHexColor(themeConfig.backgroundColorHex, Slate950), modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Surface(shape = RoundedCornerShape(12.dp), color = parseHexColor(themeConfig.cardColorHex, Slate800), modifier = Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(10.dp)) {
-                            Text("โพสต์ตัวอย่าง", color = White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                            Text("สวัสดีเพื่อน ๆ ✨ #FriendTalk", color = parseHexColor(themeConfig.accentColorHex, Pink400), fontSize = 12.sp)
-                        }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = {}, colors = ButtonDefaults.buttonColors(containerColor = p)) { Text("ปุ่มหลัก", fontSize = 12.sp) }
-                        Surface(shape = RoundedCornerShape(20.dp), color = parseHexColor(themeConfig.secondaryColorHex, Pink600)) { Text("แท็ก", color = White, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) }
-                    }
-                }
-            }
+            Box(Modifier.fillMaxWidth().height(360.dp).clip(RoundedCornerShape(14.dp)).border(1.dp, Slate700, RoundedCornerShape(14.dp))) { DraftHomePreview(themeConfig, compact = true) }
         }
     }
 }
@@ -731,8 +741,15 @@ fun DeviceLivePreview(
 }
 
 
-private data class UiPalette(val name: String, val primary: String, val secondary: String, val accent: String, val background: String, val surface: String, val card: String)
+private data class UiPalette(val name: String, val primary: String, val secondary: String, val accent: String, val background: String, val surface: String, val card: String, val text: String, val text2: String)
 private val UI_PALETTES = listOf(
-    UiPalette("Pink & Purple", "#EC4899", "#A855F7", "#22D3EE", "#090D16", "#0F172A", "#1E293B"),
-    UiPalette("Indigo Neon", "#6366F1", "#EC4899", "#FBBF24", "#0B0B1E", "#14142E", "#1F1F45")
+    UiPalette("Pearl White (ค่าเริ่มต้น)", "#EC4899", "#A855F7", "#8B5CF6", "#F7F4FA", "#FFFFFF", "#F1ECF7", "#1F1B2E", "#5B5670"),
+    UiPalette("Pink & Purple (มืด)", "#EC4899", "#A855F7", "#22D3EE", "#090D16", "#0F172A", "#1E293B", "#FFFFFF", "#CBD5E1"),
+    UiPalette("Indigo Neon (มืด)", "#6366F1", "#EC4899", "#FBBF24", "#0B0B1E", "#14142E", "#1F1F45", "#FFFFFF", "#C7D2FE"),
+    UiPalette("Sakura", "#F472B6", "#FB7185", "#C084FC", "#FFF5F8", "#FFFFFF", "#FCE7F3", "#3B1D2E", "#7A5468"),
+    UiPalette("Mint Fresh", "#10B981", "#06B6D4", "#84CC16", "#F2FBF7", "#FFFFFF", "#DCF5EA", "#12322A", "#4E6B62"),
+    UiPalette("Ocean Sky", "#3B82F6", "#06B6D4", "#6366F1", "#F2F7FE", "#FFFFFF", "#E0ECFD", "#122139", "#4D6283"),
+    UiPalette("Sunset", "#F97316", "#EC4899", "#F59E0B", "#FFF8F1", "#FFFFFF", "#FFEBD9", "#3A2213", "#7A5A45"),
+    UiPalette("Midnight Gold (มืด)", "#F59E0B", "#D97706", "#FCD34D", "#0C0A09", "#1C1917", "#292524", "#FAFAF9", "#D6D3D1")
+)
 )

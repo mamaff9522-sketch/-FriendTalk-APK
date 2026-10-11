@@ -50,6 +50,7 @@ import com.google.firebase.auth.FirebaseUser
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.example.ui.components.I18n.load(this)
         try {
             AuthService.getInstance().initialize(this)
         } catch (e: Exception) {
@@ -195,10 +196,12 @@ fun FriendTalkApp(
             }
             return@FriendTalkTheme
         }
+        val bgs = uiState.uiConfig.theme.backgrounds
+        com.example.ui.theme.AppBackground(bgs["tab_" + uiState.activeTab] ?: bgs["app"])
         Scaffold(
+            containerColor = androidx.compose.ui.graphics.Color.Transparent,
             modifier = Modifier
-                .fillMaxSize()
-                .background(appBgColor),
+                .fillMaxSize(),
             topBar = {
                 Column {
                 com.example.ui.social.VerifyEmailBanner()
@@ -239,7 +242,6 @@ fun FriendTalkApp(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
-                    .background(appBgColor)
             ) {
                 com.example.ui.components.ComingSoonGate("tab_" + uiState.activeTab, Modifier.fillMaxSize()) { when (uiState.activeTab) {
                     "home" -> FeedTab(

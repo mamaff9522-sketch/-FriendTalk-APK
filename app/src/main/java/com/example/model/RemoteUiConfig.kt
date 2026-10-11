@@ -3,14 +3,28 @@ package com.example.model
 import androidx.compose.ui.graphics.Color
 
 data class AppUiThemeConfig(
+    // Default = Pearl White (whole app). The dark indigo/pink look is a selectable preset.
     val primaryColorHex: String = "#EC4899",
     val secondaryColorHex: String = "#A855F7",
-    val accentColorHex: String = "#22D3EE",
-    val backgroundColorHex: String = "#090D16",
-    val surfaceColorHex: String = "#0F172A",
-    val cardColorHex: String = "#1E293B",
+    val accentColorHex: String = "#8B5CF6",
+    val backgroundColorHex: String = "#F7F4FA",
+    val surfaceColorHex: String = "#FFFFFF",
+    val cardColorHex: String = "#F1ECF7",
+    val textPrimaryHex: String = "#1F1B2E",
+    val textSecondaryHex: String = "#5B5670",
     val cornerRadiusDp: Int = 16,
-    val cardElevationDp: Int = 2
+    val cardElevationDp: Int = 2,
+    /** Background images: key "app" = every page; "tab_home", "tab_discover", ... override per page. */
+    val backgrounds: Map<String, BgSpec> = emptyMap()
+)
+
+data class BgSpec(
+    val imageUrl: String = "",
+    val fit: String = "cover",        // cover | contain | tile
+    val blur: Int = 0,                // 0..25 dp
+    val dim: Int = 0,                 // 0..90 %
+    val overlayHex: String = "",      // optional colour overlay
+    val overlayAlpha: Int = 0         // 0..100 %
 )
 
 enum class PostCardStyle {

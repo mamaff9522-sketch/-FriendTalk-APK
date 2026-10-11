@@ -1,5 +1,6 @@
 package com.example.ui.profile
 
+import com.example.ui.components.tr
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -38,13 +39,13 @@ fun ProfileTab(
 ) {
     var editInterests by remember { mutableStateOf(false) }
     var myPosts by remember { mutableStateOf(false) }
-    if (myPosts) com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.let { u -> com.example.ui.social.AuthorFeedDialog(u.uid, "ฉัน") { myPosts = false } }
+    if (myPosts) com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.let { u -> com.example.ui.social.AuthorFeedDialog(u.uid, tr("ฉัน")) { myPosts = false } }
     if (editInterests) com.example.ui.social.InterestsEditorDialog(onDismiss = { editInterests = false })
     var confirmLogout by remember { mutableStateOf(false) }
-    if (confirmLogout) AlertDialog(onDismissRequest = { confirmLogout = false }, title = { Text("ออกจากระบบ?") },
-        text = { Text("คุณต้องการออกจากบัญชีนี้ใช่ไหม") },
-        confirmButton = { TextButton(onClick = { confirmLogout = false; onLogout() }) { Text("ออกจากระบบ", color = Rose500) } },
-        dismissButton = { TextButton(onClick = { confirmLogout = false }) { Text("ยกเลิก") } })
+    if (confirmLogout) AlertDialog(onDismissRequest = { confirmLogout = false }, title = { Text(tr("ออกจากระบบ?")) },
+        text = { Text(tr("คุณต้องการออกจากบัญชีนี้ใช่ไหม")) },
+        confirmButton = { TextButton(onClick = { confirmLogout = false; onLogout() }) { Text(tr("ออกจากระบบ"), color = Rose500) } },
+        dismissButton = { TextButton(onClick = { confirmLogout = false }) { Text(tr("ยกเลิก")) } })
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -53,11 +54,11 @@ fun ProfileTab(
     ) {
         item(key = "logout_row") {
             Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.End) {
-                OutlinedButton(onClick = { myPosts = true }) { Text("📝 โพสต์ของฉัน", color = White, fontSize = 13.sp) }
+                OutlinedButton(onClick = { myPosts = true }) { Text(tr("📝 โพสต์ของฉัน"), color = White, fontSize = 13.sp) }
                 Spacer(Modifier.width(8.dp))
-                OutlinedButton(onClick = { editInterests = true }) { Text("🧩 ความสนใจ", color = Pink400, fontSize = 13.sp) }
+                OutlinedButton(onClick = { editInterests = true }) { Text(tr("🧩 ความสนใจ"), color = Pink400, fontSize = 13.sp) }
                 Spacer(Modifier.width(8.dp))
-                OutlinedButton(onClick = { confirmLogout = true }) { Text("🚪 ออกจากระบบ", color = Rose500, fontSize = 13.sp) }
+                OutlinedButton(onClick = { confirmLogout = true }) { Text(tr("🚪 ออกจากระบบ"), color = Rose500, fontSize = 13.sp) }
             }
         }
         // Cover Photo & Avatar
@@ -121,7 +122,7 @@ fun ProfileTab(
                         onClick = onEditProfile,
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text("แก้ไขโปรไฟล์", fontSize = 12.sp, color = Slate200)
+                        Text(tr("แก้ไขโปรไฟล์"), fontSize = 12.sp, color = Slate200)
                     }
                 }
 
@@ -144,15 +145,15 @@ fun ProfileTab(
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("${currentUser.followingCount}", fontWeight = FontWeight.Bold, color = White, fontSize = 15.sp)
-                            Text("กำลังติดตาม", fontSize = 11.sp, color = Slate400)
+                            Text(tr("กำลังติดตาม"), fontSize = 11.sp, color = Slate400)
                         }
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("${currentUser.followersCount}", fontWeight = FontWeight.Bold, color = White, fontSize = 15.sp)
-                            Text("ผู้ติดตาม", fontSize = 11.sp, color = Slate400)
+                            Text(tr("ผู้ติดตาม"), fontSize = 11.sp, color = Slate400)
                         }
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("${currentUser.likesCount}", fontWeight = FontWeight.Bold, color = White, fontSize = 15.sp)
-                            Text("ถูกใจทั้งหมด", fontSize = 11.sp, color = Slate400)
+                            Text(tr("ถูกใจทั้งหมด"), fontSize = 11.sp, color = Slate400)
                         }
                     }
                 }
@@ -175,7 +176,7 @@ fun ProfileTab(
                             Text(text = "🪙", fontSize = 22.sp)
                             Spacer(modifier = Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
-                                Text("ยอดเหรียญ & เพชร", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = White)
+                                Text(tr("ยอดเหรียญ & เพชร"), fontWeight = FontWeight.Bold, fontSize = 14.sp, color = White)
                                 Text("${currentUser.coins} เหรียญ • ${currentUser.diamonds} เพชร", fontSize = 12.sp, color = Amber400)
                             }
                             Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Slate400)
@@ -198,8 +199,8 @@ fun ProfileTab(
                                 Text(text = "💖", fontSize = 22.sp)
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text("สมัครเป็นผู้ให้บริการเพื่อนคุย (18+)", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Rose500)
-                                    Text("สร้างรายได้จากการคุยสายเสียง/วิดีโอคอล", fontSize = 12.sp, color = Slate400)
+                                    Text(tr("สมัครเป็นผู้ให้บริการเพื่อนคุย (18+)"), fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Rose500)
+                                    Text(tr("สร้างรายได้จากการคุยสายเสียง/วิดีโอคอล"), fontSize = 12.sp, color = Slate400)
                                 }
                                 Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Slate400)
                             }
@@ -221,8 +222,8 @@ fun ProfileTab(
                             Text(text = "🎨", fontSize = 22.sp)
                             Spacer(modifier = Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
-                                Text("Creator Studio (สตูดิโอครีเอเตอร์)", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = White)
-                                Text("แดชบอร์ดสตรีมเมอร์และสถิติรายได้", fontSize = 12.sp, color = Slate400)
+                                Text(tr("Creator Studio (สตูดิโอครีเอเตอร์)"), fontWeight = FontWeight.Bold, fontSize = 14.sp, color = White)
+                                Text(tr("แดชบอร์ดสตรีมเมอร์และสถิติรายได้"), fontSize = 12.sp, color = Slate400)
                             }
                             Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Slate400)
                         }
@@ -237,11 +238,26 @@ fun ProfileTab(
                             Text(text = "🔗", fontSize = 22.sp)
                             Spacer(modifier = Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
-                                Text("บัญชี & การเชื่อมต่อ", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = White)
-                                Text("อีเมล, Google และการเชื่อมบัญชี", fontSize = 12.sp, color = Slate400)
+                                Text(tr("บัญชี & การเชื่อมต่อ"), fontWeight = FontWeight.Bold, fontSize = 14.sp, color = White)
+                                Text(tr("อีเมล, Google และการเชื่อมบัญชี"), fontSize = 12.sp, color = Slate400)
                             }
                             Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Slate400)
                         }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    run {
+                        val act = androidx.compose.ui.platform.LocalContext.current
+                        Surface(shape = RoundedCornerShape(14.dp), color = Slate900, modifier = Modifier.fillMaxWidth()) {
+                            Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text("🌐", fontSize = 22.sp); Spacer(Modifier.width(12.dp))
+                                Text("ภาษา / Language", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = White, modifier = Modifier.weight(1f))
+                                listOf("th" to "ไทย", "en" to "English").forEach { (k, l) ->
+                                    FilterChip(selected = com.example.ui.components.I18n.lang == k, onClick = {
+                                        if (com.example.ui.components.I18n.lang != k) { com.example.ui.components.I18n.set(act, k); (act as? android.app.Activity)?.recreate() }
+                                    }, label = { Text(l, fontSize = 12.sp) }, modifier = Modifier.padding(start = 6.dp))
+                                }
+                            }
+                        }
+                    }
                     }
 
                     Surface(
@@ -259,8 +275,8 @@ fun ProfileTab(
                             Text(text = "⚙️", fontSize = 22.sp)
                             Spacer(modifier = Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
-                                Text("ตั้งค่าความเป็นส่วนตัวและสิทธิ์", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = White)
-                                Text("จัดการการเข้าถึงกล้อง ไมโครโฟน และตำแหน่ง", fontSize = 12.sp, color = Slate400)
+                                Text(tr("ตั้งค่าความเป็นส่วนตัวและสิทธิ์"), fontWeight = FontWeight.Bold, fontSize = 14.sp, color = White)
+                                Text(tr("จัดการการเข้าถึงกล้อง ไมโครโฟน และตำแหน่ง"), fontSize = 12.sp, color = Slate400)
                             }
                             Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Slate400)
                         }

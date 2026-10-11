@@ -1,5 +1,6 @@
 package com.example.ads
 
+import com.example.ui.components.tr
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
@@ -43,8 +44,8 @@ import org.json.JSONObject
 import kotlin.coroutines.resume
 
 val FEATURE_LABELS = linkedMapOf(
-    "aiBotMessagesPerDay" to "คุยกับ AI", "radarPerDay" to "เรดาร์", "shakePerDay" to "เขย่าเจอ",
-    "randomMatchPerDay" to "สุ่มคุย", "searchPerDay" to "ค้นหา", "personalityMatchPerDay" to "จับคู่นิสัย", "chatMessagesPerDay" to "แชทกับคน"
+    "aiBotMessagesPerDay" to tr("คุยกับ AI"), "radarPerDay" to tr("เรดาร์"), "shakePerDay" to tr("เขย่าเจอ"),
+    "randomMatchPerDay" to tr("สุ่มคุย"), "searchPerDay" to tr("ค้นหา"), "personalityMatchPerDay" to tr("จับคู่นิสัย"), "chatMessagesPerDay" to tr("แชทกับคน")
 )
 
 /** Admin-configured ad offer (AdMob picks the creative; we pick format, est. duration label and reward). */
@@ -58,7 +59,7 @@ fun rewardText(feature: String, n: Int) = when (feature) {
     "shakePerDay" -> "เขย่าเจอเพื่อนได้เพิ่ม $n ครั้ง"
     else -> "${FEATURE_LABELS[feature] ?: feature} ได้เพิ่ม $n ครั้ง"
 }
-fun validityText(h: Int) = if (h <= 0) "ใช้ได้ถึงเที่ยงคืนวันนี้" else "ใช้ได้ $h ชั่วโมง"
+fun validityText(h: Int) = if (h <= 0) tr("ใช้ได้ถึงเที่ยงคืนวันนี้") else "ใช้ได้ $h ชั่วโมง"
 
 data class FeatureQuota(val limit: Int, val used: Int, val remaining: Int?, val unlimited: Boolean)
 data class Limits(
@@ -103,14 +104,14 @@ object AdRoom {
     }
     /** Returns null on success, else a Thai error message. */
     suspend fun claimReward(feature: String, offerId: String? = null): String? {
-        val u = FirebaseAuth.getInstance().currentUser ?: return "กรุณาเข้าสู่ระบบ"
+        val u = FirebaseAuth.getInstance().currentUser ?: return tr("กรุณาเข้าสู่ระบบ")
         val r = BrainApi.call(u, "POST", "/quota/ad-reward", if (offerId != null) JSONObject().put("offerId", offerId) else JSONObject().put("feature", feature))
         return when {
             r.code == 200 -> { r.json?.let { limits.value = parse(it) }; null }
             r.code == 202 -> { delay(3000); refresh(); null } // credited by AdMob SSV callback
-            r.json?.optString("code") == "ad_cap" -> "ดูโฆษณาครบจำนวนของวันนี้แล้ว"
-            r.json?.optString("code") == "ad_rate" -> "รอสักครู่ก่อนดูโฆษณาถัดไป"
-            r.code == 403 -> "ระบบโฆษณาปิดอยู่"
+            r.json?.optString("code") == "ad_cap" -> tr("ดูโฆษณาครบจำนวนของวันนี้แล้ว")
+            r.json?.optString("code") == "ad_rate" -> tr("รอสักครู่ก่อนดูโฆษณาถัดไป")
+            r.code == 403 -> tr("ระบบโฆษณาปิดอยู่")
             else -> "ให้รางวัลไม่สำเร็จ (${r.code})"
         }
     }
@@ -217,10 +218,10 @@ fun AdRoomHost() {
     val open by AdRoom.open.collectAsState()
     hit?.let { f ->
         AlertDialog(onDismissRequest = { AdRoom.quotaHit.value = null },
-            title = { Text("โควตาหมดแล้ว") },
-            text = { Text(if (f == "aiBotMessagesPerDay") "โควตาคุยกับ AI วันนี้หมดแล้ว 😅 ข้อความที่พิมพ์ไว้ยังอยู่ครบ เติมโควตาแล้วกดส่งได้เลย"
+            title = { Text(tr("โควตาหมดแล้ว")) },
+            text = { Text(if (f == "aiBotMessagesPerDay") tr("โควตาคุยกับ AI วันนี้หมดแล้ว 😅 ข้อความที่พิมพ์ไว้ยังอยู่ครบ เติมโควตาแล้วกดส่งได้เลย")
                           else "โควตา${FEATURE_LABELS[f] ?: f}ของวันนี้หมดแล้ว 😅 ดูโฆษณาเพื่อรับเพิ่ม หรือรอพรุ่งนี้") },
-            confirmButton = { TextButton(onClick = { AdRoom.quotaHit.value = null; AdRoom.open.value = f }) { Text("ดูโฆษณา +โควตา") } },
+            confirmButton = { TextButton(onClick = { AdRoom.quotaHit.value = null; AdRoom.open.value = f }) { Text(tr("ดูโฆษณา +โควตา")) } },
             dismissButton = { TextButton(onClick = { AdRoom.quotaHit.value = null; AdRoom.open.value = f }) { Text("VIP") } })
     }
     open?.let { f -> AdRoomScreen(f) { AdRoom.open.value = null } }
@@ -256,9 +257,9 @@ fun AdsPageContent(feature: String?, onClose: (() -> Unit)?, returnAfterReward: 
         val vip = lim?.tier == "vip"
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("🎁 หน้าโฆษณา", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 24.sp)
-                Row { Text("✦ สถานะ: ", color = Slate300, fontSize = 14.sp); Text(if (vip) "VIP ⭐ (ไม่มีโฆษณา)" else "ฟรี", color = Emerald400, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
-                if (onClose != null) TextButton(onClick = onClose, contentPadding = PaddingValues(0.dp)) { Text("‹ กลับ", color = Slate300) }
+                Text(tr("🎁 หน้าโฆษณา"), color = White, fontWeight = FontWeight.ExtraBold, fontSize = 24.sp)
+                Row { Text(tr("✦ สถานะ: "), color = Slate300, fontSize = 14.sp); Text(if (vip) tr("VIP ⭐ (ไม่มีโฆษณา)") else tr("ฟรี"), color = Emerald400, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
+                if (onClose != null) TextButton(onClick = onClose, contentPadding = PaddingValues(0.dp)) { Text(tr("‹ กลับ"), color = Slate300) }
             }
             androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(com.example.R.drawable.art_gift), null, modifier = Modifier.width(170.dp).height(110.dp))
         }
@@ -268,14 +269,14 @@ fun AdsPageContent(feature: String?, onClose: (() -> Unit)?, returnAfterReward: 
             Spacer(Modifier.height(10.dp))
             Surface(shape = RoundedCornerShape(16.dp), color = Slate900, border = androidx.compose.foundation.BorderStroke(1.dp, Slate700.copy(alpha = 0.6f)), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp)) {
-                    Row { Text("เลือกโฆษณาที่ต้องการ (ดูวันนี้แล้ว ", color = White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Row { Text(tr("เลือกโฆษณาที่ต้องการ (ดูวันนี้แล้ว "), color = White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                         Text("${lim.adsWatched} / ${lim.adsMax}", color = Pink400, fontWeight = FontWeight.Bold, fontSize = 15.sp); Text(")", color = White, fontWeight = FontWeight.Bold, fontSize = 15.sp) }
-                    Text("โฆษณาจะเริ่มเมื่อคุณกดเลือกเท่านั้น ระยะเวลาเป็นค่าประมาณ", color = Slate400, fontSize = 12.sp)
+                    Text(tr("โฆษณาจะเริ่มเมื่อคุณกดเลือกเท่านั้น ระยะเวลาเป็นค่าประมาณ"), color = Slate400, fontSize = 12.sp)
                 }
             }
             val capped = lim.adsMax > 0 && lim.adsWatched >= lim.adsMax
             val offers = if (feature != null) lim.offers.sortedByDescending { it.feature == feature } else lim.offers
-            if (offers.isEmpty()) Text("ยังไม่มีโฆษณาให้เลือกตอนนี้", color = Slate400, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
+            if (offers.isEmpty()) Text(tr("ยังไม่มีโฆษณาให้เลือกตอนนี้"), color = Slate400, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
             offers.forEachIndexed { idx, o ->
                 Surface(shape = RoundedCornerShape(20.dp), color = Slate900,
                     border = androidx.compose.foundation.BorderStroke(1.5.dp, androidx.compose.ui.graphics.Brush.linearGradient(listOf(Pink500.copy(alpha = 0.8f), Purple500.copy(alpha = 0.6f)))),
@@ -288,7 +289,7 @@ fun AdsPageContent(feature: String?, onClose: (() -> Unit)?, returnAfterReward: 
                                     Text(o.title, color = White, fontWeight = FontWeight.ExtraBold, fontSize = 19.sp, maxLines = 1)
                                     if (idx == 0 || o.feature == feature) { Spacer(Modifier.width(8.dp))
                                         Surface(shape = RoundedCornerShape(12.dp), color = Purple600.copy(alpha = 0.5f), border = androidx.compose.foundation.BorderStroke(1.dp, Pink400)) {
-                                            Text("👑 แนะนำ", color = White, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)) } }
+                                            Text(tr("👑 แนะนำ"), color = PureWhite, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)) } }
                                 }
                                 Spacer(Modifier.height(6.dp))
                                 Text("▶  ดูโฆษณา ${o.durationLabel}".trim(), color = Slate200, fontSize = 12.sp, maxLines = 1, softWrap = false)
@@ -307,7 +308,7 @@ fun AdsPageContent(feature: String?, onClose: (() -> Unit)?, returnAfterReward: 
                                 busy = o.id; msg = ""
                                 scope.launch {
                                     val earned = AdsManager.showRewardedFormat(act, o.adFormat, "offer:${o.id}")
-                                    if (!earned) { msg = "ยังไม่ได้รับรางวัล (ดูโฆษณาไม่จบ หรือโหลดโฆษณาไม่ได้)"; busy = null; return@launch }
+                                    if (!earned) { msg = tr("ยังไม่ได้รับรางวัล (ดูโฆษณาไม่จบ หรือโหลดโฆษณาไม่ได้)"); busy = null; return@launch }
                                     val err = AdRoom.claimReward(o.feature, o.id)
                                     busy = null
                                     if (err != null) msg = err
@@ -315,34 +316,34 @@ fun AdsPageContent(feature: String?, onClose: (() -> Unit)?, returnAfterReward: 
                                     else msg = "ได้รับแล้ว: ${rewardText(o.feature, o.amount)}"
                                 }
                             }.padding(vertical = 11.dp), contentAlignment = Alignment.Center) {
-                            Text(if (busy == o.id) "กำลังโหลดโฆษณา…" else if (capped) "ดูครบจำนวนวันนี้แล้ว" else "▶  ดูโฆษณานี้", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp)
-                            Text("›", color = White, fontSize = 20.sp, modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp))
+                            Text(if (busy == o.id) tr("กำลังโหลดโฆษณา…") else if (capped) tr("ดูครบจำนวนวันนี้แล้ว") else tr("▶  ดูโฆษณานี้"), color = PureWhite, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp)
+                            Text("›", color = PureWhite, fontSize = 20.sp, modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp))
                         }
                     }
                     }
                 }
             }
-        } else if (!vip) Text("ตอนนี้ยังไม่เปิดให้ดูโฆษณารับโควตา", color = Slate400, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+        } else if (!vip) Text(tr("ตอนนี้ยังไม่เปิดให้ดูโฆษณารับโควตา"), color = Slate400, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
         if (msg.isNotBlank()) Text(msg, color = Amber400, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
         Spacer(Modifier.height(12.dp))
-        Text("โควตาวันนี้", color = White, fontWeight = FontWeight.Bold)
+        Text(tr("โควตาวันนี้"), color = White, fontWeight = FontWeight.Bold)
         FEATURE_LABELS.forEach { (k, label) ->
             val q = lim.features[k] ?: return@forEach
             Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
                 Text(label, color = White, fontSize = 13.sp, maxLines = 2, modifier = Modifier.weight(1f))
-                Text(if (q.unlimited) "ไม่จำกัด" else "เหลือ ${q.remaining} / ${q.limit}", color = if (q.remaining == 0) Rose500 else Emerald400, fontSize = 13.sp)
+                Text(if (q.unlimited) tr("ไม่จำกัด") else "เหลือ ${q.remaining} / ${q.limit}", color = if (q.remaining == 0) Rose500 else Emerald400, fontSize = 13.sp)
             }
         }
         if (!vip) {
             Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = { vipInfo = true }, modifier = Modifier.fillMaxWidth()) { Text("⭐ สมัคร VIP", color = Amber400) }
+            OutlinedButton(onClick = { vipInfo = true }, modifier = Modifier.fillMaxWidth()) { Text(tr("⭐ สมัคร VIP"), color = Amber400) }
             Spacer(Modifier.height(8.dp))
             FeedBanner(Modifier.fillMaxWidth())
         }
     }
-    if (vipInfo) AlertDialog(onDismissRequest = { vipInfo = false }, title = { Text("VIP เร็ว ๆ นี้") },
-        text = { Text("ยังไม่เปิดให้ซื้อ VIP ในแอป หากต้องการ VIP กรุณาติดต่อแอดมิน") },
-        confirmButton = { TextButton(onClick = { vipInfo = false }) { Text("ตกลง") } })
+    if (vipInfo) AlertDialog(onDismissRequest = { vipInfo = false }, title = { Text(tr("VIP เร็ว ๆ นี้")) },
+        text = { Text(tr("ยังไม่เปิดให้ซื้อ VIP ในแอป หากต้องการ VIP กรุณาติดต่อแอดมิน")) },
+        confirmButton = { TextButton(onClick = { vipInfo = false }) { Text(tr("ตกลง")) } })
 }
 
 /** Admin/superadmin/moderator accounts always get Google TEST units, so the owner never views/clicks live ads. */

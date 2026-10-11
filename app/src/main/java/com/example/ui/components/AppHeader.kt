@@ -92,14 +92,14 @@ fun AppHeader(
                         if (signedIn && currentUser.avatar.isNotBlank()) {
                             AsyncImage(
                                 model = currentUser.avatar,
-                                contentDescription = "เปิดโปรไฟล์ของฉัน",
+                                contentDescription = tr("เปิดโปรไฟล์ของฉัน"),
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier.size(42.dp).clip(CircleShape)
                             )
                         } else if (signedIn) {
-                            Text(currentUser.displayName.take(1).ifBlank { "?" }, fontWeight = FontWeight.Black, fontSize = 19.sp, color = White)
+                            Text(currentUser.displayName.take(1).ifBlank { "?" }, fontWeight = FontWeight.Black, fontSize = 19.sp, color = PureWhite)
                         } else {
-                            Text(text = "FT", fontWeight = FontWeight.Black, fontSize = 19.sp, color = White)
+                            Text(text = "FT", fontWeight = FontWeight.Black, fontSize = 19.sp, color = PureWhite)
                         }
                     }
 
@@ -155,7 +155,7 @@ fun AppHeader(
                         if (unreadNotificationsCount > 0) {
                             Badge(
                                 containerColor = Pink500,
-                                contentColor = White,
+                                contentColor = PureWhite,
                                 modifier = Modifier
                                     .align(Alignment.TopEnd)
                                     .offset(x = (-2).dp, y = 2.dp)
@@ -194,7 +194,7 @@ fun AppHeader(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Box(Modifier.size(22.dp).clip(CircleShape).background(Pink500), contentAlignment = Alignment.Center) {
-                                Text("+", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = White)
+                                Text("+", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = PureWhite)
                             }
                         }
                     }
@@ -231,9 +231,9 @@ fun AppHeader(
                     modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
                 ) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Search, contentDescription = "ค้นหา", tint = Pink400, modifier = Modifier.size(24.dp))
+                        Icon(Icons.Default.Search, contentDescription = tr("ค้นหา"), tint = Pink400, modifier = Modifier.size(24.dp))
                         Spacer(Modifier.width(10.dp))
-                        Text("ค้นหาเพื่อน หรือ #แฮชแท็ก…", fontSize = 14.sp, color = Slate400, modifier = Modifier.weight(1f))
+                        Text(tr("ค้นหาเพื่อน หรือ #แฮชแท็ก…"), fontSize = 14.sp, color = Slate400, modifier = Modifier.weight(1f))
                         Box(Modifier.width(1.dp).height(22.dp).background(Slate700))
                         Icon(Icons.Default.Tune, contentDescription = null, tint = Slate300, modifier = Modifier.padding(start = 10.dp).size(22.dp))
                     }

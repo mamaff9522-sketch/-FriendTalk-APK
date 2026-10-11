@@ -1,5 +1,6 @@
 package com.example.ui.social
 
+import com.example.ui.components.tr
 import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.background
@@ -55,7 +56,7 @@ class RealFeedState(private val scope: CoroutineScope, val tag: String? = null, 
     suspend fun refresh() {
         loading = true
         val r = FeedRepo.feed(null, tag, author)
-        if (r != null) { posts.clear(); posts.addAll(r.first); cursor = r.second; error = "" } else error = "โหลดฟีดไม่สำเร็จ"
+        if (r != null) { posts.clear(); posts.addAll(r.first); cursor = r.second; error = "" } else error = tr("โหลดฟีดไม่สำเร็จ")
         loading = false; loaded = true
         if (r != null && posts.isEmpty() && cursor != null) loadMore()
     }
@@ -83,9 +84,9 @@ class RealFeedState(private val scope: CoroutineScope, val tag: String? = null, 
             if (n == null) update(p.id) { it.copy(likedByMe = p.likedByMe, likeCount = p.likeCount) } else update(p.id) { it.copy(likeCount = n) }
         }
     }
-    fun setCommentsOff(p: FeedPost, off: Boolean) { scope.launch { if (FeedRepo.setCommentsOff(p.id, off)) update(p.id) { it.copy(commentsOff = off) } else error = "เปลี่ยนการตั้งค่าความคิดเห็นไม่สำเร็จ" } }
-    fun setVisibility(p: FeedPost, v: String) { scope.launch { if (FeedRepo.setVisibility(p.id, v)) update(p.id) { it.copy(visibility = v) } else error = "เปลี่ยนการมองเห็นไม่สำเร็จ" } }
-    fun delete(p: FeedPost) { scope.launch { if (FeedRepo.deletePost(p.id)) posts.removeAll { it.id == p.id } else error = "ลบไม่สำเร็จ" } }
+    fun setCommentsOff(p: FeedPost, off: Boolean) { scope.launch { if (FeedRepo.setCommentsOff(p.id, off)) update(p.id) { it.copy(commentsOff = off) } else error = tr("เปลี่ยนการตั้งค่าความคิดเห็นไม่สำเร็จ") } }
+    fun setVisibility(p: FeedPost, v: String) { scope.launch { if (FeedRepo.setVisibility(p.id, v)) update(p.id) { it.copy(visibility = v) } else error = tr("เปลี่ยนการมองเห็นไม่สำเร็จ") } }
+    fun delete(p: FeedPost) { scope.launch { if (FeedRepo.deletePost(p.id)) posts.removeAll { it.id == p.id } else error = tr("ลบไม่สำเร็จ") } }
 }
 
 @Composable
@@ -102,14 +103,14 @@ fun LazyListScope.realFeedItems(state: RealFeedState) {
     if (state.error.isNotBlank()) item(key = "real_err") { Text(state.error, color = Amber400, fontSize = 12.sp, modifier = Modifier.padding(16.dp)) }
     if (state.loaded && state.posts.isEmpty()) item(key = "real_empty") {
         Box(Modifier.fillMaxWidth().padding(vertical = 40.dp), contentAlignment = Alignment.Center) {
-            Text("ยังไม่มีโพสต์ เป็นคนแรกที่โพสต์เลย!", color = Slate400, fontSize = 14.sp)
+            Text(tr("ยังไม่มีโพสต์ เป็นคนแรกที่โพสต์เลย!"), color = Slate400, fontSize = 14.sp)
         }
     }
     val shown = state.posts.filter { state.visible(it) }
     if (state.filter != "all" && state.loaded && shown.isEmpty()) item(key = "real_fempty") {
         Column(Modifier.fillMaxWidth().padding(vertical = 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("ยังไม่มีโพสต์ที่ตรงกับตัวกรองนี้", color = Slate400, fontSize = 14.sp)
-            if (!state.endReached) TextButton(onClick = { state.loadMore() }) { Text("โหลดโพสต์เพิ่ม", color = Pink400) }
+            Text(tr("ยังไม่มีโพสต์ที่ตรงกับตัวกรองนี้"), color = Slate400, fontSize = 14.sp)
+            if (!state.endReached) TextButton(onClick = { state.loadMore() }) { Text(tr("โหลดโพสต์เพิ่ม"), color = Pink400) }
         }
     }
     items(shown, key = { "rp_" + it.id }) { p ->
@@ -117,7 +118,7 @@ fun LazyListScope.realFeedItems(state: RealFeedState) {
             onTag = { state.openTag = it }, onVisibility = { v -> when (v) { "#comments_on" -> state.setCommentsOff(p, false); "#comments_off" -> state.setCommentsOff(p, true); else -> state.setVisibility(p, v) } })
         if (p.id == shown.lastOrNull()?.id) LaunchedEffect(p.id, state.posts.size) { state.loadMore() }
     }
-    if (state.endReached && !state.loading) item(key = "real_end") { Text("— ดูครบทุกโพสต์แล้ว —", color = Slate400, fontSize = 12.sp, modifier = Modifier.fillMaxWidth().padding(16.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center) }
+    if (state.endReached && !state.loading) item(key = "real_end") { Text(tr("— ดูครบทุกโพสต์แล้ว —"), color = Slate400, fontSize = 12.sp, modifier = Modifier.fillMaxWidth().padding(16.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center) }
     if (state.loading) item(key = "real_loading") { Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Pink500) } }
 }
 
@@ -149,25 +150,25 @@ fun PostComposer(onPosted: (FeedPost) -> Unit) {
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
         Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Avatar(me?.photoUrl?.toString().orEmpty(), me?.displayName ?: "ฉัน", 44)
+                Avatar(me?.photoUrl?.toString().orEmpty(), me?.displayName ?: tr("ฉัน"), 44)
                 Spacer(Modifier.width(10.dp))
                 TextField(value = text, onValueChange = { if (it.length <= 2000) text = it }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp),
-                    placeholder = { Text("คุณกำลังคิดอะไรอยู่?", color = Slate400) }, maxLines = 6,
+                    placeholder = { Text(tr("คุณกำลังคิดอะไรอยู่?"), color = Slate400) }, maxLines = 6,
                     colors = TextFieldDefaults.colors(focusedContainerColor = Slate800, unfocusedContainerColor = Slate800, focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
                         unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent, focusedTextColor = White, unfocusedTextColor = White))
             }
             if (showPlace) Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 6.dp)) {
                 OutlinedTextField(value = place, onValueChange = { if (it.length <= 80) place = it }, modifier = Modifier.weight(1f), singleLine = true,
-                    placeholder = { Text("ชื่อสถานที่ เช่น สยามพารากอน", color = Slate400) },
+                    placeholder = { Text(tr("ชื่อสถานที่ เช่น สยามพารากอน"), color = Slate400) },
                     colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White))
                 FilterChip(selected = attachLoc, onClick = {
                     if (attachLoc) attachLoc = false
                     else if (hasLocPerm(ctx)) attachLoc = true
                     else locPerm.launch(arrayOf(android.Manifest.permission.ACCESS_COARSE_LOCATION))
-                }, label = { Text("แนบพิกัดคร่าว ๆ (~1 กม.)", fontSize = 10.sp) }, modifier = Modifier.padding(start = 4.dp))
+                }, label = { Text(tr("แนบพิกัดคร่าว ๆ (~1 กม.)"), fontSize = 10.sp) }, modifier = Modifier.padding(start = 4.dp))
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
-                listOf("public" to "🌐 สาธารณะ", "friends" to "👥 เพื่อน", "only_me" to "🔒 เฉพาะฉัน").forEach { (k, l) ->
+                listOf("public" to tr("🌐 สาธารณะ"), "friends" to tr("👥 เพื่อน"), "only_me" to tr("🔒 เฉพาะฉัน")).forEach { (k, l) ->
                     val sel = visibility == k
                     Surface(onClick = { visibility = k }, shape = RoundedCornerShape(10.dp), modifier = Modifier.weight(1f), color = if (sel) Pink500.copy(alpha = 0.18f) else Slate800,
                         border = androidx.compose.foundation.BorderStroke(1.dp, if (sel) Pink500 else Slate700)) {
@@ -182,9 +183,9 @@ fun PostComposer(onPosted: (FeedPost) -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 6.dp)) {
                 Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                     TextButton(onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("🖼 รูป (${images.size}/4)", color = Slate200, fontSize = 11.sp, maxLines = 1) }
-                    TextButton(onClick = { msg = "โพสต์คลิปยังไม่เปิดให้ใช้" }, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("🎬 คลิป (0/1)", color = Slate400, fontSize = 11.sp, maxLines = 1) }
-                    TextButton(onClick = { showPlace = !showPlace; if (!showPlace) { place = ""; attachLoc = false } }, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("📍 ตำแหน่ง", color = Slate200, fontSize = 11.sp, maxLines = 1) }
-                    if (images.isNotEmpty()) TextButton(onClick = { images = emptyList() }) { Text("ล้างรูป", color = Slate400) }
+                    TextButton(onClick = { msg = tr("โพสต์คลิปยังไม่เปิดให้ใช้") }, contentPadding = PaddingValues(horizontal = 4.dp)) { Text(tr("🎬 คลิป (0/1)"), color = Slate400, fontSize = 11.sp, maxLines = 1) }
+                    TextButton(onClick = { showPlace = !showPlace; if (!showPlace) { place = ""; attachLoc = false } }, contentPadding = PaddingValues(horizontal = 4.dp)) { Text(tr("📍 ตำแหน่ง"), color = Slate200, fontSize = 11.sp, maxLines = 1) }
+                    if (images.isNotEmpty()) TextButton(onClick = { images = emptyList() }) { Text(tr("ล้างรูป"), color = Slate400) }
                 }
                 val can = !busy && (text.isNotBlank() || images.isNotEmpty())
                 Box(Modifier.clip(RoundedCornerShape(22.dp)).background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Pink500, Pink400))).alpha(if (can) 1f else 0.5f)
@@ -192,10 +193,10 @@ fun PostComposer(onPosted: (FeedPost) -> Unit) {
                         busy = true; msg = ""
                         scope.launch {
                             val loc = if (attachLoc && place.isNotBlank()) currentLocation(ctx) else null
-                            FeedRepo.createPost(ctx, text, images, place, loc?.latitude, loc?.longitude, visibility).onSuccess { onPosted(it); text = ""; images = emptyList(); place = ""; showPlace = false; attachLoc = false }.onFailure { msg = it.message ?: "โพสต์ไม่สำเร็จ" }
+                            FeedRepo.createPost(ctx, text, images, place, loc?.latitude, loc?.longitude, visibility).onSuccess { onPosted(it); text = ""; images = emptyList(); place = ""; showPlace = false; attachLoc = false }.onFailure { msg = it.message ?: tr("โพสต์ไม่สำเร็จ") }
                             busy = false
                         }
-                    }.padding(horizontal = 16.dp, vertical = 9.dp)) { Text(if (busy) "กำลังโพสต์…" else "➤ โพสต์", color = White, fontWeight = FontWeight.Bold, fontSize = 14.sp) }
+                    }.padding(horizontal = 16.dp, vertical = 9.dp)) { Text(if (busy) tr("กำลังโพสต์…") else tr("➤ โพสต์"), color = PureWhite, fontWeight = FontWeight.Bold, fontSize = 14.sp) }
             }
             if (msg.isNotBlank()) Text(msg, color = Amber400, fontSize = 12.sp)
         }
@@ -226,13 +227,13 @@ fun RealPostCard(p: FeedPost, onLike: () -> Unit, onComments: () -> Unit, onDele
                     Box {
                         TextButton(onClick = { visMenu = true }) { Text("👁", fontSize = 12.sp) }
                         DropdownMenu(expanded = visMenu, onDismissRequest = { visMenu = false }) {
-                            listOf("public" to "🌐 สาธารณะ", "friends" to "👥 เพื่อน", "only_me" to "🔒 เฉพาะฉัน").forEach { (k, l) ->
+                            listOf("public" to tr("🌐 สาธารณะ"), "friends" to tr("👥 เพื่อน"), "only_me" to tr("🔒 เฉพาะฉัน")).forEach { (k, l) ->
                                 DropdownMenuItem(text = { Text(l) }, onClick = { visMenu = false; onVisibility(k) })
                             }
-                            DropdownMenuItem(text = { Text(if (p.commentsOff) "💬 เปิดความคิดเห็น" else "🚫 ปิดความคิดเห็น") }, onClick = { visMenu = false; onVisibility(if (p.commentsOff) "#comments_on" else "#comments_off") })
+                            DropdownMenuItem(text = { Text(if (p.commentsOff) tr("💬 เปิดความคิดเห็น") else tr("🚫 ปิดความคิดเห็น")) }, onClick = { visMenu = false; onVisibility(if (p.commentsOff) "#comments_on" else "#comments_off") })
                         }
                     }
-                    TextButton(onClick = { confirm = true }) { Text("ลบ", color = Rose500, fontSize = 12.sp) }
+                    TextButton(onClick = { confirm = true }) { Text(tr("ลบ"), color = Rose500, fontSize = 12.sp) }
                 } else {
                     var rep by remember { mutableStateOf(false) }
                     TextButton(onClick = { rep = true }) { Text("⋯", color = Slate400, fontSize = 16.sp) }
@@ -253,9 +254,9 @@ fun RealPostCard(p: FeedPost, onLike: () -> Unit, onComments: () -> Unit, onDele
             }
         }
     }
-    if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text("ลบโพสต์นี้?") },
-        confirmButton = { TextButton(onClick = { confirm = false; onDelete() }) { Text("ลบ", color = Rose500) } },
-        dismissButton = { TextButton(onClick = { confirm = false }) { Text("ยกเลิก") } })
+    if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text(tr("ลบโพสต์นี้?")) },
+        confirmButton = { TextButton(onClick = { confirm = false; onDelete() }) { Text(tr("ลบ"), color = Rose500) } },
+        dismissButton = { TextButton(onClick = { confirm = false }) { Text(tr("ยกเลิก")) } })
 }
 
 /** Comments sheet with one level of replies. */
@@ -274,13 +275,13 @@ fun RealCommentsDialog(state: RealFeedState) {
         Surface(Modifier.fillMaxWidth().fillMaxHeight(0.85f), shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp), color = Slate950) {
             Column(Modifier.padding(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("ความคิดเห็น", color = White, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { state.commentsFor = null }) { Text("ปิด", color = Slate300) }
+                    Text(tr("ความคิดเห็น"), color = White, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { state.commentsFor = null }) { Text(tr("ปิด"), color = Slate300) }
                 }
                 val list = comments
                 LazyColumn(Modifier.weight(1f)) {
                     if (list == null) item { CircularProgressIndicator(color = Pink500) }
-                    else if (list.isEmpty()) item { Text("ยังไม่มีความคิดเห็น", color = Slate400, fontSize = 13.sp) }
+                    else if (list.isEmpty()) item { Text(tr("ยังไม่มีความคิดเห็น"), color = Slate400, fontSize = 13.sp) }
                     else {
                         val top = list.filter { it.parentId == null }
                         top.forEach { c ->
@@ -297,23 +298,23 @@ fun RealCommentsDialog(state: RealFeedState) {
                 }
                 replyTo?.let { Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("ตอบกลับ ${it.authorName}", color = Pink400, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { replyTo = null }) { Text("ยกเลิก", color = Slate400, fontSize = 12.sp) }
+                    TextButton(onClick = { replyTo = null }) { Text(tr("ยกเลิก"), color = Slate400, fontSize = 12.sp) }
                 } }
                 if (msg.isNotBlank()) Text(msg, color = Amber400, fontSize = 12.sp)
                 val off = state.posts.firstOrNull { it.id == post.id }?.commentsOff ?: post.commentsOff
-                if (off) Text("🚫 เจ้าของโพสต์ปิดความคิดเห็น", color = Slate400, fontSize = 12.sp, modifier = Modifier.padding(8.dp))
+                if (off) Text(tr("🚫 เจ้าของโพสต์ปิดความคิดเห็น"), color = Slate400, fontSize = 12.sp, modifier = Modifier.padding(8.dp))
                 else Row(verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(value = input, onValueChange = { if (it.length <= 1000) input = it }, modifier = Modifier.weight(1f),
-                        placeholder = { Text("เขียนความคิดเห็น…", color = Slate400) }, maxLines = 3,
+                        placeholder = { Text(tr("เขียนความคิดเห็น…"), color = Slate400) }, maxLines = 3,
                         colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White))
                     Spacer(Modifier.width(6.dp))
                     Button(enabled = input.isNotBlank(), colors = ButtonDefaults.buttonColors(containerColor = Pink500), onClick = {
                         val t = input; val parent = replyTo?.id; input = ""; replyTo = null
                         scope.launch {
                             val n = FeedRepo.addComment(post.id, t, parent)
-                            if (n == null) { msg = FeedRepo.lastCommentError.ifBlank { "ส่งไม่สำเร็จ" }; input = t } else { msg = ""; state.update(post.id) { it.copy(commentCount = n) }; reload() }
+                            if (n == null) { msg = FeedRepo.lastCommentError.ifBlank { tr("ส่งไม่สำเร็จ") }; input = t } else { msg = ""; state.update(post.id) { it.copy(commentCount = n) }; reload() }
                         }
-                    }) { Text("ส่ง") }
+                    }) { Text(tr("ส่ง")) }
                 }
             }
         }
@@ -331,8 +332,8 @@ private fun CommentRow(c: FeedComment, isReply: Boolean, mine: Boolean, onReply:
             Text(c.authorName, color = White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
             Text(c.text, color = Slate300, fontSize = 13.sp)
             Row {
-                Text("ตอบกลับ", color = Slate400, fontSize = 11.sp, modifier = Modifier.clickable(onClick = onReply).padding(end = 12.dp, top = 2.dp))
-                if (mine) Text("ลบ", color = Rose500, fontSize = 11.sp, modifier = Modifier.clickable(onClick = onDelete).padding(top = 2.dp))
+                Text(tr("ตอบกลับ"), color = Slate400, fontSize = 11.sp, modifier = Modifier.clickable(onClick = onReply).padding(end = 12.dp, top = 2.dp))
+                if (mine) Text(tr("ลบ"), color = Rose500, fontSize = 11.sp, modifier = Modifier.clickable(onClick = onDelete).padding(top = 2.dp))
             }
         }
     }
@@ -356,7 +357,7 @@ fun FilteredFeedDialog(title: String, tag: String?, author: String?, onClose: ()
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(12.dp)) {
                     Text(title, color = White, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.weight(1f))
-                    TextButton(onClick = onClose) { Text("ปิด", color = Slate300) }
+                    TextButton(onClick = onClose) { Text(tr("ปิด"), color = Slate300) }
                 }
                 LazyColumn(Modifier.weight(1f)) { realFeedItems(st) }
             }
@@ -373,11 +374,11 @@ object FeedStyle { var cfg by androidx.compose.runtime.mutableStateOf(com.exampl
 @Composable
 fun ReportDialog(type: String, targetId: String, targetUid: String?, onClose: () -> Unit) {
     val scope = rememberCoroutineScope()
-    var reason by remember { mutableStateOf("สแปม") }
+    var reason by remember { mutableStateOf(tr("สแปม")) }
     var msg by remember { mutableStateOf("") }
-    AlertDialog(onDismissRequest = onClose, title = { Text(if (type == "post") "รายงานโพสต์" else "รายงานผู้ใช้") },
+    AlertDialog(onDismissRequest = onClose, title = { Text(if (type == "post") tr("รายงานโพสต์") else tr("รายงานผู้ใช้")) },
         text = { Column {
-            listOf("สแปม", "เนื้อหาไม่เหมาะสม", "คุกคาม/กลั่นแกล้ง", "หลอกลวง", "บัญชีปลอม").forEach { r ->
+            listOf(tr("สแปม"), tr("เนื้อหาไม่เหมาะสม"), tr("คุกคาม/กลั่นแกล้ง"), tr("หลอกลวง"), tr("บัญชีปลอม")).forEach { r ->
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { reason = r }) { RadioButton(selected = reason == r, onClick = { reason = r }); Text(r) }
             }
             if (msg.isNotBlank()) Text(msg, color = Amber400, fontSize = 12.sp)
@@ -385,7 +386,7 @@ fun ReportDialog(type: String, targetId: String, targetUid: String?, onClose: ()
         confirmButton = { TextButton(onClick = { scope.launch {
             val u = FirebaseAuth.getInstance().currentUser ?: return@launch
             val r = com.example.network.BrainApi.call(u, "POST", "/reports", org.json.JSONObject().put("targetType", type).put("targetId", targetId).put("targetUid", targetUid ?: "").put("reason", reason))
-            if (r.code == 201) onClose() else msg = r.json?.optString("error") ?: "ส่งไม่สำเร็จ"
-        } }) { Text("ส่งรายงาน") } },
-        dismissButton = { TextButton(onClick = onClose) { Text("ยกเลิก") } })
+            if (r.code == 201) onClose() else msg = r.json?.optString("error") ?: tr("ส่งไม่สำเร็จ")
+        } }) { Text(tr("ส่งรายงาน")) } },
+        dismissButton = { TextButton(onClick = onClose) { Text(tr("ยกเลิก")) } })
 }

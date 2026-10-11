@@ -1,5 +1,11 @@
 package com.example.ui.layout
 
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
@@ -188,13 +194,34 @@ fun HomeLayoutEditor() {
             return@Column
         }
 
-        // Phone canvas
+        // Phone canvas (two-finger pinch = zoom, two-finger drag = pan; one finger still drags/resizes blocks)
+        var zoom by remember { mutableFloatStateOf(1f) }
+        var pan by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("ซูม ${(zoom * 100).toInt()}%  (ใช้สองนิ้วถ่าง/หุบ)", color = Slate400, fontSize = 11.sp, modifier = Modifier.weight(1f))
+            SmallBtn("−") { zoom = (zoom - 0.25f).coerceIn(0.5f, 3f) }
+            Spacer(Modifier.width(4.dp)); SmallBtn("+") { zoom = (zoom + 0.25f).coerceIn(0.5f, 3f) }
+            Spacer(Modifier.width(4.dp)); SmallBtn("รีเซ็ต") { zoom = 1f; pan = androidx.compose.ui.geometry.Offset.Zero }
+        }
         Surface(
             shape = RoundedCornerShape(18.dp), color = Slate950,
-            modifier = Modifier.fillMaxWidth().weight(1f).border(2.dp, Slate700, RoundedCornerShape(18.dp))
+            modifier = Modifier.fillMaxWidth().weight(1f).border(2.dp, Slate700, RoundedCornerShape(18.dp)).clipToBounds()
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false)
+                        do {
+                            val ev = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                            if (ev.changes.count { it.pressed } >= 2) {
+                                zoom = (zoom * ev.calculateZoom()).coerceIn(0.5f, 3f)
+                                pan += ev.calculatePan()
+                                ev.changes.forEach { it.consume() }
+                            }
+                        } while (ev.changes.any { it.pressed })
+                    }
+                }
         ) {
             Column(
-                Modifier.fillMaxSize().onSizeChanged { canvasWidthPx = maxOf(1, it.width) }
+                Modifier.fillMaxSize().graphicsLayer { scaleX = zoom; scaleY = zoom; translationX = pan.x; translationY = pan.y }.onSizeChanged { canvasWidthPx = maxOf(1, it.width) }
                     .onGloballyPositioned { val y = it.positionInWindow().y; canvasTop = y; canvasBottom = y + it.size.height }
                     .verticalScroll(canvasScroll).padding(vertical = 8.dp)
             ) {
@@ -280,7 +307,7 @@ private fun SectionMiniPreview(section: String) {
         Spacer(Modifier.height(3.dp))
         when (section) {
             "tabs" -> Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf("ทั้งหมด", "คนใกล้เคียง", "ออนไลน์", "หาเพื่อน").forEachIndexed { i, t ->
+                listOf("ทั้งหมด", "รูปภาพ", "มีตำแหน่ง", "ที่ฉันถูกใจ").forEachIndexed { i, t ->
                     Surface(shape = RoundedCornerShape(14.dp), color = if (i == 0) Pink500 else Slate800) {
                         Text(t, color = White, fontSize = 10.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
                     }
@@ -289,35 +316,36 @@ private fun SectionMiniPreview(section: String) {
             "banners" -> Surface(shape = RoundedCornerShape(12.dp), color = Pink600, modifier = Modifier.fillMaxWidth()) {
                 Text("แบนเนอร์ประกาศ (จากหน้า Config)", color = White, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(10.dp))
             }
-            "stories" -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                MockData.initialStories.take(5).forEach { st ->
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        AsyncImage(model = st.userAvatar, contentDescription = null, contentScale = ContentScale.Crop,
-                            modifier = Modifier.size(40.dp).clip(CircleShape).border(2.dp, Pink500, CircleShape))
-                        Text(st.userName.take(6), color = Slate300, fontSize = 8.sp)
-                    }
+            "stories" -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("🔥 LIVE ตอนนี้: ยังไม่มีใครไลฟ์", color = Slate300, fontSize = 9.sp)
+                val near by com.example.social.NearbyRepo.lastNearby.collectAsState()
+                val n = near
+                if (n.isNullOrEmpty()) Text("📍 คนใกล้คุณ: ยังไม่มีข้อมูล (เปิดเรดาร์ก่อน)", color = Slate400, fontSize = 9.sp)
+                else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    n.take(6).forEach { u -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        com.example.ui.social.Avatar(u.profile.avatar, u.profile.displayName, 36)
+                        Text(u.profile.displayName.take(6), color = Slate300, fontSize = 8.sp)
+                    } }
                 }
             }
-            "clubs" -> Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                MockData.initialClubs.take(3).forEach { c ->
-                    Surface(shape = RoundedCornerShape(10.dp), color = Slate800) {
-                        Text("${c.icon} ${c.name.take(10)}", color = White, fontSize = 10.sp, modifier = Modifier.padding(8.dp))
-                    }
-                }
-            }
+            "clubs" -> Text("คลับ: ซ่อนอยู่ในแอป (ยังไม่มีข้อมูลจริง)", color = Slate400, fontSize = 10.sp)
             "sdc" -> Surface(shape = RoundedCornerShape(12.dp), color = Slate800, modifier = Modifier.fillMaxWidth()) {
                 Text("การ์ดจากเซิร์ฟเวอร์ (ถ้ามี)", color = Slate300, fontSize = 11.sp, modifier = Modifier.padding(10.dp))
             }
             "feed" -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                MockData.initialPosts.take(2).forEach { p ->
+                var posts by remember { mutableStateOf(PreviewData.posts) }
+                LaunchedEffect(Unit) { if (posts == null) { PreviewData.posts = com.example.social.FeedRepo.feed(null)?.first?.take(2) ?: emptyList(); posts = PreviewData.posts } }
+                val ps = posts
+                if (ps == null) Text("กำลังโหลดโพสต์จริง…", color = Slate400, fontSize = 9.sp)
+                else if (ps.isEmpty()) Text("ยังไม่มีโพสต์", color = Slate400, fontSize = 9.sp)
+                else ps.forEach { p ->
                     Surface(shape = RoundedCornerShape(12.dp), color = Slate800, modifier = Modifier.fillMaxWidth()) {
                         Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            AsyncImage(model = p.authorAvatar, contentDescription = null, contentScale = ContentScale.Crop,
-                                modifier = Modifier.size(28.dp).clip(CircleShape))
+                            com.example.ui.social.Avatar(p.authorAvatar, p.authorName, 28)
                             Spacer(Modifier.width(6.dp))
                             Column {
                                 Text(p.authorName, color = White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                Text(p.content.take(60), color = Slate300, fontSize = 9.sp, maxLines = 2)
+                                Text(p.text.take(60).ifBlank { if (p.imageUrls.isNotEmpty()) "📷 รูปภาพ" else "" }, color = Slate300, fontSize = 9.sp, maxLines = 2)
                             }
                         }
                     }
@@ -326,6 +354,8 @@ private fun SectionMiniPreview(section: String) {
         }
     }
 }
+
+private object PreviewData { var posts: List<com.example.social.FeedPost>? = null }
 
 @Composable
 private fun EditableBlock(

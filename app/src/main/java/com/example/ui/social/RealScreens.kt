@@ -1,5 +1,6 @@
 package com.example.ui.social
 
+import com.example.ui.components.tr
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -34,20 +35,20 @@ fun RealLiveScreen() {
     var info by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-            Text("ห้องไลฟ์สดที่กำลังออกอากาศ 🔴", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp, modifier = Modifier.padding(end = 72.dp))
-            Text("ดูไลฟ์สุดฮิต พบสตรีมเมอร์ที่คุณชอบได้ที่นี่", color = Slate300, fontSize = 14.sp)
+            Text(tr("ห้องไลฟ์สดที่กำลังออกอากาศ 🔴"), color = White, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp, modifier = Modifier.padding(end = 72.dp))
+            Text(tr("ดูไลฟ์สุดฮิต พบสตรีมเมอร์ที่คุณชอบได้ที่นี่"), color = Slate300, fontSize = 14.sp)
             Spacer(Modifier.height(14.dp))
             Surface(shape = RoundedCornerShape(20.dp), color = Slate900, border = BorderStroke(1.dp, Purple500.copy(alpha = 0.4f)), modifier = Modifier.fillMaxWidth()) {
                 Column {
                     Box(Modifier.fillMaxWidth().height(300.dp).clip(RoundedCornerShape(18.dp)).background(Brush.verticalGradient(listOf(Color(0xFFFF8A5B), Color(0xFF8E3B8E), Color(0xFF1D1B4A)))), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("📺", fontSize = 64.sp)
-                            Text("ยังไม่มีใครไลฟ์ตอนนี้", color = White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                            Text("ระบบไลฟ์สดกำลังจะเปิดเร็ว ๆ นี้", color = Slate200, fontSize = 13.sp)
+                            Text(tr("ยังไม่มีใครไลฟ์ตอนนี้"), color = PureWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                            Text(tr("ระบบไลฟ์สดกำลังจะเปิดเร็ว ๆ นี้"), color = Slate200, fontSize = 13.sp)
                         }
                     }
                     Row(Modifier.horizontalScroll(rememberScrollState()).padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("🎵 ดนตรี", "🎤 ร้องเพลง", "💗 พูดคุย", "👥 มิตรภาพ").forEach {
+                        listOf(tr("🎵 ดนตรี"), tr("🎤 ร้องเพลง"), tr("💗 พูดคุย"), tr("👥 มิตรภาพ")).forEach {
                             Surface(shape = RoundedCornerShape(18.dp), color = Slate800, border = BorderStroke(1.dp, Slate700)) { Text(it, color = White, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) }
                         }
                     }
@@ -56,15 +57,15 @@ fun RealLiveScreen() {
             Spacer(Modifier.height(16.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.width(4.dp).height(22.dp).background(Pink500)); Spacer(Modifier.width(8.dp))
-                Text("ไลฟ์สดแนะนำสำหรับคุณ", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+                Text(tr("ไลฟ์สดแนะนำสำหรับคุณ"), color = White, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
             }
-            Text("ยังไม่มีไลฟ์แนะนำ", color = Slate400, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+            Text(tr("ยังไม่มีไลฟ์แนะนำ"), color = Slate400, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
         }
         Box(Modifier.align(Alignment.TopEnd).padding(top = 8.dp, end = 12.dp).size(width = 64.dp, height = 140.dp).clip(RoundedCornerShape(32.dp))
-            .background(Brush.verticalGradient(listOf(Pink500, Pink600))).clickable { info = true }, contentAlignment = Alignment.Center) { Text("+", color = White, fontSize = 40.sp) }
+            .background(Brush.verticalGradient(listOf(Pink500, Pink600))).clickable { info = true }, contentAlignment = Alignment.Center) { Text("+", color = PureWhite, fontSize = 40.sp) }
     }
-    if (info) AlertDialog(onDismissRequest = { info = false }, confirmButton = { TextButton(onClick = { info = false }) { Text("ตกลง") } },
-        title = { Text("เริ่มไลฟ์") }, text = { Text("การไลฟ์สดยังไม่เปิดให้ใช้ในเวอร์ชันนี้") })
+    if (info) AlertDialog(onDismissRequest = { info = false }, confirmButton = { TextButton(onClick = { info = false }) { Text(tr("ตกลง")) } },
+        title = { Text(tr("เริ่มไลฟ์")) }, text = { Text(tr("การไลฟ์สดยังไม่เปิดให้ใช้ในเวอร์ชันนี้")) })
 }
 
 /** Video tab: vertical full-screen pager over real image posts (no video upload yet), right action rail. */
@@ -78,8 +79,8 @@ fun RealVerticalFeed() {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("▶", color = Pink400, fontSize = 48.sp)
-                Text(if (state.loading) "กำลังโหลด…" else "ยังไม่มีคลิป/รูปภาพให้ดู", color = Slate300, fontSize = 15.sp)
-                Text("วิดีโอยังไม่เปิดให้อัปโหลด ตอนนี้แสดงโพสต์รูปจริงแบบเต็มจอ", color = Slate400, fontSize = 12.sp)
+                Text(if (state.loading) tr("กำลังโหลด…") else tr("ยังไม่มีคลิป/รูปภาพให้ดู"), color = Slate300, fontSize = 15.sp)
+                Text(tr("วิดีโอยังไม่เปิดให้อัปโหลด ตอนนี้แสดงโพสต์รูปจริงแบบเต็มจอ"), color = Slate400, fontSize = 12.sp)
             }
         }
         return
@@ -102,9 +103,9 @@ fun RealVerticalFeed() {
             Column(Modifier.align(Alignment.BottomStart).padding(start = 16.dp, end = 96.dp, bottom = 24.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { showAuthor = true }) {
                     Box(Modifier.size(48.dp).clip(CircleShape).border(2.dp, Pink500, CircleShape).padding(2.dp)) { Avatar(p.authorAvatar, p.authorName, 44) }
-                    Spacer(Modifier.width(8.dp)); Text(p.authorName, color = White, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Spacer(Modifier.width(8.dp)); Text(p.authorName, color = PureWhite, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                if (p.text.isNotBlank()) Text(p.text, color = White, fontSize = 15.sp, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
+                if (p.text.isNotBlank()) Text(p.text, color = PureWhite, fontSize = 15.sp, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
             }
         }
     }
@@ -114,6 +115,6 @@ fun RealVerticalFeed() {
 private fun RailButton(icon: String, count: String, onClick: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.size(56.dp).clip(CircleShape).background(Color(0xCC111827)).clickable(onClick = onClick), contentAlignment = Alignment.Center) { Text(icon, fontSize = 26.sp) }
-        Text(count, color = White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+        Text(count, color = PureWhite, fontWeight = FontWeight.Bold, fontSize = 13.sp)
     }
 }

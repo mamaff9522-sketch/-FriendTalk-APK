@@ -1,5 +1,6 @@
 package com.example.ui.social
 
+import com.example.ui.components.tr
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
@@ -74,7 +75,7 @@ internal fun RadiusPicker(radius: Double, onPick: (Double) -> Unit) {
     val cur = steps[idx.toInt().coerceIn(0, steps.lastIndex)]
     Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("ระยะค้นหา · ใช้ร่วมกันทั้งเรดาร์และเขย่า", color = Slate300, fontSize = 12.sp, modifier = Modifier.weight(1f))
+            Text(tr("ระยะค้นหา · ใช้ร่วมกันทั้งเรดาร์และเขย่า"), color = Slate300, fontSize = 12.sp, modifier = Modifier.weight(1f))
             Text(NearbyRepo.radiusLabel(cur), color = White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
         }
         Slider(value = idx, onValueChange = { idx = Math.round(it).toFloat() }, valueRange = 0f..steps.lastIndex.toFloat(), steps = (steps.size - 2).coerceAtLeast(0),
@@ -97,12 +98,12 @@ internal fun LocationPermissionCard(onGranted: () -> Unit) {
     }
     Surface(shape = RoundedCornerShape(16.dp), color = Slate800, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
-            Text("ขออนุญาตใช้ตำแหน่ง 📍", color = White, fontWeight = FontWeight.Bold)
+            Text(tr("ขออนุญาตใช้ตำแหน่ง 📍"), color = White, fontWeight = FontWeight.Bold)
             Text("FriendTalk ใช้ตำแหน่งเพื่อหาเพื่อนที่อยู่ใกล้คุณเท่านั้น เซิร์ฟเวอร์เก็บแค่ตำแหน่งโดยประมาณ (~100 ม.) " +
                 "และไม่แสดงพิกัดจริงให้ใครเห็น คนอื่นจะเห็นแค่ระยะห่างคร่าว ๆ คุณปิดการมองเห็นได้ทุกเมื่อ " +
                 "หากไม่อนุญาต จะไม่มีการส่งตำแหน่งใด ๆ", color = Slate300, fontSize = 12.sp, modifier = Modifier.padding(vertical = 6.dp))
             Button(onClick = { launcher.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION)) },
-                colors = ButtonDefaults.buttonColors(containerColor = Pink500)) { Text("อนุญาตตำแหน่ง") }
+                colors = ButtonDefaults.buttonColors(containerColor = Pink500)) { Text(tr("อนุญาตตำแหน่ง")) }
         }
     }
 }
@@ -125,8 +126,8 @@ fun FriendRequestsCard() {
                         Text(r.profile.displayName, color = White, fontSize = 13.sp)
                         r.similarity?.let { SharedInterests(it) }
                     }
-                    TextButton(onClick = { scope.launch { val c = NearbyRepo.respond(r.profile.uid, true); reqs = NearbyRepo.requests(); if (!c.isNullOrBlank()) SocialRepo.openChat.value = c } }) { Text("ยอมรับ", color = Emerald400) }
-                    TextButton(onClick = { scope.launch { NearbyRepo.respond(r.profile.uid, false); reqs = NearbyRepo.requests() } }) { Text("ปฏิเสธ", color = Slate400) }
+                    TextButton(onClick = { scope.launch { val c = NearbyRepo.respond(r.profile.uid, true); reqs = NearbyRepo.requests(); if (!c.isNullOrBlank()) SocialRepo.openChat.value = c } }) { Text(tr("ยอมรับ"), color = Emerald400) }
+                    TextButton(onClick = { scope.launch { NearbyRepo.respond(r.profile.uid, false); reqs = NearbyRepo.requests() } }) { Text(tr("ปฏิเสธ"), color = Slate400) }
                 }
             }
         }
@@ -150,10 +151,10 @@ fun RealRadarView() {
         busy = true; msg = ""
         scope.launch {
             val loc = currentLocation(ctx)
-            if (loc == null) { msg = "หาตำแหน่งไม่ได้ (เปิด GPS/ตำแหน่งในเครื่องก่อน)"; busy = false; return@launch }
-            if (!NearbyRepo.shareLocation(loc.latitude, loc.longitude)) { msg = "ส่งตำแหน่งไม่สำเร็จ (ยืนยันอีเมลแล้วหรือยัง?)"; busy = false; return@launch }
+            if (loc == null) { msg = tr("หาตำแหน่งไม่ได้ (เปิด GPS/ตำแหน่งในเครื่องก่อน)"); busy = false; return@launch }
+            if (!NearbyRepo.shareLocation(loc.latitude, loc.longitude)) { msg = tr("ส่งตำแหน่งไม่สำเร็จ (ยืนยันอีเมลแล้วหรือยัง?)"); busy = false; return@launch }
             visible = true
-            users = NearbyRepo.nearby(radius) ?: run { msg = "โหลดไม่สำเร็จ"; null }
+            users = NearbyRepo.nearby(radius) ?: run { msg = tr("โหลดไม่สำเร็จ"); null }
             busy = false
         }
     }
@@ -164,14 +165,14 @@ fun RealRadarView() {
         RadiusPicker(radius) { radius = it; NearbyRepo.saveRadius(ctx, it); if (visible) scan() }
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(if (visible) "คนอื่นมองเห็นคุณบนเรดาร์" else "คุณซ่อนอยู่ (ยังไม่ส่งตำแหน่ง)", color = White, fontSize = 13.sp, modifier = Modifier.weight(1f))
+            Text(if (visible) tr("คนอื่นมองเห็นคุณบนเรดาร์") else tr("คุณซ่อนอยู่ (ยังไม่ส่งตำแหน่ง)"), color = White, fontSize = 13.sp, modifier = Modifier.weight(1f))
             Switch(checked = visible, onCheckedChange = { on ->
                 if (on) scan() else scope.launch { NearbyRepo.hide(); visible = false; users = null }
             })
         }
         RadarPulse(users.orEmpty(), busy) { selected = it }
         Button(onClick = { scan() }, enabled = !busy, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Pink500)) {
-            Text(if (busy) "กำลังสแกน…" else "สแกนหาเพื่อนใกล้ ๆ")
+            Text(if (busy) tr("กำลังสแกน…") else tr("สแกนหาเพื่อนใกล้ ๆ"))
         }
         if (msg.isNotBlank()) Text(msg, color = Amber400, fontSize = 12.sp)
         users?.let { list ->
@@ -279,13 +280,13 @@ fun RealShakeView() {
     }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("📱 เขย่าเจอเพื่อน", color = White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-        Text("เปิดโหมดรับการเขย่า แล้วเขย่าโทรศัพท์แรง ๆ 2–3 ครั้ง ระบบจะจับคู่กับคนที่เขย่าพร้อมกันภายใน 15 วินาที",
+        Text(tr("📱 เขย่าเจอเพื่อน"), color = White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+        Text(tr("เปิดโหมดรับการเขย่า แล้วเขย่าโทรศัพท์แรง ๆ 2–3 ครั้ง ระบบจะจับคู่กับคนที่เขย่าพร้อมกันภายใน 15 วินาที"),
             color = Slate300, fontSize = 13.sp, modifier = Modifier.padding(vertical = 8.dp))
-        Text("ระยะจับคู่", color = Slate300, fontSize = 12.sp)
+        Text(tr("ระยะจับคู่"), color = Slate300, fontSize = 12.sp)
         RadiusPicker(radius) { radius = it; NearbyRepo.saveRadius(ctx, it) }
         if (!granted) {
-            Text("ยังไม่อนุญาตตำแหน่ง: ตัวกรองระยะใช้ไม่ได้ ระบบจะจับคู่กับคนที่เขย่าโดยไม่เปิดตำแหน่งเหมือนกัน (ที่ไหนก็ได้)",
+            Text(tr("ยังไม่อนุญาตตำแหน่ง: ตัวกรองระยะใช้ไม่ได้ ระบบจะจับคู่กับคนที่เขย่าโดยไม่เปิดตำแหน่งเหมือนกัน (ที่ไหนก็ได้)"),
                 color = Amber400, fontSize = 12.sp, modifier = Modifier.padding(vertical = 6.dp))
             LocationPermissionCard { granted = true }
         }
@@ -295,15 +296,15 @@ fun RealShakeView() {
         // This button only toggles the sensor listener; it never starts a search by itself.
         Button(onClick = { listening = !listening; if (!listening && state != "searching") state = "idle" },
             colors = ButtonDefaults.buttonColors(containerColor = if (listening) Slate700 else Pink500)) {
-            Text(if (listening) "หยุดรับการเขย่า" else "เริ่มรับการเขย่า")
+            Text(if (listening) tr("หยุดรับการเขย่า") else tr("เริ่มรับการเขย่า"))
         }
         Spacer(Modifier.height(12.dp))
         Text(when (state) {
-            "searching" -> "กำลังหาคนที่เขย่าพร้อมกัน… (สูงสุด ~15 วินาที)"
-            "timeout" -> "ไม่พบใครเขย่าพร้อมกัน ลองเขย่าใหม่"
-            "error" -> "เชื่อมต่อไม่สำเร็จ (ยืนยันอีเมลแล้วหรือยัง?)"
-            "matched" -> "เจอแล้ว! 🎉"
-            else -> if (listening) "พร้อมแล้ว — เขย่าได้เลย" else "กด 'เริ่มรับการเขย่า' ก่อน"
+            "searching" -> tr("กำลังหาคนที่เขย่าพร้อมกัน… (สูงสุด ~15 วินาที)")
+            "timeout" -> tr("ไม่พบใครเขย่าพร้อมกัน ลองเขย่าใหม่")
+            "error" -> tr("เชื่อมต่อไม่สำเร็จ (ยืนยันอีเมลแล้วหรือยัง?)")
+            "matched" -> tr("เจอแล้ว! 🎉")
+            else -> if (listening) tr("พร้อมแล้ว — เขย่าได้เลย") else tr("กด 'เริ่มรับการเขย่า' ก่อน")
         }, color = if (state == "matched") Emerald400 else Slate300, fontSize = 13.sp)
         if (state == "searching") CircularProgressIndicator(color = Pink500, modifier = Modifier.padding(12.dp))
         found?.let { p ->
@@ -311,7 +312,7 @@ fun RealShakeView() {
                 Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Avatar(p.avatar, p.displayName, 72)
                     Text(p.displayName, color = White, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.padding(top = 6.dp))
-                    TextButton(onClick = { showProfile = true }) { Text("ดูโปรไฟล์ / เพิ่มเพื่อน / เริ่มแชท", color = Pink400) }
+                    TextButton(onClick = { showProfile = true }) { Text(tr("ดูโปรไฟล์ / เพิ่มเพื่อน / เริ่มแชท"), color = Pink400) }
                 }
             }
             if (showProfile) UserProfileDialog(p.uid, null) { showProfile = false }

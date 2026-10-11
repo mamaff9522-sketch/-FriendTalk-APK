@@ -42,23 +42,23 @@ fun BottomNavBar(
     val items = mutableListOf<NavItem>()
 
     if (uiConfig.bottomNav.showHomeTab) {
-        items.add(NavItem("home", "หน้าแรก", Icons.Filled.Home, Icons.Outlined.Home))
+        items.add(NavItem("home", tr("หน้าแรก"), Icons.Filled.Home, Icons.Outlined.Home))
     }
     if (uiConfig.bottomNav.showDiscoverTab) {
-        items.add(NavItem("discover", "หาเพื่อน", Icons.Filled.People, Icons.Outlined.People))
+        items.add(NavItem("discover", tr("หาเพื่อน"), Icons.Filled.People, Icons.Outlined.People))
     }
     if (uiConfig.bottomNav.showLiveTab && uiConfig.isLiveStreamingEnabled) {
-        items.add(NavItem("live", "ไลฟ์สด", Icons.Filled.LiveTv, Icons.Outlined.LiveTv, badgeCount = activeLiveCount))
+        items.add(NavItem("live", tr("ไลฟ์สด"), Icons.Filled.LiveTv, Icons.Outlined.LiveTv, badgeCount = activeLiveCount))
     }
     if (uiConfig.bottomNav.showMovieTab && uiConfig.isMovieFeatureEnabled) {
-        items.add(NavItem("movie", "วิดีโอ", Icons.Filled.PlayCircle, Icons.Outlined.PlayCircleOutline))
+        items.add(NavItem("movie", tr("วิดีโอ"), Icons.Filled.PlayCircle, Icons.Outlined.PlayCircleOutline))
     }
     if (uiConfig.bottomNav.showChatTab) {
-        items.add(NavItem("chat", "แชท", Icons.Filled.ChatBubble, Icons.Outlined.ChatBubbleOutline, badgeCount = totalUnreadMessages))
+        items.add(NavItem("chat", tr("แชท"), Icons.Filled.ChatBubble, Icons.Outlined.ChatBubbleOutline, badgeCount = totalUnreadMessages))
     }
     // 'เพื่อนคุย' (companion, 18+) moved to a tile on the 'หาเพื่อน' page.
     // Profile moved to the header avatar; this slot is the standalone ads page.
-    items.add(NavItem("ads", "โฆษณา", Icons.Filled.Star, Icons.Outlined.StarBorder))
+    items.add(NavItem("ads", tr("โฆษณา"), Icons.Filled.Star, Icons.Outlined.StarBorder))
 
     Surface(
         modifier = Modifier
@@ -113,7 +113,7 @@ fun BottomNavBar(
                         if (item.badgeCount > 0) {
                             Badge(
                                 containerColor = if (item.id == "live") Rose500 else Pink500,
-                                contentColor = White,
+                                contentColor = PureWhite,
                                 modifier = Modifier
                                     .align(Alignment.TopEnd)
                                     .offset(x = 6.dp, y = (-4).dp)

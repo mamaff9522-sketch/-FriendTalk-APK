@@ -1,5 +1,6 @@
 package com.example.ui.social
 
+import com.example.ui.components.tr
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -44,7 +45,7 @@ fun RealSwipeView() {
             com.example.ads.AdsManager.onSwipe(activity)
             offsetX.snapTo(0f)
             cards = cards?.drop(1)
-            if (!r.ok) msg = "บันทึกไม่สำเร็จ ลองใหม่"
+            if (!r.ok) msg = tr("บันทึกไม่สำเร็จ ลองใหม่")
             else if (r.matched) matched = p to r.chatId
             if (cards?.isEmpty() == true) reload()
         }
@@ -55,9 +56,9 @@ fun RealSwipeView() {
         when {
             cards == null -> CircularProgressIndicator(color = Pink500)
             top == null -> {
-                Text("ยังไม่มีผู้ใช้ใหม่ให้ปัด", color = Slate300, fontSize = 14.sp)
+                Text(tr("ยังไม่มีผู้ใช้ใหม่ให้ปัด"), color = Slate300, fontSize = 14.sp)
                 Spacer(Modifier.height(8.dp))
-                OutlinedButton(onClick = { cards = null; scope.launch { reload() } }) { Text("โหลดใหม่", color = White) }
+                OutlinedButton(onClick = { cards = null; scope.launch { reload() } }) { Text(tr("โหลดใหม่"), color = White) }
             }
             else -> {
                 Box(Modifier.fillMaxWidth().weight(1f)) {
@@ -77,13 +78,13 @@ fun RealSwipeView() {
                             )
                         })
                     if (offsetX.value > 80f) Text("LIKE 💚", color = Emerald400, fontSize = 28.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.TopStart).padding(24.dp))
-                    if (offsetX.value < -80f) Text("ผ่าน ✖", color = Rose500, fontSize = 28.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.TopEnd).padding(24.dp))
+                    if (offsetX.value < -80f) Text(tr("ผ่าน ✖"), color = Rose500, fontSize = 28.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.TopEnd).padding(24.dp))
                 }
                 Spacer(Modifier.height(12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Button(onClick = { act(top, "pass") }, colors = ButtonDefaults.buttonColors(containerColor = Slate700)) { Text("✖ ผ่าน") }
-                    Button(onClick = { act(top, "superlike") }, colors = ButtonDefaults.buttonColors(containerColor = Cyan400)) { Text("⭐ ซูเปอร์ไลก์", color = Color.Black) }
-                    Button(onClick = { act(top, "like") }, colors = ButtonDefaults.buttonColors(containerColor = Pink500)) { Text("💚 ไลก์") }
+                    Button(onClick = { act(top, "pass") }, colors = ButtonDefaults.buttonColors(containerColor = Slate700)) { Text(tr("✖ ผ่าน")) }
+                    Button(onClick = { act(top, "superlike") }, colors = ButtonDefaults.buttonColors(containerColor = Cyan400)) { Text(tr("⭐ ซูเปอร์ไลก์"), color = Color.Black) }
+                    Button(onClick = { act(top, "like") }, colors = ButtonDefaults.buttonColors(containerColor = Pink500)) { Text(tr("💚 ไลก์")) }
                 }
             }
         }
@@ -100,8 +101,8 @@ fun RealSwipeView() {
                     Text("คุณกับ ${p.displayName} ไลก์กันและกัน", color = White, fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp))
                     Spacer(Modifier.height(16.dp))
                     Button(onClick = { matched = null; SocialRepo.openChat.value = chatId }, enabled = chatId != null,
-                        colors = ButtonDefaults.buttonColors(containerColor = Pink500)) { Text("เริ่มแชท") }
-                    TextButton(onClick = { matched = null }) { Text("ปัดต่อ", color = Slate300) }
+                        colors = ButtonDefaults.buttonColors(containerColor = Pink500)) { Text(tr("เริ่มแชท")) }
+                    TextButton(onClick = { matched = null }) { Text(tr("ปัดต่อ"), color = Slate300) }
                 }
             }
         }
@@ -115,8 +116,8 @@ private fun SwipeCard(p: RealProfile, modifier: Modifier) {
         else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Avatar("", p.displayName, 120) }
         Column(Modifier.align(Alignment.BottomStart).fillMaxWidth()
             .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f)))).padding(16.dp)) {
-            Text(p.displayName + (p.age?.let { ", $it" } ?: ""), color = White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-            if (p.bio.isNotBlank()) Text(p.bio, color = Slate300, fontSize = 13.sp, maxLines = 3)
+            Text(p.displayName + (p.age?.let { ", $it" } ?: ""), color = PureWhite, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            if (p.bio.isNotBlank()) Text(p.bio, color = PureWhite.copy(alpha = 0.8f), fontSize = 13.sp, maxLines = 3)
             if (p.interests.isNotEmpty()) Text(p.interests.joinToString(" · "), color = Pink400, fontSize = 12.sp)
             p.similarity?.let { SharedInterests(it) }
         }
