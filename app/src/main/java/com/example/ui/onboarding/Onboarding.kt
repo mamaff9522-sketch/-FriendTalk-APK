@@ -32,7 +32,7 @@ fun OnboardingGate(user: FirebaseUser?, content: @Composable () -> Unit) {
     }
     val s = state
     if (failed || (s != null && s.optBoolean("complete"))) { content(); return }
-    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    Surface(Modifier.fillMaxSize().systemBarsPadding().imePadding(), color = MaterialTheme.colorScheme.background) {
         if (s == null) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         else if (s.optBoolean("minor")) Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
             Text("FriendTalk สำหรับผู้มีอายุ 18 ปีขึ้นไปเท่านั้น", fontWeight = FontWeight.Bold, fontSize = 18.sp)

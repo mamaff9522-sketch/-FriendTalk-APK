@@ -28,7 +28,7 @@ fun WithdrawDialog(isStaff: Boolean, onDismiss: () -> Unit) {
     var reload by remember { mutableStateOf(0) }
     LaunchedEffect(reload) { data = BrainApi.call(user, "GET", "/withdraw").json }
     Dialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.fillMaxSize()) {
+        Surface(Modifier.fillMaxSize()) { Box(Modifier.systemBarsPadding().imePadding()) {
             Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
                 Row { Text("💸 ถอนเงิน", fontWeight = FontWeight.Bold, fontSize = 20.sp, modifier = Modifier.weight(1f)); TextButton(onDismiss) { Text("ปิด") } }
                 if (isStaff) TabRow(tab) { Tab(tab == 0, { tab = 0 }) { Text("ของฉัน", Modifier.padding(8.dp)) }; Tab(tab == 1, { tab = 1 }) { Text("คำขอถอน (แอดมิน)", Modifier.padding(8.dp)) } }
@@ -58,7 +58,7 @@ fun WithdrawDialog(isStaff: Boolean, onDismiss: () -> Unit) {
                 for (i in 0 until (reqs?.length() ?: 0)) { val x = reqs!!.getJSONObject(i)
                     Text("💎 ${x.optInt("amount")} ≈ ${x.optDouble("thb")} ฿ • ${x.optString("status")} ${x.optString("reason")}", fontSize = 13.sp) }
             }
-        }
+        } }
     }
 }
 
