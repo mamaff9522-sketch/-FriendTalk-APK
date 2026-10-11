@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import androidx.compose.foundation.border
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -38,6 +39,7 @@ import com.example.ui.theme.*
 fun AppHeader(
     currentUser: User,
     appName: String = "FriendTalk",
+    showSearchBar: Boolean = true,
     unreadNotificationsCount: Int,
     searchQuery: String = "",
     isSearchActive: Boolean = false,
@@ -86,7 +88,7 @@ fun AppHeader(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(38.dp)
+                            .size(46.dp)
                             .clip(CircleShape)
                             .background(
                                 Brush.linearGradient(
@@ -98,7 +100,7 @@ fun AppHeader(
                         Text(
                             text = "FT",
                             fontWeight = FontWeight.Black,
-                            fontSize = 17.sp,
+                            fontSize = 19.sp,
                             color = White
                         )
                     }
@@ -123,9 +125,9 @@ fun AppHeader(
                             )
                         }
                         Text(
-                            text = currentUser.displayName,
-                            fontSize = 11.sp,
-                            color = Slate400,
+                            text = uiConfig.appSubtitle,
+                            fontSize = 12.sp,
+                            color = Slate300,
                             fontWeight = FontWeight.Medium
                         )
                     }
@@ -140,9 +142,9 @@ fun AppHeader(
                     IconButton(
                         onClick = { onToggleSearch(!isSearchActive) },
                         modifier = Modifier
-                            .size(40.dp)
+                            .size(44.dp)
                             .clip(CircleShape)
-                            .background(if (isSearchActive) Pink500.copy(alpha = 0.2f) else Slate900)
+                            .border(1.dp, if (isSearchActive) Pink500 else Slate700.copy(alpha = 0.6f), CircleShape).background(if (isSearchActive) Pink500.copy(alpha = 0.2f) else Slate900)
                     ) {
                         Icon(
                             imageVector = if (isSearchActive) Icons.Default.Close else Icons.Outlined.Search,
@@ -157,9 +159,9 @@ fun AppHeader(
                         IconButton(
                             onClick = onOpenNotifications,
                             modifier = Modifier
-                                .size(40.dp)
+                                .size(44.dp)
                                 .clip(CircleShape)
-                                .background(Slate900)
+                                .border(1.dp, Slate700.copy(alpha = 0.6f), CircleShape).background(Slate900)
                         ) {
                             Icon(
                                 imageVector = Icons.Outlined.Notifications,
@@ -187,9 +189,9 @@ fun AppHeader(
 
                     // Coins Button
                     Surface(
-                        shape = RoundedCornerShape(20.dp),
-                        color = Amber400.copy(alpha = 0.15f),
-                        border = null,
+                        shape = RoundedCornerShape(22.dp),
+                        color = Color(0xFF3A2A06),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Amber500.copy(alpha = 0.7f)),
                         modifier = Modifier
                             .clip(RoundedCornerShape(20.dp))
                             .clickable { onOpenCoins() }
@@ -198,14 +200,20 @@ fun AppHeader(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                         ) {
-                            Text(text = "🪙", fontSize = 14.sp)
-                            Spacer(modifier = Modifier.width(4.dp))
+                            Box(Modifier.size(24.dp).clip(CircleShape).background(Brush.radialGradient(listOf(Color(0xFFFFE680), Color(0xFFE0A800)))), contentAlignment = Alignment.Center) {
+                                Text("1", fontSize = 12.sp, fontWeight = FontWeight.Black, color = Color(0xFF8A5A00))
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = "${currentUser.coins}",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Amber400
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFFFFD54A)
                             )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Box(Modifier.size(22.dp).clip(CircleShape).background(Pink500), contentAlignment = Alignment.Center) {
+                                Text("+", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = White)
+                            }
                         }
                     }
 
@@ -215,7 +223,7 @@ fun AppHeader(
                         IconButton(
                             onClick = onOpenAdminDashboard,
                             modifier = Modifier
-                                .size(40.dp)
+                                .size(44.dp)
                                 .clip(CircleShape)
                                 .background(if (isSuperAdmin) Amber500.copy(alpha = 0.25f) else Purple500.copy(alpha = 0.2f))
                         ) {
@@ -243,10 +251,11 @@ fun AppHeader(
             }
 
             // Search Bar Expanding Row
-            AnimatedVisibility(visible = isSearchActive) {
+            if (showSearchBar) {
                 Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = Slate900,
+                    shape = RoundedCornerShape(18.dp),
+                    color = Slate900.copy(alpha = 0.85f),
+                    border = androidx.compose.foundation.BorderStroke(1.5.dp, Brush.horizontalGradient(listOf(Pink500, Purple500))),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp)
@@ -261,7 +270,7 @@ fun AppHeader(
                             imageVector = Icons.Default.Search,
                             contentDescription = null,
                             tint = Pink400,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(24.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         TextField(
@@ -287,6 +296,10 @@ fun AppHeader(
                             keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
                             modifier = Modifier.weight(1f)
                         )
+                        if (searchQuery.isEmpty()) {
+                            Box(Modifier.width(1.dp).height(24.dp).background(Slate700))
+                            Icon(Icons.Default.Tune, contentDescription = "ตัวกรอง", tint = Slate300, modifier = Modifier.padding(start = 10.dp).size(22.dp))
+                        }
                         if (searchQuery.isNotEmpty()) {
                             IconButton(
                                 onClick = { onSearchQueryChange("") },

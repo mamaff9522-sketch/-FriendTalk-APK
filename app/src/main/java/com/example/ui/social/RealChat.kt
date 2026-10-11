@@ -1,5 +1,6 @@
 package com.example.ui.social
 
+import androidx.compose.foundation.border
 import androidx.compose.ui.graphics.Color
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -62,8 +63,9 @@ fun RealChatListScreen() {
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
         var aiHub by remember { mutableStateOf(false) }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("แชท", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = White, modifier = Modifier.weight(1f))
-            OutlinedButton(onClick = { aiHub = true }) { Text("🤖 คุยกับ AI", color = White, fontSize = 12.sp) }
+            Text("แชท", fontWeight = FontWeight.ExtraBold, fontSize = 30.sp, color = White, modifier = Modifier.weight(1f))
+            OutlinedButton(onClick = { aiHub = true }, shape = RoundedCornerShape(24.dp),
+                border = androidx.compose.foundation.BorderStroke(1.5.dp, androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Purple500, Pink500)))) { Text("🤖 คุยกับ AI", color = White, fontSize = 15.sp, fontWeight = FontWeight.Bold) }
         }
         if (aiHub) com.example.ui.ai.AiHubDialog { aiHub = false }
         Spacer(Modifier.height(8.dp))
@@ -82,18 +84,19 @@ fun RealChatListScreen() {
 private fun ChatRow(c: ChatSummary, decor: com.example.social.GiftRepo.Decor? = null) {
     val p = rememberProfile(c.otherUid)
     val fmt = remember { SimpleDateFormat("d MMM HH:mm", Locale("th", "TH")) }
-    Surface(shape = RoundedCornerShape(14.dp), color = Slate800, modifier = Modifier.fillMaxWidth().clickable { SocialRepo.openChat.value = c.chatId }) {
-        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+    Surface(shape = RoundedCornerShape(16.dp), color = Slate900, border = androidx.compose.foundation.BorderStroke(1.dp, Slate700.copy(alpha = 0.6f)),
+        modifier = Modifier.fillMaxWidth().clickable { SocialRepo.openChat.value = c.chatId }) {
+        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             var showP by remember { mutableStateOf(false) }
             if (showP) UserProfileDialog(c.otherUid) { showP = false }
-            Box(Modifier.clip(CircleShape).clickable { showP = true }) { Avatar(p?.avatar.orEmpty(), p?.displayName ?: "?", 44) }
+            Box(Modifier.clip(CircleShape).border(2.5.dp, androidx.compose.ui.graphics.Brush.linearGradient(listOf(Amber400, Pink500, Purple500)), CircleShape).padding(4.dp).clip(CircleShape).clickable { showP = true }) { Avatar(p?.avatar.orEmpty(), p?.displayName ?: "?", 56) }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text(p?.displayName ?: "…", color = White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                Text(c.lastMessage.ifBlank { "เริ่มคุยกันได้เลย" }, color = Slate400, fontSize = 12.sp, maxLines = 1)
+                Text(p?.displayName ?: "…", color = White, fontWeight = FontWeight.Bold, fontSize = 17.sp, maxLines = 1)
+                Text(c.lastMessage.ifBlank { "เริ่มคุยกันได้เลย" }, color = Slate300, fontSize = 14.sp, maxLines = 1)
             }
             decor?.let { Box(Modifier.padding(end = 6.dp)) { DecorMiniPreview(it) } }
-            if (c.lastAt > 0) Text(fmt.format(Date(c.lastAt)), color = Slate400, fontSize = 10.sp)
+            if (c.lastAt > 0) Text(fmt.format(Date(c.lastAt)), color = Slate300, fontSize = 12.sp, modifier = Modifier.align(Alignment.Top))
         }
     }
 }

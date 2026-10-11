@@ -54,7 +54,8 @@ fun FeedTab(
     onAddStory: (imageUrl: String) -> Unit,
     onEnterLiveRoom: (String) -> Unit,
     onSubmitReport: (Report) -> Unit,
-    onOpenFindFriends: () -> Unit = {}
+    onOpenFindFriends: () -> Unit = {},
+    onOpenLive: () -> Unit = {}
 ) {
     var isCreatePostOpen by remember { mutableStateOf(false) }
     var activeCommentPost by remember { mutableStateOf<Post?>(null) }
@@ -108,16 +109,7 @@ fun FeedTab(
             contentPadding = PaddingValues(bottom = 88.dp)
         ) {
             val secTabs: LazyListScope.() -> Unit = {
-            // 1. Category Tabs Bar
-            if (feedConfig.showCategoryTabs) {
-                item {
-                    CategoryTabsRow(
-                        tabs = availableTabs,
-                        selectedTab = selectedCategory,
-                        onSelectTab = onSelectCategory
-                    )
-                }
-            }
+            if (feedConfig.showCategoryTabs) item { HomeChips(selectedCategory, onAll = { onSelectCategory("ทั้งหมด") }, onPeople = onOpenFindFriends) }
             }
 
             val secBanners: LazyListScope.() -> Unit = {
@@ -166,27 +158,9 @@ fun FeedTab(
             }
 
             val secStories: LazyListScope.() -> Unit = {
-            // 2. Story / Quick Access Row
             if (feedConfig.showStoryRow) {
-                item {
-                    StoryBar(
-                        currentUser = currentUser,
-                        stories = stories,
-                        onlineUsers = users.filter { it.isOnline },
-                        onAddStoryClick = {
-                            onAddStory("https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&auto=format&fit=crop&q=80")
-                        },
-                        onStoryClick = { /* View Story */ },
-                        onQuickFilterClick = { tabName ->
-                            // People shortcuts now open the 'หาเพื่อน' page (all friend-finding lives there)
-                            if (tabName in listOf("ออนไลน์", "คนใกล้เคียง", "หาเพื่อน")) onOpenFindFriends()
-                            else if (availableTabs.contains(tabName)) onSelectCategory(tabName)
-                        },
-                        onLiveClick = { hostUserId ->
-                            onEnterLiveRoom("live_linlin_01")
-                        }
-                    )
-                }
+                item { LiveNowSection(onSeeAll = onOpenLive) }
+                item { NearbyStoriesSection(onSeeAll = onOpenFindFriends) }
             }
             }
 
@@ -237,7 +211,7 @@ fun FeedTab(
             }
 
             // Real posts from friendtalk-brain (mock posts are no longer shown as real)
-            val secFeed: LazyListScope.() -> Unit = { realFeedItems(realFeed) }
+            val secFeed: LazyListScope.() -> Unit = { realFeedItems(realFeed, promo = { FindFriendsPromo(onGo = onOpenFindFriends) }) }
             @Suppress("UNUSED_VARIABLE") val secFeedLegacyMock: LazyListScope.() -> Unit = {
             // 4. Post Feed List
             if (filteredPosts.isEmpty()) {

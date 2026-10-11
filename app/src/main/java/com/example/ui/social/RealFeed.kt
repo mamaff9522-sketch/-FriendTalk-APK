@@ -1,5 +1,8 @@
 package com.example.ui.social
 
+import androidx.compose.ui.draw.alpha
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.background
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -92,8 +95,9 @@ fun rememberRealFeedState(): RealFeedState {
 }
 
 /** Feed section content (composer + real posts). Used by the Home layout's "feed" section. */
-fun LazyListScope.realFeedItems(state: RealFeedState) {
+fun LazyListScope.realFeedItems(state: RealFeedState, promo: (@Composable () -> Unit)? = null) {
     if (state.tag == null && state.author == null) item(key = "real_composer") { PostComposer(onPosted = { state.posts.add(0, it) }) }
+    if (promo != null && state.tag == null && state.author == null) item(key = "promo") { promo() }
     if (state.error.isNotBlank()) item(key = "real_err") { Text(state.error, color = Amber400, fontSize = 12.sp, modifier = Modifier.padding(16.dp)) }
     if (state.loaded && state.posts.isEmpty()) item(key = "real_empty") {
         Box(Modifier.fillMaxWidth().padding(vertical = 40.dp), contentAlignment = Alignment.Center) {
@@ -132,11 +136,18 @@ fun PostComposer(onPosted: (FeedPost) -> Unit) {
         }
         return
     }
-    Surface(shape = RoundedCornerShape(16.dp), color = Slate800, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
+    val me = FirebaseAuth.getInstance().currentUser
+    Surface(shape = RoundedCornerShape(18.dp), color = Slate900, border = androidx.compose.foundation.BorderStroke(1.dp, Slate700.copy(alpha = 0.6f)),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
         Column(Modifier.padding(12.dp)) {
-            OutlinedTextField(value = text, onValueChange = { if (it.length <= 2000) text = it }, modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("คุณกำลังคิดอะไรอยู่?", color = Slate400) }, maxLines = 6,
-                colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Avatar(me?.photoUrl?.toString().orEmpty(), me?.displayName ?: "ฉัน", 44)
+                Spacer(Modifier.width(10.dp))
+                TextField(value = text, onValueChange = { if (it.length <= 2000) text = it }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(14.dp),
+                    placeholder = { Text("คุณกำลังคิดอะไรอยู่?", color = Slate400) }, maxLines = 6,
+                    colors = TextFieldDefaults.colors(focusedContainerColor = Slate800, unfocusedContainerColor = Slate800, focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                        unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent, focusedTextColor = White, unfocusedTextColor = White))
+            }
             if (showPlace) Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 6.dp)) {
                 OutlinedTextField(value = place, onValueChange = { if (it.length <= 80) place = it }, modifier = Modifier.weight(1f), singleLine = true,
                     placeholder = { Text("ชื่อสถานที่ เช่น สยามพารากอน", color = Slate400) },
@@ -147,27 +158,36 @@ fun PostComposer(onPosted: (FeedPost) -> Unit) {
                     else locPerm.launch(arrayOf(android.Manifest.permission.ACCESS_COARSE_LOCATION))
                 }, label = { Text("แนบพิกัดคร่าว ๆ (~1 กม.)", fontSize = 10.sp) }, modifier = Modifier.padding(start = 4.dp))
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 4.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 10.dp, start = 54.dp).horizontalScroll(rememberScrollState())) {
                 listOf("public" to "🌐 สาธารณะ", "friends" to "👥 เพื่อน", "only_me" to "🔒 เฉพาะฉัน").forEach { (k, l) ->
-                    FilterChip(selected = visibility == k, onClick = { visibility = k }, label = { Text(l, fontSize = 11.sp) })
+                    val sel = visibility == k
+                    Surface(onClick = { visibility = k }, shape = RoundedCornerShape(10.dp), color = if (sel) Pink500.copy(alpha = 0.18f) else Slate800,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, if (sel) Pink500 else Slate700)) {
+                        Text(l, fontSize = 13.sp, color = White, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
+                    }
                 }
             }
             if (images.isNotEmpty()) LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 6.dp)) {
                 items(images) { u -> AsyncImage(model = u, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(64.dp).clip(RoundedCornerShape(8.dp))) }
             }
+            HorizontalDivider(color = Slate700.copy(alpha = 0.5f), modifier = Modifier.padding(top = 10.dp))
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 6.dp)) {
-                TextButton(onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) { Text("🖼️ รูป (${images.size}/4)", color = Slate300) }
-                TextButton(onClick = { showPlace = !showPlace; if (!showPlace) { place = ""; attachLoc = false } }) { Text("📍", color = Slate300) }
-                if (images.isNotEmpty()) TextButton(onClick = { images = emptyList() }) { Text("ล้างรูป", color = Slate400) }
-                Spacer(Modifier.weight(1f))
-                Button(enabled = !busy && (text.isNotBlank() || images.isNotEmpty()), colors = ButtonDefaults.buttonColors(containerColor = Pink500), onClick = {
-                    busy = true; msg = ""
-                    scope.launch {
-                        val loc = if (attachLoc && place.isNotBlank()) currentLocation(ctx) else null
-                        FeedRepo.createPost(ctx, text, images, place, loc?.latitude, loc?.longitude, visibility).onSuccess { onPosted(it); text = ""; images = emptyList(); place = ""; showPlace = false; attachLoc = false }.onFailure { msg = it.message ?: "โพสต์ไม่สำเร็จ" }
-                        busy = false
-                    }
-                }) { Text(if (busy) "กำลังโพสต์…" else "โพสต์") }
+                Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, contentPadding = PaddingValues(horizontal = 6.dp)) { Text("🖼 รูป (${images.size}/4)", color = Slate200, fontSize = 13.sp) }
+                    TextButton(onClick = { msg = "โพสต์คลิปยังไม่เปิดให้ใช้" }, contentPadding = PaddingValues(horizontal = 6.dp)) { Text("🎬 คลิป (0/1)", color = Slate400, fontSize = 13.sp) }
+                    TextButton(onClick = { showPlace = !showPlace; if (!showPlace) { place = ""; attachLoc = false } }, contentPadding = PaddingValues(horizontal = 6.dp)) { Text("📍 เพิ่มตำแหน่ง", color = Slate200, fontSize = 13.sp) }
+                    if (images.isNotEmpty()) TextButton(onClick = { images = emptyList() }) { Text("ล้างรูป", color = Slate400) }
+                }
+                val can = !busy && (text.isNotBlank() || images.isNotEmpty())
+                Box(Modifier.clip(RoundedCornerShape(22.dp)).background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Pink500, Pink400))).alpha(if (can) 1f else 0.5f)
+                    .clickable(enabled = can) {
+                        busy = true; msg = ""
+                        scope.launch {
+                            val loc = if (attachLoc && place.isNotBlank()) currentLocation(ctx) else null
+                            FeedRepo.createPost(ctx, text, images, place, loc?.latitude, loc?.longitude, visibility).onSuccess { onPosted(it); text = ""; images = emptyList(); place = ""; showPlace = false; attachLoc = false }.onFailure { msg = it.message ?: "โพสต์ไม่สำเร็จ" }
+                            busy = false
+                        }
+                    }.padding(horizontal = 20.dp, vertical = 10.dp)) { Text(if (busy) "กำลังโพสต์…" else "➤ โพสต์", color = White, fontWeight = FontWeight.Bold, fontSize = 15.sp) }
             }
             if (msg.isNotBlank()) Text(msg, color = Amber400, fontSize = 12.sp)
         }

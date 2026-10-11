@@ -54,7 +54,7 @@ fun BottomNavBar(
         items.add(NavItem("movie", "วิดีโอ", Icons.Filled.PlayCircle, Icons.Outlined.PlayCircleOutline))
     }
     if (uiConfig.bottomNav.showChatTab) {
-        items.add(NavItem("chat", "แชต", Icons.Filled.ChatBubble, Icons.Outlined.ChatBubbleOutline, badgeCount = totalUnreadMessages))
+        items.add(NavItem("chat", "แชท", Icons.Filled.ChatBubble, Icons.Outlined.ChatBubbleOutline, badgeCount = totalUnreadMessages))
     }
     // 'เพื่อนคุย' (companion, 18+) moved to a tile on the 'หาเพื่อน' page.
     // Profile moved to the header avatar; this slot is the standalone ads page.
@@ -64,8 +64,9 @@ fun BottomNavBar(
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding(),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 8.dp
+        color = Slate950,
+        border = androidx.compose.foundation.BorderStroke(0.5.dp, Slate700.copy(alpha = 0.5f)),
+        tonalElevation = 0.dp
     ) {
         Row(
             modifier = Modifier
@@ -91,12 +92,9 @@ fun BottomNavBar(
                         if (isSelected) {
                             Box(
                                 modifier = Modifier
-                                    .size(width = 44.dp, height = 28.dp)
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(
-                                        if (item.isSpecial) Rose500.copy(alpha = 0.25f)
-                                        else Pink500.copy(alpha = 0.25f)
-                                    )
+                                    .size(width = 60.dp, height = 34.dp)
+                                    .clip(RoundedCornerShape(17.dp))
+                                    .background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Pink500.copy(alpha = 0.35f), Purple500.copy(alpha = 0.30f))))
                             )
                         }
 
@@ -109,7 +107,7 @@ fun BottomNavBar(
                                 item.isSpecial -> Rose500.copy(alpha = 0.7f)
                                 else -> Slate400
                             },
-                            modifier = Modifier.size(22.dp)
+                            modifier = Modifier.size(25.dp)
                         )
 
                         if (item.badgeCount > 0) {
@@ -133,7 +131,7 @@ fun BottomNavBar(
 
                     Text(
                         text = item.label,
-                        fontSize = 11.sp,
+                        fontSize = 12.sp,
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                         color = when {
                             item.isSpecial && isSelected -> Rose500

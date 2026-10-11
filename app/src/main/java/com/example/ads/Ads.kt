@@ -1,5 +1,10 @@
 package com.example.ads
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
@@ -247,33 +252,57 @@ fun AdsPageContent(feature: String?, onClose: (() -> Unit)?, returnAfterReward: 
     var vipInfo by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { AdRoom.refresh() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("🎁 หน้าโฆษณา", color = White, fontWeight = FontWeight.Bold, fontSize = 20.sp, modifier = Modifier.weight(1f))
-            if (onClose != null) TextButton(onClick = onClose) { Text("กลับ", color = Slate300) }
-        }
         val lim = l
+        val vip = lim?.tier == "vip"
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("🎁 หน้าโฆษณา", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 26.sp)
+                Row { Text("✦ สถานะ: ", color = Slate300, fontSize = 14.sp); Text(if (vip) "VIP ⭐ (ไม่มีโฆษณา)" else "ฟรี", color = Emerald400, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
+                if (onClose != null) TextButton(onClick = onClose, contentPadding = PaddingValues(0.dp)) { Text("‹ กลับ", color = Slate300) }
+            }
+            AdIllustration("🎁", 110)
+        }
         if (lim == null) { CircularProgressIndicator(color = Pink500); return@Column }
-        val vip = lim.tier == "vip"
-        Text(if (vip) "สถานะ: VIP ⭐ (ไม่มีโฆษณา)" else "สถานะ: ฟรี", color = Slate300, fontSize = 13.sp)
         if (feature != null) Text("โควตาที่หมด: ${FEATURE_LABELS[feature] ?: feature}", color = Amber400, fontSize = 12.sp)
         if (!vip && lim.showAds && lim.rewardEnabled) {
             Spacer(Modifier.height(10.dp))
-            Text("เลือกโฆษณาที่ต้องการ (ดูวันนี้แล้ว ${lim.adsWatched} / ${lim.adsMax})", color = White, fontWeight = FontWeight.Bold)
-            Text("โฆษณาจะเริ่มเมื่อคุณกดเลือกเท่านั้น ระยะเวลาเป็นค่าประมาณ", color = Slate400, fontSize = 11.sp)
+            Surface(shape = RoundedCornerShape(16.dp), color = Slate900, border = androidx.compose.foundation.BorderStroke(1.dp, Slate700.copy(alpha = 0.6f)), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp)) {
+                    Row { Text("เลือกโฆษณาที่ต้องการ (ดูวันนี้แล้ว ", color = White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        Text("${lim.adsWatched} / ${lim.adsMax}", color = Pink400, fontWeight = FontWeight.Bold, fontSize = 15.sp); Text(")", color = White, fontWeight = FontWeight.Bold, fontSize = 15.sp) }
+                    Text("โฆษณาจะเริ่มเมื่อคุณกดเลือกเท่านั้น ระยะเวลาเป็นค่าประมาณ", color = Slate400, fontSize = 12.sp)
+                }
+            }
             val capped = lim.adsMax > 0 && lim.adsWatched >= lim.adsMax
             val offers = if (feature != null) lim.offers.sortedByDescending { it.feature == feature } else lim.offers
             if (offers.isEmpty()) Text("ยังไม่มีโฆษณาให้เลือกตอนนี้", color = Slate400, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
-            offers.forEach { o ->
-                Surface(shape = RoundedCornerShape(14.dp), color = if (o.feature == feature) Slate700 else Slate800, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                    Column(Modifier.padding(12.dp)) {
-                        Text(o.title, color = White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                        Text("▶ ดูโฆษณา ${o.durationLabel}".trim(), color = Slate300, fontSize = 13.sp)
-                        Text("🎁 ${rewardText(o.feature, o.amount)}", color = Emerald400, fontSize = 13.sp)
-                        Text("⏳ ${validityText(o.validityHours)}", color = Slate300, fontSize = 12.sp)
-                        if (o.description.isNotBlank()) Text("✨ ${o.description}", color = Slate400, fontSize = 12.sp)
-                        Button(enabled = busy == null && !capped, modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Pink500), onClick = {
-                                val act = ctx.activity() ?: return@Button
+            offers.forEachIndexed { idx, o ->
+                Surface(shape = RoundedCornerShape(20.dp), color = Slate900,
+                    border = androidx.compose.foundation.BorderStroke(1.5.dp, androidx.compose.ui.graphics.Brush.linearGradient(listOf(Pink500.copy(alpha = 0.8f), Purple500.copy(alpha = 0.6f)))),
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                    Box(Modifier.background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(Purple600.copy(alpha = 0.22f), Color.Transparent, Pink600.copy(alpha = 0.18f))))) {
+                    Column(Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.Top) {
+                            Column(Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(o.title, color = White, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp)
+                                    if (idx == 0 || o.feature == feature) { Spacer(Modifier.width(8.dp))
+                                        Surface(shape = RoundedCornerShape(12.dp), color = Purple600.copy(alpha = 0.5f), border = androidx.compose.foundation.BorderStroke(1.dp, Pink400)) {
+                                            Text("👑 แนะนำ", color = White, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)) } }
+                                }
+                                Spacer(Modifier.height(6.dp))
+                                Text("▶  ดูโฆษณา ${o.durationLabel}".trim(), color = Slate200, fontSize = 15.sp)
+                                Text("🎁  ${rewardText(o.feature, o.amount)}", color = Emerald400, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                                Text("⏳  ${validityText(o.validityHours)}", color = Slate200, fontSize = 14.sp)
+                                if (o.description.isNotBlank()) Text("✨  ${o.description}", color = Slate300, fontSize = 14.sp)
+                            }
+                            AdIllustration(if (o.adFormat == "rewarded_interstitial") "📱" else "🎬", 96)
+                        }
+                        val en = busy == null && !capped
+                        Box(Modifier.fillMaxWidth().padding(top = 12.dp).clip(RoundedCornerShape(26.dp))
+                            .background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Pink500, Pink400))).alpha(if (en) 1f else 0.5f)
+                            .clickable(enabled = en) {
+                                val act = ctx.activity() ?: return@clickable
                                 busy = o.id; msg = ""
                                 scope.launch {
                                     val earned = AdsManager.showRewardedFormat(act, o.adFormat, "offer:${o.id}")
@@ -284,7 +313,11 @@ fun AdsPageContent(feature: String?, onClose: (() -> Unit)?, returnAfterReward: 
                                     else if (returnAfterReward) onClose?.invoke() // back to where the user was (draft kept)
                                     else msg = "ได้รับแล้ว: ${rewardText(o.feature, o.amount)}"
                                 }
-                            }) { Text(if (busy == o.id) "กำลังโหลดโฆษณา…" else if (capped) "ดูครบจำนวนวันนี้แล้ว" else "ดูโฆษณานี้") }
+                            }.padding(vertical = 14.dp), contentAlignment = Alignment.Center) {
+                            Text(if (busy == o.id) "กำลังโหลดโฆษณา…" else if (capped) "ดูครบจำนวนวันนี้แล้ว" else "▶  ดูโฆษณานี้", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 17.sp)
+                            Text("›", color = White, fontSize = 20.sp, modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp))
+                        }
+                    }
                     }
                 }
             }
@@ -315,4 +348,17 @@ fun AdsPageContent(feature: String?, onClose: (() -> Unit)?, returnAfterReward: 
 object AdUnits {
     @Volatile var adminTestAds = true // safe default until /me confirms a normal USER role
     fun unit(real: String, test: String) = if (adminTestAds) test else real
+}
+
+/** Decorative illustration: big emoji with glow + coins (bundled vector-free; uses system emoji). */
+@Composable
+fun AdIllustration(main: String, size: Int) {
+    Box(Modifier.size(size.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.size((size * 0.85f).dp).clip(androidx.compose.foundation.shape.CircleShape)
+            .background(androidx.compose.ui.graphics.Brush.radialGradient(listOf(Pink500.copy(alpha = 0.45f), Purple600.copy(alpha = 0.15f), Color.Transparent))))
+        Text(main, fontSize = (size * 0.5f).sp)
+        Text("🪙", fontSize = (size * 0.2f).sp, modifier = Modifier.align(Alignment.BottomStart))
+        Text("🪙", fontSize = (size * 0.16f).sp, modifier = Modifier.align(Alignment.TopEnd))
+        Text("✦", color = Pink400, fontSize = (size * 0.12f).sp, modifier = Modifier.align(Alignment.TopStart))
+    }
 }

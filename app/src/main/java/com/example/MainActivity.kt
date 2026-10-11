@@ -177,7 +177,7 @@ fun FriendTalkApp(
 
     val unreadNotificationsCount = uiState.notifications.count { !it.isRead }
     val totalUnreadMessages = uiState.conversations.sumOf { it.unreadCounts[uiState.currentUser.id] ?: 0 }
-    val activeLiveCount = uiState.liveRooms.count { it.isLive }
+    val activeLiveCount = 0 // live rooms are not real yet (no badge from mock data)
 
     val appBgColor = parseHexColor(uiState.uiConfig.theme.backgroundColorHex, Slate950)
 
@@ -202,6 +202,7 @@ fun FriendTalkApp(
                     AppHeader(
                         currentUser = uiState.currentUser,
                         appName = uiState.uiConfig.appName,
+                        showSearchBar = uiState.activeTab != "discover",
                         unreadNotificationsCount = unreadNotificationsCount,
                         searchQuery = uiState.searchQuery,
                         isSearchActive = uiState.isSearchActive,
@@ -243,6 +244,7 @@ fun FriendTalkApp(
                 when (uiState.activeTab) {
                     "home" -> FeedTab(
                         onOpenFindFriends = { viewModel.setActiveTab("discover") },
+                        onOpenLive = { viewModel.setActiveTab("live") },
                         posts = uiState.posts,
                         stories = uiState.stories,
                         users = uiState.users,
@@ -280,14 +282,9 @@ fun FriendTalkApp(
                         }
                     )
 
-                    "live" -> LiveTab(
-                        liveRooms = uiState.liveRooms,
-                        currentUser = uiState.currentUser,
-                        onSelectRoom = { viewModel.setCurrentLiveRoomId(it) },
-                        onGoLive = { /* Go Live */ }
-                    )
+                    "live" -> com.example.ui.social.RealLiveScreen() // no live backend yet: no mock streamers
 
-                    "movie" -> MovieTab()
+                    "movie" -> com.example.ui.social.RealVerticalFeed()
 
                     // Real 1:1 chats from Firebase RTDB (the old mock ChatTab is kept in code but no longer shown)
                     "chat" -> com.example.ui.social.RealChatListScreen()

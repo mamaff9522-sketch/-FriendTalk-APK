@@ -46,6 +46,7 @@ data class BottomNavConfig(
 )
 
 data class AppUiConfig(
+    val appSubtitle: String = "คมสัน เสร็จประสงค์",
     val configVersion: String = "v1.2.0",
     val lastUpdatedTimestamp: Long = System.currentTimeMillis(),
     val updatedBy: String = "Admin",
