@@ -118,7 +118,7 @@ fun FriendTalkRoot(
                     viewModel.syncFirebaseUser(user)
                 }
             )
-        } else {
+        } else { com.example.ui.onboarding.OnboardingGate(firebaseUser) {
             FriendTalkApp(
                 viewModel = viewModel,
                 currentUserFirebase = firebaseUser,
@@ -145,7 +145,7 @@ fun FriendTalkRoot(
                     }
                 }
             )
-        }
+        } }
     }
 }
 

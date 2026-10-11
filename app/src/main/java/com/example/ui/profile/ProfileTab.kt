@@ -207,6 +207,9 @@ fun ProfileTab(
                         }
                     }
 
+                    var showWithdraw by remember { mutableStateOf(false) }
+                    if (showWithdraw) com.example.ui.wallet.WithdrawDialog(isStaff = currentUser.role != com.example.model.UserRole.USER) { showWithdraw = false }
+                    OutlinedButton(onClick = { showWithdraw = true }, modifier = Modifier.fillMaxWidth()) { Text("💸 ถอนเงิน") }
                     Surface(
                         shape = RoundedCornerShape(14.dp),
                         color = Slate800,
