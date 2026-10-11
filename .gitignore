@@ -17,3 +17,17 @@ debug.keystore
 *.keystore
 .build-outputs/
 app/google-services.json
+# secrets / data — never commit
+*.pem
+*.p12
+*.key
+service-account*.json
+*-sa.json
+*credentials*.json
+.env.*
+!.env.example
+backups/
+rtdb-20*.json
+*.apk
+*.aab
+node_modules/

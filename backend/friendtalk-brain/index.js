@@ -17,6 +17,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json({ limit: '128kb' }));
+app.get('/download/apk', (_q, r) => r.redirect(302, 'https://github.com/mamaff9522-sketch/-FriendTalk-APK/releases/latest/download/FriendTalk-latest.apk'));
 const now = () => admin.database.ServerValue.TIMESTAMP;
 app.get('/health', (_q, r) => r.json({ ok: true, service: 'friendtalk-brain' }));
 async function auth(req, res, next) {
@@ -24,7 +25,7 @@ async function auth(req, res, next) {
   if (!m) return res.status(401).json({ error: 'missing token' });
   try {
     const t = await admin.auth().verifyIdToken(m[1], true);
-    req.uid = t.uid;
+    req.uid = t.uid; req.tok = t;
     if (req.method !== 'GET' && t.firebase?.sign_in_provider === 'password' && t.email_verified !== true) return res.status(403).json({ error: 'email not verified' });
     next();
   }
@@ -48,15 +49,26 @@ async function isAdmin(req, res, next) {
   if (!r || !['admin', 'superadmin'].includes(r.role)) return res.status(403).json({ error: 'admin only' });
   req.role = r; next();
 }
-const perm = p => (req, res, next) => can(req.role, p) ? next() : res.status(403).json({ error: `missing permission ${p}` });
+// Loads the role itself, so routes registered before app.use('/admin', isAdmin) also work (was the cause of 403 on /admin/feature-locks, /admin/ad-placements).
+const perm = p => (req, res, next) => (req.role ? Promise.resolve(req.role) : loadRole(req.uid)).then(r => { req.role = r; can(r, p) ? next() : res.status(403).json({ error: `missing permission ${p}` }); }).catch(e => res.status(500).json({ error: 'internal' }));
 async function isSuper(req, res, next) {
   const r = await loadRole(req.uid);
   if (r?.role !== 'superadmin') return res.status(403).json({ error: 'superadmin only' });
   req.role = r; next();
 }
 const w = fn => (q, r, n) => fn(q, r, n).catch(e => { console.error(e.message); r.status(e.code === 404 ? 404 : 500).json({ error: e.code === 404 ? 'user not found' : 'internal' }); });
-app.use(['/coins', '/age', '/config', '/admin', '/superadmin', '/me', '/match', '/bot', '/ui', '/chats', '/swipe', '/posts', '/feed', '/friends', '/radar', '/shake', '/limits', '/quota', '/search', '/users', '/interests', '/bots', '/gifts', '/rooms', '/reports', '/creator', '/blocks', '/chat-rules', '/companion-apply', '/companion', '/shop'], w(auth));
+app.use(['/coins', '/age', '/config', '/admin', '/superadmin', '/me', '/match', '/bot', '/ui', '/chats', '/swipe', '/posts', '/feed', '/friends', '/radar', '/shake', '/limits', '/quota', '/search', '/users', '/interests', '/bots', '/gifts', '/rooms', '/reports', '/creator', '/blocks', '/chat-rules', '/companion-apply', '/companion', '/shop', '/follow', '/views', '/withdraw', '/onboarding', '/idv', '/chat-send'], w(auth));
 app.get('/me', w(async (q, r) => {
+  const dh = String(q.get('X-Device-Hash') || ''); if (/^[a-f0-9]{16,64}$/.test(dh)) { db.ref(`deviceOf/${q.uid}`).set(dh).catch(() => {}); db.ref(`devices/${dh}/${q.uid}`).set(Date.now()).catch(() => {}); }
+  // Safeguard: if /roles has no superadmin at all (data loss), re-seed it for the configured owner email (verified Google sign-in only; server-side).
+  const owners = String(process.env.OWNER_EMAILS || '').toLowerCase().split(',').map(x => x.trim()).filter(Boolean);
+  if (owners.includes(String(q.tok?.email || '').toLowerCase()) && q.tok?.email_verified === true && q.tok?.firebase?.sign_in_provider === 'google.com') {
+    const all = (await db.ref('roles').get()).val() || {};
+    if (!Object.values(all).some(v => (typeof v === 'string' ? v : v?.role) === 'superadmin')) {
+      await db.ref(`roles/${q.uid}`).set({ role: 'superadmin', grantedBy: 'owner-reseed', grantedAt: Date.now() });
+      await db.ref('adminLog').push({ action: 'owner_reseed', target: q.uid, by: 'system', at: Date.now() });
+    }
+  }
   const role = await loadRole(q.uid);
   const raw = role ? (await db.ref(`roles/${q.uid}/label`).get()).val() : null;
   r.json({ uid: q.uid, role: raw === 'moderator' ? 'moderator' : (role?.role || 'user'), permissions: role?.permissions || {} });
@@ -146,6 +158,7 @@ app.post('/creator/apply', w(notBanned), w(async (q, r) => {
   const cr = await creatorRules(), agreed = Array.isArray(b.agreedRules) ? b.agreedRules.map(Number) : [];
   if (+b.rulesVersion !== cr.version) return r.status(409).json({ error: 'กติกามีการเปลี่ยนแปลง กรุณาโหลดใหม่', rules: cr });
   if (!cr.rules.every((_, i) => agreed.includes(i))) return r.status(400).json({ error: 'ต้องติ๊กยอมรับกติกาทุกข้อ' });
+  { const m = await moderateText(q.uid, [name, bio, ...links].join(' '), { kind: 'creator_application' }); if (!m.ok) return r.status(422).json({ code: 'moderated', error: m.message }); }
   const v = { uid: q.uid, displayName: name, category: cat, bio, links, sampleUrl: sample.slice(0, 300), adult: true, agree: true, rulesVersion: cr.version, rulesAgreed: cr.rules, agreedAt: Date.now(), status: 'pending', submittedAt: Date.now(), reason: '' };
   await db.ref(`creatorApplications/${q.uid}`).set(v); r.json(v);
 }));
@@ -180,7 +193,7 @@ app.post('/blocks/:uid', w(async (q, r) => {
 // ===== Chat / companion safety rules (appConfig/chatRules {version, rules}); acceptance chatRulesAccepted/{uid} {version, at}
 const DEFAULT_CHAT_RULES = ['ผู้ใช้ต้องมีอายุ 18 ปีขึ้นไปเท่านั้น', 'ห้ามส่งหรือขอเนื้อหาลามก/เรื่องทางเพศ', 'ห้ามคุกคาม กลั่นแกล้ง หรือข่มขู่', 'ห้ามใช้ถ้อยคำแสดงความเกลียดชัง',
   'ห้ามเปิดเผยข้อมูลส่วนตัวของผู้อื่น', 'ห้ามหลอกลวง ฉ้อโกง หรือขอเงิน', 'ห้ามแอบอ้างเป็นบุคคลอื่น', 'ห้ามติดต่อหรือชักชวนผู้เยาว์ (อายุต่ำกว่า 18 ปี)',
-  'ห้ามความรุนแรง กิจกรรมผิดกฎหมาย หรือยาเสพติด', 'ห้ามสแปมหรือโฆษณา', 'อย่าโอนเงินให้คนแปลกหน้า', 'กดรายงานหรือบล็อกได้ทุกเมื่อจากเมนู ⋯ ในห้องแชท'];
+  'ห้ามความรุนแรง กิจกรรมผิดกฎหมาย หรือยาเสพติด', 'ห้ามสแปมหรือโฆษณา', 'อย่าโอนเงินให้คนแปลกหน้า', 'กดรายงานหรือบล็อกได้ทุกเมื่อจากเมนู ⋯ ในห้องแชท', 'ข้อความ โพสต์ และรูปภาพจะถูกตรวจสอบอัตโนมัติ (ระบบคัดกรอง + AI) เพื่อความปลอดภัย กรณีถูกแจ้งเตือนซ้ำ แอดมินอาจเปิดดูข้อความที่เกี่ยวข้องได้ และมีบันทึกการเข้าดูทุกครั้ง'];
 async function chatRules() { const v = (await db.ref('appConfig/chatRules').get()).val(); return v && Array.isArray(v.rules) && v.rules.length ? { version: v.version || 1, rules: v.rules } : { version: 1, rules: DEFAULT_CHAT_RULES }; }
 app.get('/chat-rules', w(async (q, r) => { const cr = await chatRules(); const a = (await db.ref(`chatRulesAccepted/${q.uid}`).get()).val(); r.json({ ...cr, accepted: !!(a && a.version === cr.version), acceptedAt: a?.at || 0 }); }));
 app.post('/chat-rules/accept', w(async (q, r) => {
@@ -212,6 +225,7 @@ app.post('/companion-apply', w(notBanned), w(async (q, r) => {
   const slots = (Array.isArray(b.slots) ? b.slots : []).filter(x => SLOTS.includes(x)); if (!slots.length) return r.status(400).json({ error: 'เลือกช่วงเวลาที่สะดวกอย่างน้อย 1 ช่วง' });
   const hours = {}; for (const d of DAYS) { const v = String(b.hours?.[d] || '').trim(); if (v) { if (!HR.test(v)) return r.status(400).json({ error: `เวลา ${d} ต้องเป็นรูปแบบ 18:00-22:00` }); hours[d] = v; } }
   const modes = (Array.isArray(b.modes) ? b.modes : []).filter(x => ['text', 'voice', 'video'].includes(x)); if (!modes.length) return r.status(400).json({ error: 'เลือกรูปแบบการคุยอย่างน้อย 1 แบบ' });
+  { const m = await moderateText(q.uid, [dn, occ, b.talkStyle, b.personality].join(' '), { kind: 'companion_application' }); if (!m.ok) return r.status(422).json({ code: 'moderated', error: m.message }); }
   const t = Date.now(), talkStyle = String(b.talkStyle || '').trim().slice(0, 300), personality = String(b.personality || '').trim().slice(0, 300);
   await db.ref().update({
     [`companionApplications/${q.uid}`]: { uid: q.uid, displayName: dn, occupation: occ, age, slots, hours, talkStyle, personality, modes: [...new Set(modes)], status: 'pending', submittedAt: t, reason: '' },
@@ -253,7 +267,7 @@ async function chargeCompanion(payer, partner, amount, rates, memo) {
   const d = await db.ref(`wallets/${payer}/${cur}`).transaction(c => (c === null ? null : num(c) >= amount ? num(c) - amount : undefined));
   if (!d.committed || d.snapshot.val() === null) return { ok: false };
   const share = Math.floor(amount * rates.partnerPercent / 100);
-  await Promise.all([db.ref(`wallets/${partner}/${cur}`).transaction(c => num(c) + share), db.ref(`wallets/_system/${cur}`).transaction(c => num(c) + (amount - share)),
+  await Promise.all([db.ref(`wallets/${partner}/${cur}`).transaction(c => num(c) + share), cur === 'diamonds' ? db.ref(`wallets/${partner}/earnedDiamonds`).transaction(c => num(c) + share) : null, db.ref(`wallets/_system/${cur}`).transaction(c => num(c) + (amount - share)),
     db.ref('companionLedger').push({ payer, partner, amount, share, currency: cur, memo, at: Date.now() }), db.ref(`companionPaid/${partner}/${payer}`).set(Date.now())]);
   return { ok: true, charged: amount, balance: d.snapshot.val() };
 }
@@ -287,6 +301,7 @@ app.post('/companion/chats/:chatId/send', w(notBanned), w(async (q, r) => {
   const { chatId } = q.params, c = await paidChat(chatId, q.uid); if (!c) return r.status(404).json({ error: 'not a paid chat' });
   const text = String(q.body?.text || '').trim().slice(0, 2000); if (!text) return r.status(400).json({ error: 'text required' });
   if ((await db.ref(`chatBlocked/${chatId}`).get()).exists() || (await db.ref(`chats/${chatId}/closed`).get()).exists()) return r.status(403).json({ error: 'แชทนี้ส่งไม่ได้' });
+  { const m = await moderateText(q.uid, text, { kind: 'chat', chatId, ref: chatId }); if (!m.ok) return r.status(422).json({ code: 'moderated', error: m.message }); }
   const rates = await companionRates(); let charged = 0, balance;
   if (q.uid !== c.companion) {
     if (rates.textMode === 'per_message') {
@@ -312,6 +327,7 @@ async function recomputeRating(partner) {
 app.post('/companion/:uid/rate', w(notBanned), w(async (q, r) => {
   const partner = q.params.uid, stars = parseInt(q.body?.stars), comment = String(q.body?.comment || '').trim().slice(0, 200);
   if (!UID_RE.test(partner) || !(stars >= 1 && stars <= 5)) return r.status(400).json({ error: 'stars 1-5 required' });
+  if (comment) { const m = await moderateText(q.uid, comment, { kind: 'rating', ref: partner }); if (!m.ok) return r.status(422).json({ code: 'moderated', error: m.message }); }
   if (!(await db.ref(`companionPaid/${partner}/${q.uid}`).get()).exists()) return r.status(403).json({ error: 'ให้คะแนนได้เฉพาะผู้ที่เคยคุยแบบชำระเงินแล้ว' });
   await db.ref(`companionRatings/${partner}/${q.uid}`).set({ stars, comment, at: Date.now() });
   r.json(await recomputeRating(partner));
@@ -328,7 +344,7 @@ app.delete('/admin/companion-ratings/:partner/:user', perm('manage_content'), w(
 }));
 // ===== Shop (Google Play Billing). appConfig/shopProducts {enabled, diamonds:[{productId, amount}], coins:[...]}; server verifies tokens via androidpublisher.
 const PLAY_PACKAGE = process.env.PLAY_PACKAGE || 'com.example';
-const crypto2 = require('crypto');
+const crypto2 = crypto;
 async function shopCfg() { const v = (await db.ref('appConfig/shopProducts').get()).val() || {}; return { enabled: v.enabled === true, diamonds: v.diamonds || [], coins: v.coins || [], packageName: v.packageName || PLAY_PACKAGE }; }
 app.get('/shop/products', w(async (_q, r) => r.json(await shopCfg())));
 app.put('/admin/shop-products', perm('config_edit'), w(notBanned), w(async (q, r) => {
@@ -374,6 +390,342 @@ app.post('/shop/verify', w(notBanned), w(async (q, r) => {
   const c = await playApi('POST', `applications/${encodeURIComponent(cfg.packageName)}/purchases/products/${encodeURIComponent(productId)}/tokens/${encodeURIComponent(token)}:consume`);
   await pref.update({ consumed: c.status === 200 || c.status === 204 });
   r.json({ credited: true, currency: cur, amount, consumed: c.status === 200 || c.status === 204 });
+}));
+// ======================= Shared moderation module =======================
+// Keyword filter (fast) + Gemini classification (cheap flash-lite) for text; Cloud Vision SafeSearch for images.
+// flagged -> modFlags; severe -> blocked; repeat offenders (>=2 flags / 24h) or severe -> admin modQueue.
+const MOD_WORDS = [/หี|ควย|เย็ด|xxx|porn|nude|เซ็กส์|sex\s*cam/i, /ฆ่า(มึง|แก)|จะฆ่า|kill you|ระเบิด/i, /โอนเงิน.*(ก่อน|มัดจำ)|บัญชีม้า|ลงทุน.*กำไร.*%|crypto.*double/i, /อายุ\s*1[0-7]\s*ปี|เด็กนักเรียน/i];
+const MOD_CATS = ['sexual', 'violence', 'scam', 'minor'];
+async function geminiClassify(text) {
+  try {
+    const prompt = 'Classify this user message from a Thai social app. Reply ONLY JSON {"flags":[...],"severity":0-3} where flags is a subset of ["sexual","violence","harassment","hate","minor","scam"]. severity 3 = severe (explicit sexual content, minors, credible threats).\nMessage: <<<' + text.slice(0, 800) + '>>>';
+    const res = await fetch(`https://aiplatform.googleapis.com/v1/projects/${PROJECT}/locations/global/publishers/google/models/${GEMINI_MODEL}:generateContent`, {
+      method: 'POST', headers: { Authorization: `Bearer ${await gcpToken()}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: 60, temperature: 0, responseMimeType: 'application/json' } })
+    });
+    if (!res.ok) return null;
+    const j = await res.json(); const t = (j.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
+    const o = JSON.parse(t); return { flags: (o.flags || []).filter(x => typeof x === 'string').slice(0, 6), severity: Math.max(0, Math.min(3, +o.severity || 0)) };
+  } catch (_) { return null; }
+}
+async function moderateText(uid, text, ctx) {
+  text = String(text || ''); if (!text.trim()) return { ok: true };
+  const kw = MOD_WORDS.map((re, i) => re.test(text) ? MOD_CATS[i] : null).filter(Boolean);
+  const ai = (process.env.MOD_AI !== 'off') ? await geminiClassify(text) : null;
+  const flags = [...new Set([...kw, ...(ai?.flags || [])])], severity = Math.max(ai?.severity || 0, kw.includes('minor') || kw.includes('sexual') ? 2 : kw.length ? 1 : 0);
+  if (!flags.length && severity === 0) return { ok: true };
+  const t = Date.now(), dayAgo = t - 864e5;
+  const prev = Object.values((await db.ref(`modFlags/${uid}`).orderByKey().limitToLast(20).get()).val() || {}).filter(x => x.at > dayAgo).length;
+  await db.ref(`modFlags/${uid}`).push({ at: t, flags, severity, kind: ctx.kind, ref: ctx.ref || '', text: text.slice(0, 500) });
+  if (prev >= 1 || severity >= 3) await db.ref(`modQueue/${uid}_${t}`).set({ uid, at: t, flags, severity, kind: ctx.kind, ref: ctx.ref || '', chatId: ctx.chatId || '', text: text.slice(0, 500), status: 'open', repeat: prev + 1 });
+  return { ok: severity < 3, warn: true, flags, severity, message: severity >= 3 ? 'ข้อความนี้ขัดกติกาความปลอดภัยและถูกบล็อก' : 'คำเตือน: ข้อความของคุณอาจขัดกติกา หากทำซ้ำแอดมินจะตรวจสอบ' };
+}
+async function moderateImage(uid, gsPath, ctx) {
+  try {
+    const res = await fetch('https://vision.googleapis.com/v1/images:annotate', { method: 'POST', headers: { Authorization: `Bearer ${await gcpToken()}`, 'Content-Type': 'application/json', 'x-goog-user-project': PROJECT },
+      body: JSON.stringify({ requests: [{ image: { source: { imageUri: `gs://${STORAGE_BUCKET}/${gsPath}` } }, features: [{ type: 'SAFE_SEARCH_DETECTION' }] }] }) });
+    if (!res.ok) return { ok: true, skipped: res.status };
+    const ss = (await res.json()).responses?.[0]?.safeSearchAnnotation || {}; const bad = ['LIKELY', 'VERY_LIKELY'];
+    const flags = ['adult', 'violence', 'racy'].filter(k => bad.includes(ss[k]));
+    if (!flags.length) return { ok: true };
+    const t = Date.now(); await db.ref(`modQueue/${uid}_${t}`).set({ uid, at: t, flags, severity: ss.adult === 'VERY_LIKELY' ? 3 : 2, kind: ctx.kind, ref: ctx.ref || '', image: gsPath, status: 'open' });
+    return { ok: ss.adult !== 'VERY_LIKELY', flags };
+  } catch (_) { return { ok: true, skipped: 'error' }; }
+}
+// Moderated text send for normal chats (new app uses this; direct RTDB writes remain allowed for older app versions).
+app.post('/chat-send/:chatId', w(notBanned), w(async (q, r) => {
+  const { chatId } = q.params, text = String(q.body?.text || '').trim().slice(0, 2000); if (!text) return r.status(400).json({ error: 'text required' });
+  if (!(await db.ref(`chatMembers/${chatId}/${q.uid}`).get()).exists()) return r.status(403).json({ error: 'not a member' });
+  if ((await db.ref(`chatBlocked/${chatId}`).get()).exists() || (await db.ref(`chats/${chatId}/closed`).get()).exists()) return r.status(403).json({ error: 'แชทนี้ส่งไม่ได้' });
+  if ((await db.ref(`chats/${chatId}/paid`).get()).val() === true && (await db.ref(`chats/${chatId}/companion`).get()).val() !== q.uid) return r.status(409).json({ error: 'paid chat: use companion send' });
+  if ((await db.ref(`chatBlocks/${q.uid}`).get()).exists()) return r.status(403).json({ error: 'บัญชีของคุณถูกระงับการแชท' });
+  const m = await moderateText(q.uid, text, { kind: 'chat', chatId, ref: chatId });
+  if (!m.ok) return r.status(422).json({ code: 'moderated', error: m.message, flags: m.flags });
+  const t = Date.now(), id = db.ref(`messages/${chatId}`).push().key;
+  await db.ref().update({ [`messages/${chatId}/${id}`]: { senderUid: q.uid, at: t, text }, [`chats/${chatId}/lastMessage`]: text.slice(0, 100), [`chats/${chatId}/lastAt`]: t, [`chats/${chatId}/lastSenderUid`]: q.uid });
+  r.json({ id, warning: m.warn ? m.message : '' });
+}));
+app.get('/admin/moderation', perm('manage_content'), w(async (q, r) => {
+  const v = (await db.ref('modQueue').orderByKey().limitToLast(200).get()).val() || {};
+  r.json({ items: Object.entries(v).map(([id, x]) => ({ id, ...x })).filter(x => x.status === (q.query.status || 'open')).sort((a, b) => b.at - a.at) });
+}));
+app.get('/admin/moderation/:id/context', perm('manage_content'), w(async (q, r) => {
+  const it = (await db.ref(`modQueue/${q.params.id}`).get()).val(); if (!it) return r.status(404).json({ error: 'not found' });
+  const full = q.query.full === '1';
+  let msgs = [];
+  if (it.chatId) { const v = (await db.ref(`messages/${it.chatId}`).orderByKey().limitToLast(full ? 200 : 10).get()).val() || {}; msgs = Object.values(v).map(m => ({ from: m.senderUid, at: m.at, text: m.text || (m.imagePath ? '[รูป]' : m.gift ? '[ของขวัญ]' : '') })); }
+  await db.ref('modViewLog').push({ item: q.params.id, chatId: it.chatId || '', full, by: q.uid, at: Date.now() });
+  r.json({ item: it, messages: msgs });
+}));
+app.post('/admin/moderation/:id/decide', perm('manage_content'), w(notBanned), w(async (q, r) => {
+  const it = (await db.ref(`modQueue/${q.params.id}`).get()).val(); if (!it) return r.status(404).json({ error: 'not found' });
+  const action = ['dismiss', 'warn', 'mute', 'ban'].includes(q.body?.action) ? q.body.action : 'dismiss', reason = String(q.body?.reason || '').slice(0, 200), t = Date.now();
+  const upd = { [`modQueue/${q.params.id}/status`]: 'closed', [`modQueue/${q.params.id}/action`]: action, [`modQueue/${q.params.id}/by`]: q.uid, [`modQueue/${q.params.id}/decidedAt`]: t };
+  if (action === 'warn') upd[`modWarnings/${it.uid}/${t}`] = { reason: reason || 'เตือนเรื่องความปลอดภัย', by: q.uid };
+  if (action === 'mute') upd[`chatBlocks/${it.uid}`] = { reason: reason || 'ระงับแชทจากการตรวจสอบความปลอดภัย', by: q.uid, at: t };
+  if (action === 'ban') upd[`bans/${it.uid}`] = { reason: reason || 'ละเมิดกติกาความปลอดภัย', by: q.uid, at: t };
+  await db.ref().update(upd); await db.ref('adminLog').push({ action: 'mod_' + action, target: it.uid, by: q.uid, at: t, message: reason });
+  r.json({ ok: true, action });
+}));
+// ======================= Follows + unique post views (creator metrics) =======================
+app.post('/follow/:uid', w(notBanned), w(async (q, r) => {
+  const other = q.params.uid; if (!UID_RE.test(other) || other === q.uid) return r.status(400).json({ error: 'bad uid' });
+  const on = q.body?.follow !== false, t = Date.now(), was = (await db.ref(`following/${q.uid}/${other}`).get()).exists();
+  if (on !== was) {
+    await db.ref().update({ [`following/${q.uid}/${other}`]: on ? t : null, [`followers/${other}/${q.uid}`]: on ? t : null });
+    await db.ref(`followCounts/${other}`).transaction(c => Math.max(0, num(c) + (on ? 1 : -1)));
+    await db.ref(`followLog/${q.uid}`).push({ to: other, on, at: t });
+  }
+  r.json({ following: on, followers: num((await db.ref(`followCounts/${other}`).get()).val()) });
+}));
+app.get('/follow/:uid', w(async (q, r) => r.json({ following: (await db.ref(`following/${q.uid}/${q.params.uid}`).get()).exists(), followers: num((await db.ref(`followCounts/${q.params.uid}`).get()).val()) })));
+app.post('/views/:postId', w(async (q, r) => {
+  const id = q.params.postId; if (!/^[A-Za-z0-9_-]{1,40}$/.test(id)) return r.status(400).json({ error: 'bad id' });
+  const ref = db.ref(`postViews/${id}/${q.uid}`); if (!(await ref.get()).exists()) await ref.set(Date.now()); // 1 person = 1 view
+  r.json({ ok: true });
+}));
+const BKK = () => new Date(Date.now() + 7 * 3600e3);
+async function creatorMetrics(uid) {
+  const t = Date.now(), d30 = t - 30 * 864e5;
+  const [fc, followers, posts] = await Promise.all([db.ref(`followCounts/${uid}`).get(), db.ref(`followers/${uid}`).get(), db.ref(`authorPosts/${uid}`).get()]);
+  const postTimes = Object.values(posts.val() || {}).map(Number).filter(x => x > d30).sort();
+  const days = new Set(postTimes.map(x => new Date(x + 7 * 3600e3).toISOString().slice(0, 10)));
+  let maxGap = 30; if (postTimes.length) { maxGap = 0; let prev = d30; for (const x of [...postTimes, t]) { maxGap = Math.max(maxGap, (x - prev) / 864e5); prev = x; } }
+  const viewers = new Set(); for (const pid of Object.keys(posts.val() || {})) { const v = (await db.ref(`postViews/${pid}`).get()).val() || {}; for (const [vu, at] of Object.entries(v)) if (at > d30 && vu !== uid) viewers.add(vu); }
+  const fl = Object.keys(followers.val() || {}).slice(0, 200);
+  const newShare = fl.length ? (await Promise.all(fl.map(async f => num((await db.ref(`users/${f}/createdAt`).get()).val()) > t - 7 * 864e5))).filter(Boolean).length / fl.length : 0;
+  const age = (await db.ref(`ageInfo/${uid}`).get()).val();
+  const m = { followers: num(fc.val()), postsLast30: postTimes.length, activeDays30: days.size, maxGapDays: Math.round(maxGap * 10) / 10, uniqueViewers30: viewers.size, newFollowerShare: Math.round(newShare * 100), adult: !!(age && age.age >= 18), computedAt: t };
+  m.criteria = { followers5000: m.followers >= 5000, dailyPosts: m.activeDays30 >= 28 && m.postsLast30 >= 30, noGapOver2Days: m.maxGapDays <= 2, uniqueViewers100k: m.uniqueViewers30 >= 100000, adult18: m.adult };
+  m.eligible = Object.values(m.criteria).every(Boolean);
+  await db.ref(`creatorMetrics/${uid}`).set(m); return m;
+}
+app.post('/admin/creator-metrics/:uid', perm('manage_content'), w(async (q, r) => r.json(await creatorMetrics(q.params.uid))));
+app.post('/admin/creator-metrics-all', perm('manage_content'), w(async (_q, r) => {
+  const apps = Object.keys((await db.ref('creatorApplications').get()).val() || {}); const out = {};
+  for (const u of apps.slice(0, 100)) out[u] = (await creatorMetrics(u)).eligible; r.json({ computed: Object.keys(out).length, eligible: out });
+}));
+// ======================= Age / onboarding / ID verification =======================
+function ageFrom(bd) { const [y, m, d] = bd.split('-').map(Number); const n = BKK(); let a = n.getUTCFullYear() - y; if (n.getUTCMonth() + 1 < m || (n.getUTCMonth() + 1 === m && n.getUTCDate() < d)) a--; return a; }
+const OB_STEPS = ['signin', 'terms', 'id_scan', 'liveness', 'profile', 'interests', 'looking_for', 'details'];
+const LOOKING = ['friends', 'chat', 'dating', 'activity', 'gaming', 'study', 'work', 'travel', 'other'];
+const DEFAULT_TERMS = ['FriendTalk สำหรับผู้มีอายุ 18 ปีขึ้นไปเท่านั้น ข้อมูลอายุที่ให้ต้องเป็นความจริง', 'ห้ามโพสต์ ส่ง หรือขอเนื้อหาลามกอนาจาร/ทางเพศ ทุกรูปแบบ', 'ห้ามเนื้อหาหรือกิจกรรมผิดกฎหมาย ยาเสพติด การพนัน อาวุธ',
+  'ห้ามคุกคาม กลั่นแกล้ง ข่มขู่ หรือใช้ถ้อยคำแสดงความเกลียดชัง', 'ห้ามหลอกลวง ฉ้อโกง ขอเงิน ชักชวนลงทุน หรือขายของโดยไม่ได้รับอนุญาต', 'ห้ามแอบอ้างเป็นบุคคลอื่นหรือใช้บัญชีปลอม',
+  'ห้ามเปิดเผยข้อมูลส่วนตัวของผู้อื่น (เบอร์ ที่อยู่ รูป เอกสาร) โดยไม่ได้รับอนุญาต', 'ห้ามติดต่อ ชักชวน หรือเผยแพร่เนื้อหาเกี่ยวกับผู้เยาว์ในทางที่ไม่เหมาะสม โดยเด็ดขาด', 'ห้ามความรุนแรง การทำร้ายตนเองหรือผู้อื่น',
+  'ห้ามสแปม โฆษณา หรือส่งลิงก์อันตราย', 'เนื้อหาถูกตรวจสอบอัตโนมัติเพื่อความปลอดภัย', 'การฝ่าฝืนอาจถูกตักเตือน ลบเนื้อหา ระงับการแชท/โพสต์ ระงับบัญชีชั่วคราวหรือถาวร และยึดยอดที่ได้มาโดยมิชอบ โดยไม่ต้องแจ้งล่วงหน้า'];
+async function termsCfg() { const v = (await db.ref('appConfig/terms').get()).val(); return v && Array.isArray(v.rules) && v.rules.length ? { version: v.version || 1, rules: v.rules } : { version: 1, rules: DEFAULT_TERMS }; }
+async function obCfg() { const v = (await db.ref('appConfig/onboarding').get()).val() || {}; return { kycEnabled: v.kycEnabled === true, termsVersion: (await termsCfg()).version }; }
+app.get('/onboarding/terms', w(async (_q, r) => r.json(await termsCfg())));
+app.put('/admin/terms', perm('config_edit'), w(notBanned), w(async (q, r) => {
+  const rules = (Array.isArray(q.body?.rules) ? q.body.rules : []).map(x => String(x).trim().slice(0, 300)).filter(Boolean).slice(0, 40);
+  if (!rules.length) return r.status(400).json({ error: 'rules required' });
+  const cur = await termsCfg(), v = { version: cur.version + 1, rules, by: q.uid, at: Date.now() }; await db.ref('appConfig/terms').set(v); r.json(v);
+}));
+// Signup picklists (no income / religion / skin colour by design). multi = multi-select. Multi fields also feed interestProfile for similarity.
+const OB_FIELDS = {
+  profile: [
+    { key: 'gender', label: 'เพศ', type: 'single', options: ['ชาย', 'หญิง', 'LGBTQ+', 'ไม่ระบุ'] },
+    { key: 'interestedIn', label: 'สนใจคุยกับ', type: 'single', options: ['ชาย', 'หญิง', 'ทุกเพศ'] },
+    { key: 'ageRange', label: 'ช่วงอายุที่อยากคุยด้วย', type: 'single', options: ['18-24', '25-34', '35-44', '45-54', '55+', 'ทุกช่วงอายุ'] },
+    { key: 'province', label: 'จังหวัด/พื้นที่', type: 'single', options: ['กรุงเทพฯ และปริมณฑล', 'ภาคกลาง', 'ภาคเหนือ', 'ภาคอีสาน', 'ภาคตะวันออก', 'ภาคตะวันตก', 'ภาคใต้', 'ต่างประเทศ'] }],
+  details: [
+    { key: 'personality', label: 'นิสัย', type: 'multi', options: ['ร่าเริง', 'ใจเย็น', 'ขี้อาย', 'ชอบเข้าสังคม', 'ชอบอยู่บ้าน', 'ตลก', 'จริงจัง', 'โรแมนติก', 'ผจญภัย', 'เป็นผู้ฟังที่ดี'] },
+    { key: 'lifestyle', label: 'ไลฟ์สไตล์', type: 'multi', options: ['ไม่ดื่ม', 'ดื่มบ้าง', 'ไม่สูบ', 'สูบ', 'ออกกำลังกายประจำ', 'ออกกำลังกายบ้าง', 'ตื่นเช้า', 'นอนดึก'] },
+    { key: 'freeTime', label: 'เวลาว่าง', type: 'multi', options: ['เช้า', 'กลางวัน', 'เย็น', 'ดึก', 'วันหยุด'] },
+    { key: 'languages', label: 'ภาษา', type: 'multi', options: ['ไทย', 'อังกฤษ', 'จีน', 'ญี่ปุ่น', 'เกาหลี', 'อื่น ๆ'] },
+    { key: 'occupation', label: 'กลุ่มอาชีพ', type: 'single', options: ['นักเรียน/นักศึกษา', 'พนักงานบริษัท', 'ข้าราชการ/รัฐวิสาหกิจ', 'ธุรกิจส่วนตัว', 'ฟรีแลนซ์', 'แรงงาน/บริการ', 'ครีเอเตอร์', 'ไม่ได้ทำงาน', 'อื่น ๆ'] },
+    { key: 'education', label: 'ระดับการศึกษา', type: 'single', options: ['มัธยม', 'ปวช./ปวส.', 'ปริญญาตรี', 'สูงกว่าปริญญาตรี', 'อื่น ๆ'] },
+    { key: 'values', label: 'คุณค่าที่ให้ความสำคัญ', type: 'multi', options: ['ครอบครัว', 'อยากมีลูก', 'ไม่อยากมีลูก', 'ยังไม่แน่ใจเรื่องลูก', 'อาชีพการงาน', 'อิสระ', 'สุขภาพ', 'การเรียนรู้'] },
+    { key: 'height', label: 'ส่วนสูง', type: 'single', options: ['< 155 ซม.', '155-164 ซม.', '165-174 ซม.', '175-184 ซม.', '185+ ซม.', 'ไม่ระบุ'] },
+    { key: 'bodyType', label: 'รูปร่าง', type: 'single', options: ['ผอม', 'สมส่วน', 'มีกล้าม', 'ท้วม', 'ไม่ระบุ'] },
+    { key: 'weight', label: 'น้ำหนัก', type: 'single', options: ['< 50 กก.', '50-64 กก.', '65-79 กก.', '80+ กก.', 'ไม่ขอระบุ'] }],
+  interests: { key: 'hobbies', label: 'ความสนใจและงานอดิเรก', type: 'multi', options: ['ดนตรี', 'หนัง/ซีรีส์', 'เกม', 'กีฬา', 'ท่องเที่ยว', 'อาหาร/ทำอาหาร', 'อ่านหนังสือ', 'ถ่ายรูป', 'ศิลปะ', 'สัตว์เลี้ยง', 'แฟชั่น', 'เทคโนโลยี', 'ธุรกิจ/ลงทุน', 'ธรรมชาติ'] },
+  lookingFor: { key: 'lookingFor', label: 'เป้าหมายในการใช้แอป', type: 'multi', options: ['หาเพื่อน', 'หาคู่', 'หาคนคุย', 'ธุรกิจ/คอนเนคชัน'] }
+};
+function validFields(defs, b) {
+  const out = {};
+  for (const f of defs) { const v = b[f.key];
+    if (f.type === 'multi') { const l = [...new Set((Array.isArray(v) ? v : []).filter(x => f.options.includes(x)))]; if (!l.length) return { error: `เลือก${f.label}` }; out[f.key] = l; }
+    else { if (!f.options.includes(v)) return { error: `เลือก${f.label}` }; out[f.key] = v; } }
+  return { out };
+}
+app.get('/onboarding/fields', w(async (_q, r) => r.json(OB_FIELDS)));
+async function obState(uid) {
+  const cfg = await obCfg(), done = { ...((await db.ref(`onboarding/${uid}/steps`).get()).val() || {}) };
+  const steps = OB_STEPS.filter(s => cfg.kycEnabled || !['id_scan', 'liveness'].includes(s));
+  done.signin = done.signin || Date.now();
+  const ta = (await db.ref(`termsAccepted/${uid}`).get()).val(); if (!ta || ta.version !== cfg.termsVersion) delete done.terms; // re-accept on new terms version
+  const u = (await db.ref(`users/${uid}`).get()).val() || {};
+  const ip = u.interestProfile || {};
+  if (!done.interests && Object.keys(ip).some(k => k !== 'lookingFor')) done.interests = Date.now();
+  if (!done.looking_for && Array.isArray(ip.lookingFor) && ip.lookingFor.length) done.looking_for = Date.now();
+  const next = steps.find(s => !done[s]) || null;
+  return { steps, done, next, complete: !next, kycEnabled: cfg.kycEnabled, termsVersion: cfg.termsVersion, minor: (await db.ref(`onboarding/${uid}/blockedMinor`).get()).exists() };
+}
+app.get('/onboarding', w(async (q, r) => r.json(await obState(q.uid))));
+app.post('/onboarding/:step', w(notBanned), w(async (q, r) => {
+  const step = q.params.step, st = await obState(q.uid), b = q.body || {}, t = Date.now();
+  if (!st.steps.includes(step)) return r.status(400).json({ error: 'unknown step' });
+  if (st.next !== step && !st.done[step]) return r.status(409).json({ error: 'ต้องทำขั้นตอนตามลำดับ', next: st.next });
+  if (step === 'id_scan' || step === 'liveness') return r.status(501).json({ error: 'ยังไม่ได้เชื่อมผู้ให้บริการ eKYC' });
+  if (step === 'terms') { if (b.accept !== true || b.scrolledToEnd !== true || +b.version !== st.termsVersion) return r.status(400).json({ error: 'ต้องอ่านจนจบและยอมรับกฎ' }); await db.ref(`termsAccepted/${q.uid}`).set({ version: st.termsVersion, at: t }); }
+  if (step === 'profile') {
+    const vf = validFields(OB_FIELDS.profile, b); if (vf.error) return r.status(400).json({ error: vf.error });
+    const real = String(b.realName || '').trim().slice(0, 80), n = String(b.displayName || '').trim();
+    if (real.length < 2) return r.status(400).json({ error: 'กรอกชื่อ' });
+    if (n.length < 2 || n.length > 30) return r.status(400).json({ error: 'ชื่อเล่น 2-30 ตัวอักษร' });
+    let age = parseInt(b.age), bd = String(b.birthDate || '');
+    if (/^\d{4}-\d{2}-\d{2}$/.test(bd)) age = ageFrom(bd); else bd = '';
+    if (!(age >= 1 && age <= 120)) return r.status(400).json({ error: 'กรอกอายุ' });
+    const cur = (await db.ref(`ageInfo/${q.uid}`).get()).val(); if (cur && cur.age !== age && cur.method !== 'self_declared') return r.status(403).json({ error: 'แก้อายุได้เฉพาะแอดมิน' });
+    if (cur && cur.method === 'self_declared' && cur.age !== age && st.done.profile) return r.status(403).json({ error: 'แก้อายุได้เฉพาะแอดมิน' });
+    await db.ref(`ageInfo/${q.uid}`).set({ age, birthDate: bd, method: 'self_declared', at: t });
+    if (age < 18) { await db.ref(`onboarding/${q.uid}/blockedMinor`).set(t); return r.status(403).json({ code: 'minor', error: 'FriendTalk สำหรับผู้มีอายุ 18 ปีขึ้นไปเท่านั้น' }); }
+    const m = await moderateText(q.uid, n + ' ' + real, { kind: 'profile_name' }); if (!m.ok || (m.flags || []).length) return r.status(422).json({ error: 'ชื่อนี้ใช้ไม่ได้' });
+    const key = n.toLowerCase().replace(/[.#$\[\]\/\s]/g, '_'), own = await db.ref(`displayNames/${key}`).transaction(v => (v === null || v === q.uid ? q.uid : undefined));
+    if (!own.committed || own.snapshot.val() !== q.uid) return r.status(409).json({ error: 'ชื่อเล่นนี้ถูกใช้แล้ว' });
+    await db.ref().update({ [`users/${q.uid}/displayName`]: n, [`private/${q.uid}/realName`]: real, [`users/${q.uid}/profileDetails/gender`]: vf.out.gender, [`users/${q.uid}/profileDetails/interestedIn`]: vf.out.interestedIn, [`users/${q.uid}/profileDetails/ageRange`]: vf.out.ageRange, [`users/${q.uid}/profileDetails/province`]: vf.out.province, [`users/${q.uid}/age`]: age });
+  }
+  if (step === 'interests' && Array.isArray(b.hobbies)) { const l = [...new Set(b.hobbies.filter(x => OB_FIELDS.interests.options.includes(x)))]; if (l.length) await db.ref(`users/${q.uid}/interestProfile/hobbies`).set(l); }
+  if (step === 'interests') { const u = (await db.ref(`users/${q.uid}/interestProfile`).get()).val() || {}; if (!Object.keys(u).some(k => k !== 'lookingFor')) return r.status(400).json({ error: 'เลือกสิ่งที่ชอบก่อน' }); }
+  if (step === 'looking_for') {
+    const l = [...new Set((Array.isArray(b.lookingFor) ? b.lookingFor : []).filter(x => OB_FIELDS.lookingFor.options.includes(x)))];
+    if (!l.length) return r.status(400).json({ error: 'เลือกสิ่งที่ต้องการอย่างน้อย 1 อย่าง' });
+    if (l.length) await db.ref(`users/${q.uid}/interestProfile/lookingFor`).set(l);
+  }
+  if (step === 'details') {
+    const vf = validFields(OB_FIELDS.details, b); if (vf.error) return r.status(400).json({ error: vf.error });
+    const upd = { [`users/${q.uid}/profileDetails/details`]: vf.out };
+    for (const k of ['personality', 'lifestyle', 'freeTime', 'languages', 'values']) upd[`users/${q.uid}/interestProfile/${k}`] = vf.out[k]; // feeds similarity
+    await db.ref().update(upd);
+  }
+  await db.ref(`onboarding/${q.uid}/steps/${step}`).set(t);
+  r.json(await obState(q.uid));
+}));
+app.put('/admin/onboarding-config', perm('config_edit'), w(notBanned), w(async (q, r) => {
+  const v = { kycEnabled: q.body?.kycEnabled === true, termsVersion: Math.max(1, parseInt(q.body?.termsVersion) || 1), by: q.uid, at: Date.now() };
+  await db.ref('appConfig/onboarding').set(v); r.json(v);
+}));
+app.put('/admin/age/:uid', perm('age_approve'), w(notBanned), w(async (q, r) => {
+  const bd = String(q.body?.birthDate || ''); if (!/^\d{4}-\d{2}-\d{2}$/.test(bd)) return r.status(400).json({ error: 'birthDate' });
+  await db.ref(`ageInfo/${q.params.uid}`).set({ birthDate: bd, age: ageFrom(bd), method: 'admin', by: q.uid, at: Date.now() }); r.json({ ok: true, age: ageFrom(bd) });
+}));
+app.put('/idv/upload/:kind', express.raw({ type: 'image/*', limit: '4mb' }), w(notBanned), w(async (q, r) => {
+  const kind = q.params.kind; if (!['id_front', 'selfie'].includes(kind)) return r.status(400).json({ error: 'kind id_front|selfie' });
+  const buf = q.body; if (!Buffer.isBuffer(buf) || buf.length < 1000) return r.status(400).json({ error: 'image required' });
+  const path = `idv/${q.uid}/${kind}-${Date.now()}.jpg`;
+  await admin.storage().bucket(STORAGE_BUCKET).file(path).save(buf, { contentType: 'image/jpeg', resumable: false });
+  await db.ref(`idv/${q.uid}`).update({ [kind]: path, status: 'draft', updatedAt: Date.now() }); r.json({ ok: true });
+}));
+app.post('/idv/submit', w(notBanned), w(async (q, r) => {
+  const v = (await db.ref(`idv/${q.uid}`).get()).val() || {}; if (!v.id_front || !v.selfie) return r.status(400).json({ error: 'อัปโหลดบัตรและเซลฟี่ก่อน' });
+  await db.ref(`idv/${q.uid}`).update({ status: 'pending', submittedAt: Date.now() }); r.json({ status: 'pending' });
+}));
+app.get('/idv', w(async (q, r) => { const v = (await db.ref(`idv/${q.uid}`).get()).val() || {}; r.json({ status: v.status || 'none', reason: v.reason || '', hasId: !!v.id_front, hasSelfie: !!v.selfie }); }));
+app.get('/admin/idv', perm('age_approve'), w(async (_q, r) => {
+  const v = (await db.ref('idv').get()).val() || {};
+  const url = async p => p ? (await admin.storage().bucket(STORAGE_BUCKET).file(p).getSignedUrl({ action: 'read', expires: Date.now() + 15 * 60e3 }).catch(() => ['']))[0] : '';
+  const items = await Promise.all(Object.entries(v).filter(([, x]) => x.status === 'pending').map(async ([uid, x]) => ({ uid, submittedAt: x.submittedAt, idUrl: await url(x.id_front), selfieUrl: await url(x.selfie),
+    age: (await db.ref(`ageInfo/${uid}`).get()).val(), name: (await db.ref(`users/${uid}/displayName`).get()).val() || '' })));
+  r.json({ items });
+}));
+app.post('/admin/idv/:uid/decide', perm('age_approve'), w(notBanned), w(async (q, r) => {
+  const uid = q.params.uid, v = (await db.ref(`idv/${uid}`).get()).val(); if (!v) return r.status(404).json({ error: 'not found' });
+  const approve = q.body?.approve === true, reason = String(q.body?.reason || '').slice(0, 200), bd = String(q.body?.birthDate || '');
+  for (const p of [v.id_front, v.selfie]) if (p) await admin.storage().bucket(STORAGE_BUCKET).file(p).delete().catch(() => {}); // auto-delete after review
+  await db.ref(`idv/${uid}`).set({ status: approve ? 'approved' : 'rejected', reason, by: q.uid, at: Date.now() });
+  if (approve && /^\d{4}-\d{2}-\d{2}$/.test(bd)) await db.ref(`ageInfo/${uid}`).set({ birthDate: bd, age: ageFrom(bd), method: 'id_verified', by: q.uid, at: Date.now() });
+  await db.ref('adminLog').push({ action: approve ? 'idv_approve' : 'idv_reject', target: uid, by: q.uid, at: Date.now(), message: reason });
+  r.json({ status: approve ? 'approved' : 'rejected' });
+}));
+// ======================= Withdrawals (earned diamonds only) =======================
+async function payoutCfg() { return { rateTHB: 0.2, minDiamonds: 500, windowStartDay: 25, windowEndDay: 31, carryOver: true, requireIdv: false, ...((await db.ref('appConfig/payout').get()).val() || {}) }; }
+app.get('/withdraw', w(async (q, r) => {
+  const [cfg, wal, all] = await Promise.all([payoutCfg(), db.ref(`wallets/${q.uid}`).get(), db.ref(`withdrawalsByUser/${q.uid}`).get()]);
+  const wv = wal.val() || {}, day = BKK().getUTCDate();
+  const ids = Object.keys(all.val() || {}).slice(-20); const reqs = (await Promise.all(ids.map(async id => ({ id, ...((await db.ref(`withdrawals/${id}`).get()).val() || {}) })))).sort((a, b) => b.at - a.at);
+  r.json({ config: cfg, earned: num(wv.earnedDiamonds), held: num(wv.heldDiamonds), diamonds: num(wv.diamonds), windowOpen: day >= cfg.windowStartDay && day <= cfg.windowEndDay, requests: reqs, idv: (await db.ref(`idv/${q.uid}/status`).get()).val() || 'none' });
+}));
+app.post('/withdraw', w(notBanned), w(async (q, r) => {
+  const cfg = await payoutCfg(), amount = parseInt(q.body?.amount), day = BKK().getUTCDate();
+  if (!(day >= cfg.windowStartDay && day <= cfg.windowEndDay)) return r.status(403).json({ error: `ถอนได้วันที่ ${cfg.windowStartDay}-${cfg.windowEndDay} ของเดือน (ยอดสะสมยกไปเดือนถัดไป)` });
+  if (!(amount >= cfg.minDiamonds)) return r.status(400).json({ error: `ขั้นต่ำ ${cfg.minDiamonds} เพชร` });
+  if (cfg.requireIdv && (await db.ref(`idv/${q.uid}/status`).get()).val() !== 'approved') return r.status(403).json({ code: 'idv_required', error: 'ต้องยืนยันตัวตนก่อนถอนเงิน' });
+  const method = q.body?.method === 'bank' ? 'bank' : 'promptpay', acct = String(q.body?.account || '').replace(/[\s-]/g, '').slice(0, 30), name = String(q.body?.accountName || '').trim().slice(0, 80), bank = String(q.body?.bank || '').slice(0, 40);
+  if (method === 'promptpay' && !/^(0\d{9}|\d{13})$/.test(acct)) return r.status(400).json({ error: 'พร้อมเพย์: เบอร์ 10 หลัก หรือเลขบัตร 13 หลัก' });
+  if (method === 'bank' && (!/^\d{10,15}$/.test(acct) || !bank)) return r.status(400).json({ error: 'เลขบัญชี/ธนาคารไม่ถูกต้อง' });
+  if (name.length < 2) return r.status(400).json({ error: 'กรอกชื่อบัญชี' });
+  let ok = false;
+  const tx = await db.ref(`wallets/${q.uid}`).transaction(wv => { if (wv === null) return wv; const e = num(wv.earnedDiamonds), d = num(wv.diamonds);
+    if (e < amount || d < amount) { ok = false; return; } ok = true; return { ...wv, earnedDiamonds: e - amount, diamonds: d - amount, heldDiamonds: num(wv.heldDiamonds) + amount }; });
+  if (!tx.committed || !ok) return r.status(402).json({ error: 'เพชรที่ได้รับ (ถอนได้) ไม่พอ' });
+  const t = Date.now(), id = db.ref('withdrawals').push().key, risk = await riskScore(q.uid), thb = Math.round(amount * cfg.rateTHB * 100) / 100, status = risk.score >= 60 ? 'held_review' : 'pending';
+  await db.ref().update({ [`withdrawals/${id}`]: { uid: q.uid, amount, thb, rateTHB: cfg.rateTHB, status, risk: risk.score, at: t }, [`withdrawalsByUser/${q.uid}/${id}`]: t,
+    [`private/${q.uid}/payouts/${id}`]: { method, account: acct, accountName: name, bank }, [`payoutLedger/${id}_hold`]: { uid: q.uid, id, type: 'hold', amount, at: t } });
+  r.json({ id, status, thb });
+}));
+app.get('/admin/withdrawals', perm('coins_confirm'), w(async (q, r) => {
+  const st = q.query.status || 'pending'; const v = (await db.ref('withdrawals').get()).val() || {};
+  const items = await Promise.all(Object.entries(v).filter(([, x]) => st === 'all' || x.status === st || (st === 'pending' && x.status === 'held_review')).map(async ([id, x]) => ({ id, ...x,
+    payout: (await db.ref(`private/${x.uid}/payouts/${id}`).get()).val(), name: (await db.ref(`users/${x.uid}/displayName`).get()).val() || '', riskReasons: ((await db.ref(`risk/${x.uid}/reasons`).get()).val() || []) })));
+  r.json({ items: items.sort((a, b) => b.at - a.at).slice(0, 100) });
+}));
+app.post('/admin/withdrawals/:id/decide', w(notBanned), w(async (q, r) => {
+  if ((await loadRole(q.uid))?.role !== 'superadmin') return r.status(403).json({ error: 'only superadmin approves payouts' });
+  const ref = db.ref(`withdrawals/${q.params.id}`), x = (await ref.get()).val(); if (!x) return r.status(404).json({ error: 'not found' });
+  if (!['pending', 'held_review'].includes(x.status)) return r.status(409).json({ error: 'already decided' });
+  const paid = q.body?.paid === true, refText = String(q.body?.ref || '').slice(0, 120), reason = String(q.body?.reason || '').slice(0, 200), t = Date.now();
+  if (paid && refText.length < 3) return r.status(400).json({ error: 'ใส่เลขอ้างอิง/สลิปการโอน' });
+  const lock = await ref.child('status').transaction(s => (s === null ? x.status : s === 'pending' || s === 'held_review' ? 'deciding' : undefined));
+  if (!lock.committed || lock.snapshot.val() !== 'deciding') return r.status(409).json({ error: 'busy, retry' });
+  await db.ref(`wallets/${x.uid}`).transaction(wv => { wv = wv || {}; const h = Math.max(0, num(wv.heldDiamonds) - x.amount); return paid ? { ...wv, heldDiamonds: h } : { ...wv, heldDiamonds: h, earnedDiamonds: num(wv.earnedDiamonds) + x.amount, diamonds: num(wv.diamonds) + x.amount }; });
+  await db.ref().update({ [`withdrawals/${q.params.id}/status`]: paid ? 'paid' : 'rejected', [`withdrawals/${q.params.id}/ref`]: refText, [`withdrawals/${q.params.id}/reason`]: reason, [`withdrawals/${q.params.id}/decidedBy`]: q.uid, [`withdrawals/${q.params.id}/decidedAt`]: t,
+    [`payoutLedger/${q.params.id}_${paid ? 'paid' : 'release'}`]: { uid: x.uid, id: q.params.id, type: paid ? 'paid' : 'release', amount: x.amount, thb: x.thb, ref: refText, by: q.uid, at: t } });
+  r.json({ status: paid ? 'paid' : 'rejected' });
+}));
+app.put('/admin/payout-config', perm('coins_confirm'), w(notBanned), w(async (q, r) => {
+  const b = q.body || {}, v = { rateTHB: Math.max(0, Math.min(100, Number(b.rateTHB) || 0)), minDiamonds: Math.max(1, parseInt(b.minDiamonds) || 100), windowStartDay: Math.max(1, Math.min(31, parseInt(b.windowStartDay) || 25)),
+    windowEndDay: Math.max(1, Math.min(31, parseInt(b.windowEndDay) || 31)), carryOver: true, requireIdv: b.requireIdv !== false, by: q.uid, at: Date.now() };
+  await db.ref('appConfig/payout').set(v); r.json(v);
+}));
+// ======================= Risk / anomaly engine (rules; no auto-ban) =======================
+async function riskScore(uid) {
+  const t = Date.now(), reasons = []; let score = 0; const add = (pts, why) => { score += pts; reasons.push(why); };
+  const u = (await db.ref(`users/${uid}`).get()).val() || {};
+  const created = num(u.createdAt); if (created && t - created < 7 * 864e5) add(20, 'บัญชีใหม่ (< 7 วัน)');
+  const all = Object.values((await db.ref('giftTx').get()).val() || {}).filter(x => x.status === 'accepted');
+  const got = all.filter(x => x.to === uid), sent = all.filter(x => x.from === uid);
+  const bySender = {}; got.forEach(g => bySender[g.from] = (bySender[g.from] || 0) + num(g.price));
+  if (Object.keys(bySender).some(s => sent.some(x => x.to === s))) add(25, 'ส่งของขวัญวนกันระหว่างบัญชีเดิม');
+  const total = got.reduce((s, g) => s + num(g.price), 0), recent = got.filter(g => num(g.acceptedAt) > t - 3 * 864e5).reduce((s, g) => s + num(g.price), 0);
+  if (recent > 1000 && recent / Math.max(1, total) > 0.8) add(15, 'รายได้พุ่งผิดปกติใน 3 วัน');
+  if (total > 500 && Math.max(...Object.values(bySender)) / total > 0.8) add(10, 'รายได้ส่วนใหญ่มาจากผู้ส่งคนเดียว');
+  const d = (await db.ref(`deviceOf/${uid}`).get()).val(); if (d) { const same = Object.keys((await db.ref(`devices/${d}`).get()).val() || {}); if (same.length > 2) add(20, `อุปกรณ์เดียวกัน ${same.length} บัญชี`); }
+  const grants = Object.values((await db.ref('adminCoinLedger').orderByKey().limitToLast(300).get()).val() || {}).filter(g => g.uid === uid && g.amount > 0 && g.at > t - 3 * 864e5);
+  if (grants.length) add(15, 'แอดมินเพิ่มยอดให้ภายใน 3 วัน');
+  const fl = Object.values((await db.ref(`followLog/${uid}`).limitToLast(200).get()).val() || {}).filter(x => x.at > t - 864e5); if (fl.length > 60) add(10, 'กดติดตาม/เลิกติดตามรัวผิดปกติ');
+  const ads = Object.values((await db.ref(`usage/${uid}`).limitToLast(7).get()).val() || {}).map(x => num(x?.ads)); if (ads.filter(a => a >= 20).length >= 3) add(10, 'ดูโฆษณาใกล้ลิมิตต่อเนื่องหลายวัน');
+  const m = (await db.ref(`creatorMetrics/${uid}`).get()).val(); if (m && m.newFollowerShare > 50) add(15, 'ผู้ติดตามส่วนใหญ่เป็นบัญชีใหม่');
+  const mf = Object.values((await db.ref(`modFlags/${uid}`).limitToLast(50).get()).val() || {}).filter(x => x.at > t - 7 * 864e5 && (x.flags || []).includes('minor')); if (mf.length) add(20, 'มีสัญญาณเกี่ยวกับผู้เยาว์ในข้อความ');
+  score = Math.min(100, score); const v = { score, reasons, at: t };
+  await db.ref(`risk/${uid}`).set(v); return v;
+}
+app.post('/admin/risk/:uid', perm('ban_users'), w(async (q, r) => r.json(await riskScore(q.params.uid))));
+app.post('/admin/risk-scan', perm('ban_users'), w(async (_q, r) => {
+  const ids = Object.keys((await db.ref('users').get()).val() || {}); let n = 0;
+  for (const u of ids.slice(0, 300)) { await riskScore(u); n++; } r.json({ scanned: n });
+}));
+app.get('/admin/risk', perm('ban_users'), w(async (_q, r) => {
+  const v = (await db.ref('risk').get()).val() || {};
+  r.json({ items: (await Promise.all(Object.entries(v).filter(([, x]) => x.score > 0).map(async ([uid, x]) => ({ uid, ...x, name: (await db.ref(`users/${uid}/displayName`).get()).val() || '' })))).sort((a, b) => b.score - a.score).slice(0, 100) });
+}));
+app.post('/admin/risk/:uid/summary', perm('ban_users'), w(async (q, r) => {
+  const v = (await db.ref(`risk/${q.params.uid}`).get()).val(); if (!v) return r.status(404).json({ error: 'scan first' });
+  try {
+    const res = await fetch(`https://aiplatform.googleapis.com/v1/projects/${PROJECT}/locations/global/publishers/google/models/${GEMINI_MODEL}:generateContent`, { method: 'POST', headers: { Authorization: `Bearer ${await gcpToken()}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: `สรุปให้แอดมินเป็นภาษาไทย 2-3 ประโยค ว่าบัญชีนี้มีสัญญาณเสี่ยงอะไร ห้ามตัดสินว่าผิด แนะนำสิ่งที่ควรตรวจ: คะแนน ${v.score}/100 เหตุผล: ${v.reasons.join('; ')}` }] }], generationConfig: { maxOutputTokens: 160, temperature: 0.2 } }) });
+    const j = await res.json(); r.json({ summary: (j.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('').trim() });
+  } catch (e) { r.status(502).json({ error: 'ai unavailable' }); }
 }));
 app.get('/lock', w(async (_q, r) => { const l = await lockState(); r.json({ locked: l.locked === true, message: l.message || '', imageUrl: l.imageUrl || '' }); }));
 app.use('/admin', w(isAdmin));
@@ -976,6 +1328,51 @@ app.post('/admin/ui/layout/:screen/revert', perm('config_edit'), w(notBanned), w
   await base.update({ current: { layout: v.layout, publishedAt: t, publishedBy: q.uid, versionId: vid, revertedFrom: vid }, draft: null });
   r.json({ reverted: vid });
 }));
+// ===== Per-page UI (every page except Home's block layout): sections (hide/order/scale) + text overrides. uiPages/{page}/{current,draft,versions}
+const UI_PAGES = ['global', 'home', 'discover', 'live', 'movie', 'chat', 'chatroom', 'companion', 'ads', 'profile', 'shop', 'ai', 'feed', 'wallet', 'header', 'nav'];
+const PHEX = /^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/, SKEY = /^[A-Za-z0-9_-]{1,48}$/;
+function validPage(p) {
+  if (!p || typeof p !== 'object') return 'page object required';
+  const out = { sections: {}, texts: {} };
+  for (const [id, s] of Object.entries(p.sections || {}).slice(0, 80)) { if (!SKEY.test(id) || !s || typeof s !== 'object') return 'bad section ' + id;
+    out.sections[id] = { hidden: s.hidden === true, order: Math.max(0, Math.min(999, parseInt(s.order) || 0)), scale: Math.max(0.5, Math.min(2, Number(s.scale) || 1)) }; }
+  for (const [k, t] of Object.entries(p.texts || {}).slice(0, 400)) { if (!SKEY.test(k) || !t || typeof t !== 'object') return 'bad text ' + k;
+    const o = { src: String(t.src || '').slice(0, 300) };
+    if (typeof t.t === 'string') o.t = t.t.slice(0, 300);
+    if (t.s != null) o.s = Math.max(6, Math.min(48, Number(t.s) || 14));
+    if (t.c) { if (!PHEX.test(t.c)) return 'bad color ' + t.c; o.c = t.c; }
+    if (t.w != null) o.w = Math.max(100, Math.min(900, Math.round((parseInt(t.w) || 400) / 100) * 100));
+    out.texts[k] = o; }
+  if (Buffer.byteLength(JSON.stringify(out)) > 120 * 1024) return 'too large';
+  return out;
+}
+const pageOk = (q, r) => UI_PAGES.includes(q.params.page) || (r.status(404).json({ error: 'unknown page' }), false);
+app.get('/ui/pages', w(async (_q, r) => {
+  const v = (await db.ref('uiPages').get()).val() || {}, out = {};
+  for (const p of UI_PAGES) if (v[p]?.current?.page) out[p] = v[p].current.page;
+  r.json({ pages: out, list: UI_PAGES });
+}));
+app.get('/admin/ui/pages/:page', perm('config_edit'), w(async (q, r) => {
+  if (!pageOk(q, r)) return; const v = (await db.ref(`uiPages/${q.params.page}`).get()).val() || {};
+  r.json({ current: v.current?.page || null, draft: v.draft?.page || null,
+    versions: Object.entries(v.versions || {}).map(([id, x]) => ({ id, savedAt: x.savedAt, savedBy: x.savedBy })).sort((a, b) => b.savedAt - a.savedAt) });
+}));
+app.put('/admin/ui/pages/:page', perm('config_edit'), w(notBanned), w(async (q, r) => {
+  if (!pageOk(q, r)) return; const pg = validPage(q.body?.page); if (typeof pg === 'string') return r.status(400).json({ error: pg });
+  const t = Date.now(), base = db.ref(`uiPages/${q.params.page}`);
+  if (q.body?.publish !== true) { await base.child('draft').set({ page: pg, savedAt: t, savedBy: q.uid }); return r.json({ saved: 'draft' }); }
+  const id = String(t);
+  await base.update({ current: { page: pg, publishedAt: t, publishedBy: q.uid, versionId: id }, [`versions/${id}`]: { page: pg, savedAt: t, savedBy: q.uid }, draft: null });
+  const vs = Object.keys((await base.child('versions').get()).val() || {}).sort();
+  if (vs.length > 10) await Promise.all(vs.slice(0, vs.length - 10).map(k => base.child(`versions/${k}`).remove()));
+  await db.ref('adminLog').push({ action: 'ui_page_publish', target: q.params.page, by: q.uid, at: t });
+  r.json({ published: id });
+}));
+app.post('/admin/ui/pages/:page/revert', perm('config_edit'), w(notBanned), w(async (q, r) => {
+  if (!pageOk(q, r)) return; const vid = String(q.body?.versionId || ''); if (!/^\d{1,20}$/.test(vid)) return r.status(400).json({ error: 'versionId' });
+  const base = db.ref(`uiPages/${q.params.page}`), v = (await base.child(`versions/${vid}`).get()).val(); if (!v) return r.status(404).json({ error: 'version not found' });
+  await base.update({ current: { page: v.page, publishedAt: Date.now(), publishedBy: q.uid, versionId: vid, revertedFrom: vid }, draft: null }); r.json({ reverted: vid });
+}));
 // ===== Remote UI config (AppUiConfig) — published by admins for all users; stored as a JSON string (RTDB-safe) =====
 const RUI = () => db.ref('appConfig/remoteUi');
 function validRemoteUi(cfg) {
@@ -1165,6 +1562,8 @@ app.post('/posts', w(notBanned), w(async (q, r) => {
   const images = [];
   for (const p of refs) { const u = await postImageUrl(q.uid, p); if (!u) return r.status(400).json({ error: 'invalid image' }); images.push({ path: p, url: u }); }
   if (!text && !images.length) return r.status(400).json({ error: 'text or image required' });
+  { const m = await moderateText(q.uid, [text, cleanText(q.body?.place, 80)].join(' '), { kind: 'post' }); if (!m.ok) return r.status(422).json({ code: 'moderated', error: m.message }); }
+  for (const im of images) { const mi = await moderateImage(q.uid, im.path, { kind: 'post_image' }); if (!mi.ok) return r.status(422).json({ code: 'moderated', error: 'รูปภาพนี้ขัดกติกาความปลอดภัย' }); }
   const hashtags = parseHashtags(text);
   const label = cleanText(q.body?.place, 80).replace(/[\u0000-\u001f]/g, '');
   let place = null;
@@ -1256,6 +1655,7 @@ app.delete('/posts/:id/like', w(notBanned), w((q, r) => setLike(q, r, false)));
 app.post('/posts/:id/comments', w(notBanned), w(async (q, r) => {
   const id = q.params.id; if (!POST_ID_RE.test(id)) return r.status(400).json({ error: 'bad id' });
   const text = cleanText(q.body?.text, 1000); if (!text) return r.status(400).json({ error: 'text required' });
+  { const m = await moderateText(q.uid, text, { kind: 'comment', ref: q.params.id }); if (!m.ok) return r.status(422).json({ code: 'moderated', error: m.message }); }
   const vp = await visiblePost(q, r, id); if (!vp) return;
   { const C = { ...SEED_LIMITS.comments, ...((await getLimits()).comments || {}) };
     if (!C.enabled) return r.status(403).json({ code: 'comments_off', error: C.reason || 'ปิดการแสดงความคิดเห็นชั่วคราว' });
@@ -1581,7 +1981,7 @@ app.post('/gifts/:txId/accept', w(notBanned), w(async (q, r) => {
     return r.status(402).json({ code: 'insufficient', error: 'เพชรของผู้ส่งไม่พอ รับของขวัญไม่สำเร็จ' });
   }
   const cfg = await giftCfg(), recipientShare = Math.floor(price * cfg.recipientPercent / 100), adminShare = price - recipientShare;
-  await Promise.all([db.ref(`wallets/${tx.to}/diamonds`).transaction(c => num(c) + recipientShare), db.ref('wallets/_system/diamonds').transaction(c => num(c) + adminShare)]);
+  await Promise.all([db.ref(`wallets/${tx.to}/diamonds`).transaction(c => num(c) + recipientShare), db.ref(`wallets/${tx.to}/earnedDiamonds`).transaction(c => num(c) + recipientShare), db.ref('wallets/_system/diamonds').transaction(c => num(c) + adminShare)]);
   const t = Date.now(), split = { recipientShare, adminShare, adminPercent: cfg.adminPercent, recipientPercent: cfg.recipientPercent, senderBalanceAfter: d.snapshot.val() };
   const upd = { [`giftTx/${txId}/status`]: 'accepted', [`giftTx/${txId}/acceptedAt`]: t, [`giftTx/${txId}/split`]: split,
     [`giftPending/${tx.from}/${txId}`]: null, [`messages/${tx.chatId}/${txId}/gift/status`]: 'accepted' };
@@ -1849,7 +2249,7 @@ app.put('/admin/lock', perm('app_lock'), w(notBanned), w(async (q, r) => {
   r.json(v);
 }));
 app.get('/admin/lock/log', perm('app_lock'), w(async (_q, r) => {
-  const v = (await db.ref('adminLog').orderByChild('at').limitToLast(200).get()).val() || {};
+  const v = (await db.ref('adminLog').limitToLast(200).get()).val() || {};
   r.json({ log: Object.values(v).filter(x => String(x.action).startsWith('app_')).sort((a, b) => b.at - a.at).slice(0, 30) });
 }));
 // Coming-soon placeholders (superadmin only). appConfig/comingSoon/{target} — clients read live via RTDB.
