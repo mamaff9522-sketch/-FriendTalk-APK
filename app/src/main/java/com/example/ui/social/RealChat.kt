@@ -123,8 +123,8 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
     var reportU by remember { mutableStateOf(false) }
     var showRules by remember { mutableStateOf(false) }
     if (showRules) ChatRulesDialog { showRules = false }
-    LaunchedEffect(otherUid) { if (otherUid.isNotBlank()) { val u = FirebaseAuth.getInstance().currentUser; if (u != null) blocked = com.example.network.BrainApi.call(u, "GET", "/blocks").json?.optJSONArray("blocked")?.let { a -> (0 until a.length()).any { a.optString(it) == otherUid } } == true } }
     var blocked by remember { mutableStateOf(false) }
+    LaunchedEffect(otherUid) { if (otherUid.isNotBlank()) { val u = FirebaseAuth.getInstance().currentUser; if (u != null) blocked = com.example.network.BrainApi.call(u, "GET", "/blocks").json?.optJSONArray("blocked")?.let { a -> (0 until a.length()).any { a.optString(it) == otherUid } } == true } }
     if (reportU && otherUid.isNotBlank()) ReportDialog("user", otherUid, otherUid) { reportU = false }
     val messages by remember(chatId) { SocialRepo.messages(chatId) }.collectAsState(initial = emptyList())
     val otherRead by remember(chatId, otherUid) { if (otherUid.isBlank()) kotlinx.coroutines.flow.flowOf(0L) else SocialRepo.otherReadAt(chatId, otherUid) }.collectAsState(initial = 0L)
