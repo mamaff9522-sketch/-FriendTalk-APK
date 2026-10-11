@@ -63,7 +63,7 @@ fun ProfileTab(
             }
         }
         // Cover Photo & Avatar
-        com.example.ui.components.uiItem("pr1", "Cover Photo & Avatar #1") {
+        item {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -92,7 +92,7 @@ fun ProfileTab(
         }
 
         // Profile Info
-        com.example.ui.components.uiItem("pr2", "Profile Info #2") {
+        item {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()

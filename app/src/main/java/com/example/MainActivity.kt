@@ -313,8 +313,6 @@ fun FriendTalkApp(
                 if (uiState.activeTab == "discover") com.example.ads.PlacementBanner("discover", Modifier.align(androidx.compose.ui.Alignment.BottomCenter))
 
                 com.example.ui.components.UiPage("shop") { com.example.ui.shop.ShopHost() }
-                com.example.ui.components.UiEditFab(com.example.ui.components.AppGates.isSuper, Modifier.align(androidx.compose.ui.Alignment.BottomEnd).padding(end = 12.dp, bottom = 90.dp))
-                com.example.ui.components.UiEditOverlay()
                 // Global Gift Animation Overlay
                 GiftAnimationOverlay(activeGift = uiState.activeGiftAnimation)
             }

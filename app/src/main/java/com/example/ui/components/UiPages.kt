@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
-import androidx.compose.ui.draw.alpha
 import com.example.network.BrainApi
 import com.google.firebase.auth.FirebaseAuth
 import org.json.JSONObject
@@ -40,12 +39,10 @@ object UiPages {
     var pages by mutableStateOf<Map<String, PageSpec>>(emptyMap())
     /** Builder preview: while editing, the draft of one page overrides the published one. */
     var draft by mutableStateOf<Pair<String, PageSpec>?>(null)
-    /** WYSIWYG edit mode drafts (page -> spec), applied live while editing. */
-    val drafts = mutableStateMapOf<String, PageSpec>()
     // Plain (non-snapshot) registries: written during composition, read by the builder when opened.
     val seenTexts = java.util.concurrent.ConcurrentHashMap<String, Map<String, String>>()   // page -> key -> default text
     val seenSections = java.util.concurrent.ConcurrentHashMap<String, Map<String, String>>() // page -> id -> label
-    fun spec(page: String): PageSpec = drafts[page] ?: draft?.takeIf { it.first == page }?.second ?: pages[page] ?: PageSpec()
+    fun spec(page: String): PageSpec = draft?.takeIf { it.first == page }?.second ?: pages[page] ?: PageSpec()
     private val keyCache = java.util.concurrent.ConcurrentHashMap<String, String>()
     fun key(text: String): String = keyCache.getOrPut(text) { MessageDigest.getInstance("SHA-1").digest(text.toByteArray()).joinToString("") { "%02x".format(it) }.take(16) }
     suspend fun refresh() {
@@ -72,20 +69,10 @@ fun UiSection(id: String, label: String, content: @Composable () -> Unit) {
     val page = LocalUiPage.current
     run { val m = UiPages.seenSections[page]; if (m == null || m[id] != label) UiPages.seenSections[page] = (m ?: emptyMap()) + (id to label) }
     val s = UiPages.spec(page).sections[id] ?: SectionSpec()
-    if (UiEdit.active && !UiEdit.preview) {
-        androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.uiEditOutline(UiEdit.selected == UiEdit.Sel(page, "s:" + id, label), androidx.compose.ui.graphics.Color(0x8800AAFF)) { UiEdit.selected = UiEdit.Sel(page, "s:" + id, label) }
-            .then(if (s.hidden) androidx.compose.ui.Modifier.alpha(0.3f) else androidx.compose.ui.Modifier)) { scaled(s.scale) { content() } }
-        return
-    }
     if (s.hidden) return
-    scaled(s.scale) { content() }
-}
-
-@Composable
-private fun scaled(scale: Float, content: @Composable () -> Unit) {
-    if (scale == 1f) { content(); return }
+    if (s.scale == 1f) { content(); return }
     val d = LocalDensity.current
-    CompositionLocalProvider(LocalDensity provides Density(d.density * scale, d.fontScale)) { content() }
+    CompositionLocalProvider(LocalDensity provides Density(d.density * s.scale, d.fontScale)) { content() }
 }
 
 /** Ordered list of sections: admin reorders/hides/resizes. */
@@ -94,7 +81,3 @@ fun ColumnScope.UiSections(items: List<Triple<String, String, @Composable () -> 
     val page = LocalUiPage.current; val sp = UiPages.spec(page).sections
     items.withIndex().sortedBy { (i, it) -> sp[it.first]?.order?.takeIf { o -> o > 0 } ?: (i + 1) * 10 }.forEach { (_, it) -> UiSection(it.first, it.second, it.third) }
 }
-
-/** LazyColumn item that is an editable section (hide/resize in edit mode). */
-fun androidx.compose.foundation.lazy.LazyListScope.uiItem(id: String, label: String, content: @Composable androidx.compose.foundation.lazy.LazyItemScope.() -> Unit) =
-    item(key = "ui_$id") { val sc = this; UiSection(id, label) { sc.content() } }
