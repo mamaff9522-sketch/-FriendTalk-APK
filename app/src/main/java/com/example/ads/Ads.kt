@@ -281,7 +281,7 @@ fun AdsPageContent(feature: String?, onClose: (() -> Unit)?, returnAfterReward: 
     var msg by remember { mutableStateOf("") }
     var vipInfo by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { AdRoom.refresh() }
-    com.example.ui.components.UiAutoColumn("ad", "ส่วน", Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) adcol@{
+    com.example.ui.components.UiAutoColumn("ad", "ส่วน", Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         val lim = l
         val vip = lim?.tier == "vip"
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -292,7 +292,7 @@ fun AdsPageContent(feature: String?, onClose: (() -> Unit)?, returnAfterReward: 
             }
             androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(com.example.R.drawable.art_gift), null, modifier = Modifier.width(170.dp).height(110.dp))
         }
-        if (lim == null) { CircularProgressIndicator(color = Pink500); return@adcol }
+        if (lim == null) { CircularProgressIndicator(color = Pink500); return@Column }
         if (feature != null) Text("โควตาที่หมด: ${FEATURE_LABELS[feature] ?: feature}", color = Amber400, fontSize = 12.sp)
         if (!vip && lim.showAds && lim.rewardEnabled) {
             Spacer(Modifier.height(10.dp))
