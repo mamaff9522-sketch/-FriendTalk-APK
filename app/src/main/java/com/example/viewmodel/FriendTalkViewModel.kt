@@ -183,7 +183,9 @@ class FriendTalkViewModel : ViewModel() {
 
         // ตรวจสอบสิทธิ์ผ่าน Backend จริง: friendtalk-brain GET /me (roles/{uid} ใน RTDB)
         viewModelScope.launch {
-            val me = com.example.network.BrainApi.fetchMe(firebaseUser) ?: return@launch
+            var me: com.example.network.BrainApi.MeResult? = null
+            for (i in 0 until 4) { me = com.example.network.BrainApi.fetchMe(firebaseUser); if (me != null) break; kotlinx.coroutines.delay(1500L * (i + 1)) } // retry: cold start/network
+            if (me == null) return@launch
             if (_uiState.value.currentUser.id != firebaseUser.uid) return@launch
             val isPrivileged = me.role == UserRole.SUPERADMIN || me.role == UserRole.ADMIN
             com.example.ads.AdUnits.adminTestAds = me.role != UserRole.USER || me.rawRole.lowercase() in listOf("superadmin", "admin", "moderator")
