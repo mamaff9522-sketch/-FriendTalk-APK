@@ -56,6 +56,7 @@ object AppGates {
     var featureLockMsg by mutableStateOf("")
     fun partLocked(part: String) = part in lockedParts
     private var started = false
+    var listenError by mutableStateOf("")
     fun start() {
         if (started || FirebaseAuth.getInstance().currentUser == null) return; started = true
         val db = FirebaseDatabase.getInstance("https://friendtalk-4e623-default-rtdb.asia-southeast1.firebasedatabase.app")
@@ -64,20 +65,20 @@ object AppGates {
                 comingSoon = s.children.associate { c -> (c.key ?: "") to ComingSoonCfg(c.child("enabled").getValue(Boolean::class.java) != false,
                     c.child("text").getValue(String::class.java) ?: tr("เร็ว ๆ นี้ รอติดตาม"), c.child("sticker").getValue(String::class.java) ?: "", c.child("imageUrl").getValue(String::class.java) ?: "") }
             }
-            override fun onCancelled(e: DatabaseError) {}
+            override fun onCancelled(e: DatabaseError) { listenError = e.message; started = false } // e.g. attached before sign-in → re-attach on next start()
         })
         db.getReference("appConfig/featureLocks").addValueEventListener(object : ValueEventListener {
             override fun onDataChange(s: DataSnapshot) {
                 lockedParts = s.child("parts").children.filter { it.getValue(Boolean::class.java) == true }.mapNotNull { it.key }.toSet()
                 featureLockMsg = s.child("message").getValue(String::class.java) ?: ""
             }
-            override fun onCancelled(e: DatabaseError) {}
+            override fun onCancelled(e: DatabaseError) { listenError = e.message; started = false } // e.g. attached before sign-in → re-attach on next start()
         })
         db.getReference("appConfig/lock").addValueEventListener(object : ValueEventListener {
             override fun onDataChange(s: DataSnapshot) {
                 lock = LockCfg(s.child("locked").getValue(Boolean::class.java) == true, s.child("message").getValue(String::class.java) ?: "", s.child("imageUrl").getValue(String::class.java) ?: "")
             }
-            override fun onCancelled(e: DatabaseError) {}
+            override fun onCancelled(e: DatabaseError) { listenError = e.message; started = false } // e.g. attached before sign-in → re-attach on next start()
         })
     }
 }

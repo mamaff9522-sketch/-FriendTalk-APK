@@ -179,6 +179,7 @@ private fun MembersPane(p: Perms) {
             }
         }
         if (msg.isNotBlank()) Text(msg, color = Amber400, fontSize = 13.sp)
+        if (com.example.ui.components.AppGates.listenError.isNotBlank()) Text("อ่านสถานะจากฐานข้อมูลไม่ได้: " + com.example.ui.components.AppGates.listenError, color = Rose500, fontSize = 12.sp)
         if (busy && list.isEmpty()) LinearProgressIndicator(color = Pink500, modifier = Modifier.fillMaxWidth())
         if (!busy && list.isEmpty() && msg.isBlank()) Text("ไม่พบสมาชิก", color = Slate400, modifier = Modifier.padding(16.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -396,10 +397,10 @@ private fun SystemPane() {
     var msg by remember { mutableStateOf("") }
     var log by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
     var tick by remember { mutableIntStateOf(0) }
-    LaunchedEffect(tick) { val r = api("GET", "/admin/lock/log"); val a = r.json?.optJSONArray("log"); log = (0 until (a?.length() ?: 0)).map { a!!.getJSONObject(it) } }
+    LaunchedEffect(tick) { com.example.ui.components.AppGates.start(); val r = api("GET", "/admin/lock/log"); if (r.code != 200) msg = "โหลดประวัติไม่ได้: " + err(r); val a = r.json?.optJSONArray("log"); log = (0 until (a?.length() ?: 0)).map { a!!.getJSONObject(it) } }
     fun set(locked: Boolean) { scope.launch {
         val r = api("PUT", "/admin/lock", JSONObject().put("locked", locked).put("message", message).put("imageUrl", image.trim()))
-        msg = if (r.code == 200) { tick++; if (locked) "ล็อกแอปแล้ว — ผู้ใช้ทั่วไปเข้าไม่ได้" else "ปลดล็อกแล้ว" } else err(r)
+        msg = if (r.code == 200) { tick++; r.json?.let { j -> com.example.ui.components.AppGates.lock = com.example.ui.components.AppGates.lock.copy(locked = j.optBoolean("locked"), message = j.optString("message"), imageUrl = j.optString("imageUrl")) }; if (locked) "ล็อกแอปแล้ว — ผู้ใช้ทั่วไปเข้าไม่ได้" else "ปลดล็อกแล้ว" } else err(r)
     } }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Surface(shape = RoundedCornerShape(18.dp), color = if (l.locked) Rose500.copy(alpha = 0.18f) else Slate900, border = BorderStroke(2.dp, if (l.locked) Rose500 else Slate700)) {
