@@ -91,7 +91,6 @@ fun FeedTab(
     val homeLayout by com.example.service.UiLayoutRepository.home.collectAsState()
     val refreshScope = rememberCoroutineScope()
     var refreshing by remember { mutableStateOf(false) }
-    val showLegacyFab = false
     val realFeed = com.example.ui.social.rememberRealFeedState()
     com.example.ui.social.RealCommentsDialog(realFeed)
     realFeed.openTag?.let { com.example.ui.social.TagFeedDialog(it) { realFeed.openTag = null } }
@@ -109,7 +108,7 @@ fun FeedTab(
             contentPadding = PaddingValues(bottom = 88.dp)
         ) {
             val secTabs: LazyListScope.() -> Unit = {
-            if (feedConfig.showCategoryTabs) item { HomeChips(selectedCategory, onAll = { onSelectCategory("ทั้งหมด") }, onPeople = onOpenFindFriends) }
+            if (feedConfig.showCategoryTabs) item { HomeChips(realFeed.filter) { realFeed.filter = it } }
             }
 
             val secBanners: LazyListScope.() -> Unit = {
@@ -211,7 +210,7 @@ fun FeedTab(
             }
 
             // Real posts from friendtalk-brain (mock posts are no longer shown as real)
-            val secFeed: LazyListScope.() -> Unit = { realFeedItems(realFeed, promo = { FindFriendsPromo(onGo = onOpenFindFriends) }) }
+            val secFeed: LazyListScope.() -> Unit = { realFeedItems(realFeed) }
             @Suppress("UNUSED_VARIABLE") val secFeedLegacyMock: LazyListScope.() -> Unit = {
             // 4. Post Feed List
             if (filteredPosts.isEmpty()) {
@@ -280,22 +279,6 @@ fun FeedTab(
         }
 
         // Old mock-post FAB hidden: real posts use the composer at the top of the feed
-        if (showLegacyFab) FloatingActionButton(
-            onClick = { isCreatePostOpen = true },
-            containerColor = Pink500,
-            contentColor = White,
-            shape = CircleShape,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 20.dp, bottom = 24.dp)
-                .size(56.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.Add,
-                contentDescription = "Create Post",
-                modifier = Modifier.size(28.dp)
-            )
-        }
         com.example.ads.FeedBanner(Modifier.align(Alignment.BottomCenter))
     }
 

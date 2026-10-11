@@ -160,6 +160,7 @@ fun FriendTalkApp(
     val profileContext = androidx.compose.ui.platform.LocalContext.current
 
     var isCoinsOpen by remember { mutableStateOf(false) }
+    var globalSearch by remember { mutableStateOf(false) }
     var isNotifsOpen by remember { mutableStateOf(false) }
     var isAuthOpen by remember { mutableStateOf(false) }
     var isPermissionsOpen by remember { mutableStateOf(false) }
@@ -198,22 +199,18 @@ fun FriendTalkApp(
             topBar = {
                 Column {
                 com.example.ui.social.VerifyEmailBanner()
+                if (globalSearch) com.example.ui.social.GlobalSearchDialog { globalSearch = false }
                 if (uiState.uiConfig.feed.showHeader) {
                     AppHeader(
                         currentUser = uiState.currentUser,
                         appName = uiState.uiConfig.appName,
-                        showSearchBar = uiState.activeTab != "discover",
+                        showSearchBar = uiState.activeTab == "home" || uiState.activeTab == "chat",
                         unreadNotificationsCount = unreadNotificationsCount,
-                        searchQuery = uiState.searchQuery,
-                        isSearchActive = uiState.isSearchActive,
-                        onSearchQueryChange = { viewModel.setSearchQuery(it) },
-                        onToggleSearch = { viewModel.toggleSearchActive(it) },
                         onOpenCoins = { isCoinsOpen = true },
                         onOpenNotifications = { isNotifsOpen = true },
                         onOpenAuth = { isAuthOpen = true },
                         onOpenProfile = { if (com.google.firebase.auth.FirebaseAuth.getInstance().currentUser != null) viewModel.setActiveTab("profile") else isAuthOpen = true },
-                        onOpenPermissions = { isPermissionsOpen = true },
-                        onToggleLocationSharing = { viewModel.toggleLocationSharing() },
+                        onOpenSearch = { globalSearch = true },
                         uiConfig = uiState.uiConfig,
                         onRefreshConfig = { viewModel.refreshRemoteUiConfig() },
                         isRefreshing = uiState.isRefreshingConfig,
@@ -315,6 +312,7 @@ fun FriendTalkApp(
                         onEditProfile = { isEditProfileOpen = true },
                         onOpenCreatorStudio = { isCreatorStudioOpen = true },
                         onOpenCoins = { isCoinsOpen = true },
+                        onOpenAccount = { isAuthOpen = true },
                         onOpenPermissions = { isPermissionsOpen = true },
                         onOpenCompanionApply = { isCompanionApplyOpen = true },
                         onLogout = onSignOut

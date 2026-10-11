@@ -32,6 +32,7 @@ fun ProfileTab(
     onOpenCreatorStudio: () -> Unit,
     onOpenCoins: () -> Unit,
     onOpenPermissions: () -> Unit,
+    onOpenAccount: () -> Unit = {},
     onOpenCompanionApply: () -> Unit,
     onLogout: () -> Unit = {}
 ) {
@@ -166,7 +167,6 @@ fun ProfileTab(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(14.dp))
-                            .clickable { onOpenCoins() }
                     ) {
                         Row(
                             modifier = Modifier.padding(14.dp),
@@ -175,7 +175,7 @@ fun ProfileTab(
                             Text(text = "🪙", fontSize = 22.sp)
                             Spacer(modifier = Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
-                                Text("กระเป๋าเหรียญ & เพชรสะสม", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = White)
+                                Text("ยอดเหรียญ & เพชร", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = White)
                                 Text("${currentUser.coins} เหรียญ • ${currentUser.diamonds} เพชร", fontSize = 12.sp, color = Amber400)
                             }
                             Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Slate400)
@@ -223,6 +223,22 @@ fun ProfileTab(
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("Creator Studio (สตูดิโอครีเอเตอร์)", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = White)
                                 Text("แดชบอร์ดสตรีมเมอร์และสถิติรายได้", fontSize = 12.sp, color = Slate400)
+                            }
+                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Slate400)
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = Slate800,
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable { onOpenAccount() }
+                    ) {
+                        Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(text = "🔗", fontSize = 22.sp)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("บัญชี & การเชื่อมต่อ", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = White)
+                                Text("อีเมล, Google และการเชื่อมบัญชี", fontSize = 12.sp, color = Slate400)
                             }
                             Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Slate400)
                         }

@@ -46,21 +46,20 @@ fun SectionHeader(icon: String, title: String, onSeeAll: (() -> Unit)? = null) {
     }
 }
 
-/** Home filter chips with icons (ทั้งหมด = feed; people chips open the หาเพื่อน page). */
+/** Home chips = real filters over the real feed (applied to loaded posts; paging continues underneath). */
 @Composable
-fun HomeChips(selected: String, onAll: () -> Unit, onPeople: () -> Unit) {
-    val chips: List<Triple<String, ImageVector, Boolean>> = listOf(
-        Triple("ทั้งหมด", Icons.Filled.Home, true), Triple("ใกล้คุณ", Icons.Filled.Place, false),
-        Triple("ผู้ใช้ทั้งหมด", Icons.Filled.People, false), Triple("ออนไลน์", Icons.Filled.Favorite, false))
+fun HomeChips(selected: String, onSelect: (String) -> Unit) {
+    val chips: List<Pair<String, ImageVector>> = listOf("all" to Icons.Filled.Home, "photos" to Icons.Filled.Image, "places" to Icons.Filled.Place, "liked" to Icons.Filled.Favorite)
+    val labels = mapOf("all" to "ทั้งหมด", "photos" to "รูปภาพ", "places" to "มีตำแหน่ง", "liked" to "ที่ฉันถูกใจ")
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        chips.forEach { (label, icon, isAll) ->
-            val sel = isAll && (selected == "ทั้งหมด" || selected.isBlank())
-            Surface(onClick = { if (isAll) onAll() else onPeople() }, shape = RoundedCornerShape(16.dp),
+        chips.forEach { (k, icon) ->
+            val sel = selected == k
+            Surface(onClick = { onSelect(k) }, shape = RoundedCornerShape(16.dp),
                 color = if (sel) Color.Transparent else Slate900, border = if (sel) null else BorderStroke(1.dp, Slate700.copy(alpha = 0.7f))) {
                 Row(Modifier.then(if (sel) Modifier.background(Brush.horizontalGradient(listOf(Pink500, Pink400))) else Modifier).padding(horizontal = 18.dp, vertical = 11.dp),
                     verticalAlignment = Alignment.CenterVertically) {
-                    Icon(icon, null, tint = if (sel) White else if (label == "ออนไลน์") Pink400 else Slate300, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(8.dp)); Text(label, color = White, fontSize = 14.sp, fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium)
+                    Icon(icon, null, tint = if (sel) White else if (k == "liked") Pink400 else Slate300, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp)); Text(labels[k]!!, color = White, fontSize = 14.sp, fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium)
                 }
             }
         }
@@ -82,20 +81,14 @@ fun LiveNowSection(onSeeAll: () -> Unit) {
     }
 }
 
-/** 'คนใกล้คุณ' story circles from the real radar (respects the radar distance and permission). */
+/** 'คนใกล้คุณ' circles: shows the cached last radar result only — never calls the radar (no quota spent). */
 @Composable
 fun NearbyStoriesSection(onSeeAll: () -> Unit) {
     val ctx = LocalContext.current
-    var granted by remember { mutableStateOf(com.example.ui.social.hasLocPerm(ctx)) }
-    var list by remember { mutableStateOf<List<NearbyUser>?>(null) }
+    val list by NearbyRepo.lastNearby.collectAsState()
     var open by remember { mutableStateOf<String?>(null) }
     var storyMsg by remember { mutableStateOf(false) }
     val radius = remember { NearbyRepo.loadRadius(ctx) }
-    LaunchedEffect(granted) {
-        if (!granted) return@LaunchedEffect
-        com.example.ui.social.currentLocation(ctx)?.let { NearbyRepo.shareLocation(it.latitude, it.longitude) }
-        list = NearbyRepo.search("", true, radius)?.nearby ?: emptyList()
-    }
     GlassCard {
         SectionHeader("📍", "คนใกล้คุณ", onSeeAll)
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -107,8 +100,8 @@ fun NearbyStoriesSection(onSeeAll: () -> Unit) {
             }
             val l = list
             when {
-                !granted -> Text("เปิดตำแหน่งในเรดาร์เพื่อดูคนใกล้คุณ", color = Slate400, fontSize = 12.sp, modifier = Modifier.align(Alignment.CenterVertically).clickable { onSeeAll() })
-                l == null -> Text("กำลังหา…", color = Slate400, fontSize = 12.sp, modifier = Modifier.align(Alignment.CenterVertically))
+                l == null -> Surface(onClick = onSeeAll, shape = RoundedCornerShape(14.dp), color = Slate800, modifier = Modifier.align(Alignment.CenterVertically)) {
+                    Text("📡 เปิดเรดาร์เพื่อดูคนใกล้คุณ ›", color = Slate200, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) }
                 l.isEmpty() -> Text("ยังไม่มีใครใกล้คุณในระยะ ${NearbyRepo.radiusLabel(radius)}", color = Slate400, fontSize = 12.sp, modifier = Modifier.align(Alignment.CenterVertically))
                 else -> l.forEach { n ->
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(72.dp).clickable { open = n.profile.uid }) {
@@ -123,37 +116,4 @@ fun NearbyStoriesSection(onSeeAll: () -> Unit) {
     open?.let { UserProfileDialog(it) { open = null } }
     if (storyMsg) AlertDialog(onDismissRequest = { storyMsg = false }, confirmButton = { TextButton(onClick = { storyMsg = false }) { Text("ตกลง") } },
         title = { Text("เรื่องราว") }, text = { Text("ฟีเจอร์เรื่องราว (Stories) ยังไม่เปิดให้ใช้ — ตอนนี้โพสต์ในฟีดได้เลย") })
-}
-
-/** House promo ('ได้รับการสนับสนุน') pointing to the หาเพื่อน page; not a third-party ad. */
-@Composable
-fun FindFriendsPromo(onGo: () -> Unit) {
-    GlassCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(44.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Pink500, Purple600))), contentAlignment = Alignment.Center) { Text("FT", color = White, fontWeight = FontWeight.Black) }
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("FriendTalk", color = White, fontWeight = FontWeight.Bold, fontSize = 16.sp); Spacer(Modifier.width(6.dp))
-                    Surface(shape = RoundedCornerShape(8.dp), color = Pink500) { Text("ได้รับการสนับสนุน", color = White, fontSize = 10.sp, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) }
-                }
-                Text("ค้นพบเพื่อนใหม่ ใกล้คุณมากขึ้น 🌐", color = Slate300, fontSize = 12.sp)
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("พบผู้คนที่ใช่", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
-                Text("ใกล้กว่าที่คิด", color = Pink400, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
-                Text("📍 เริ่มต้นบทสนทนาใหม่วันนี้ บน FriendTalk", color = Slate300, fontSize = 12.sp)
-            }
-            OutlinedButton(onClick = onGo, border = BorderStroke(1.5.dp, Pink500), shape = RoundedCornerShape(22.dp)) { Text("ค้นหาเลย →", color = White, fontWeight = FontWeight.Bold) }
-        }
-        Spacer(Modifier.height(8.dp))
-        Box(Modifier.fillMaxWidth().height(110.dp).clip(RoundedCornerShape(14.dp)).background(Brush.verticalGradient(listOf(Color(0xFFFF8A5B), Color(0xFF8E3B8E), Color(0xFF1D1B4A)))),
-            contentAlignment = Alignment.BottomStart) {
-            Text("🏰", fontSize = 64.sp, modifier = Modifier.align(Alignment.Center))
-            Surface(shape = RoundedCornerShape(10.dp), color = Color(0x99000000), modifier = Modifier.padding(8.dp)) { Text("📍 คนใกล้คุณกำลังรออยู่…", color = White, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) }
-        }
-    }
 }

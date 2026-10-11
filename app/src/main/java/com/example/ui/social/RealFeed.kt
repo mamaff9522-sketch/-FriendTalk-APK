@@ -47,6 +47,8 @@ class RealFeedState(private val scope: CoroutineScope, val tag: String? = null, 
     var loaded by mutableStateOf(false)
     var error by mutableStateOf("")
     var commentsFor by mutableStateOf<FeedPost?>(null)
+    var filter by mutableStateOf("all")
+    fun visible(p: FeedPost) = when (filter) { "photos" -> p.imageUrls.isNotEmpty(); "places" -> p.placeLabel.isNotBlank(); "liked" -> p.likedByMe; else -> true }
     var openTag by mutableStateOf<String?>(null)
     val endReached get() = loaded && cursor == null && posts.isNotEmpty()
 
@@ -95,19 +97,25 @@ fun rememberRealFeedState(): RealFeedState {
 }
 
 /** Feed section content (composer + real posts). Used by the Home layout's "feed" section. */
-fun LazyListScope.realFeedItems(state: RealFeedState, promo: (@Composable () -> Unit)? = null) {
+fun LazyListScope.realFeedItems(state: RealFeedState) {
     if (state.tag == null && state.author == null) item(key = "real_composer") { PostComposer(onPosted = { state.posts.add(0, it) }) }
-    if (promo != null && state.tag == null && state.author == null) item(key = "promo") { promo() }
     if (state.error.isNotBlank()) item(key = "real_err") { Text(state.error, color = Amber400, fontSize = 12.sp, modifier = Modifier.padding(16.dp)) }
     if (state.loaded && state.posts.isEmpty()) item(key = "real_empty") {
         Box(Modifier.fillMaxWidth().padding(vertical = 40.dp), contentAlignment = Alignment.Center) {
             Text("ยังไม่มีโพสต์ เป็นคนแรกที่โพสต์เลย!", color = Slate400, fontSize = 14.sp)
         }
     }
-    items(state.posts, key = { "rp_" + it.id }) { p ->
+    val shown = state.posts.filter { state.visible(it) }
+    if (state.filter != "all" && state.loaded && shown.isEmpty()) item(key = "real_fempty") {
+        Column(Modifier.fillMaxWidth().padding(vertical = 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("ยังไม่มีโพสต์ที่ตรงกับตัวกรองนี้", color = Slate400, fontSize = 14.sp)
+            if (!state.endReached) TextButton(onClick = { state.loadMore() }) { Text("โหลดโพสต์เพิ่ม", color = Pink400) }
+        }
+    }
+    items(shown, key = { "rp_" + it.id }) { p ->
         RealPostCard(p, onLike = { state.toggleLike(p) }, onComments = { state.commentsFor = p }, onDelete = { state.delete(p) },
             onTag = { state.openTag = it }, onVisibility = { v -> when (v) { "#comments_on" -> state.setCommentsOff(p, false); "#comments_off" -> state.setCommentsOff(p, true); else -> state.setVisibility(p, v) } })
-        if (p.id == state.posts.lastOrNull()?.id) LaunchedEffect(p.id) { state.loadMore() }
+        if (p.id == shown.lastOrNull()?.id) LaunchedEffect(p.id, state.posts.size) { state.loadMore() }
     }
     if (state.endReached && !state.loading) item(key = "real_end") { Text("— ดูครบทุกโพสต์แล้ว —", color = Slate400, fontSize = 12.sp, modifier = Modifier.fillMaxWidth().padding(16.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center) }
     if (state.loading) item(key = "real_loading") { Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Pink500) } }

@@ -71,7 +71,6 @@ fun AiHubDialog(onClose: () -> Unit) {
                         }
                     }
                 }
-                TextButton(onClick = { com.example.ads.AdRoom.open.value = "aiBotMessagesPerDay" }) { Text("🎁 โควตาหมด? ไปหน้าโฆษณา →", color = Pink400) }
                 if (isAdmin) HubCard("🛠 จัดการบอท (แอดมิน)") {
                     OutlinedButton(onClick = { manage = true }, modifier = Modifier.fillMaxWidth()) { Text("เปิด/ปิดบอท AI", color = White) }
                 }

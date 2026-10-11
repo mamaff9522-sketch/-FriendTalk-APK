@@ -39,11 +39,13 @@ object NearbyRepo {
     suspend fun shareLocation(lat: Double, lng: Double): Boolean =
         user()?.let { BrainApi.call(it, "POST", "/radar/location", JSONObject().put("lat", lat).put("lng", lng)).code == 200 } ?: false
     suspend fun hide(): Boolean = user()?.let { BrainApi.call(it, "DELETE", "/radar/location").code == 200 } ?: false
+    /** Last radar result (radar screen / หาเพื่อน card). Home reuses it so it never spends radar quota. */
+    val lastNearby = kotlinx.coroutines.flow.MutableStateFlow<List<NearbyUser>?>(null)
     suspend fun nearby(radiusKm: Double): List<NearbyUser>? {
         val u = user() ?: return null
         val r = BrainApi.call(u, "GET", "/radar/nearby?radiusKm=${rStr(radiusKm)}")
         if (r.code != 200) return null
-        return arr(r.json?.optJSONArray("users")).map { NearbyUser(parseProfile(it), it.optString("distance")) }
+        return arr(r.json?.optJSONArray("users")).map { NearbyUser(parseProfile(it), it.optString("distance")) }.also { lastNearby.value = it }
     }
 
     /** Returns status: requested / friends / already_friends, or null on failure. */
@@ -69,8 +71,9 @@ object NearbyRepo {
         val r = BrainApi.call(u, "GET", "/search/users?q=" + android.net.Uri.encode(q) + (if (near) "&near=1&radiusKm=${rStr(radiusKm)}" else ""))
         val j = r.json ?: return SearchResult(emptyList(), emptyList(), "error", r.code)
         if (r.code != 200) return SearchResult(emptyList(), emptyList(), j.optString("code", "error"), r.code)
-        return SearchResult(arr(j.optJSONArray("users")).map { NearbyUser(parseProfile(it), it.optString("distance")) },
-            arr(j.optJSONArray("nearby")).map { NearbyUser(parseProfile(it), it.optString("distance")) }, j.optString("nearbyStatus"), 200)
+        val nb = arr(j.optJSONArray("nearby")).map { NearbyUser(parseProfile(it), it.optString("distance")) }
+        if (near && j.optString("nearbyStatus") == "ok") lastNearby.value = nb
+        return SearchResult(arr(j.optJSONArray("users")).map { NearbyUser(parseProfile(it), it.optString("distance")) }, nb, j.optString("nearbyStatus"), 200)
     }
     /** Friends with live online flag (presence; hidden users never show online). */
     suspend fun friendsWithOnline(): List<Pair<RealProfile, Boolean>> {

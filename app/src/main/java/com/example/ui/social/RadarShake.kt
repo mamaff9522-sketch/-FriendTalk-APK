@@ -74,7 +74,7 @@ internal fun RadiusPicker(radius: Double, onPick: (Double) -> Unit) {
     val cur = steps[idx.toInt().coerceIn(0, steps.lastIndex)]
     Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("ระยะค้นหา", color = Slate300, fontSize = 12.sp, modifier = Modifier.weight(1f))
+            Text("ระยะค้นหา · ใช้ร่วมกันทั้งเรดาร์และเขย่า", color = Slate300, fontSize = 12.sp, modifier = Modifier.weight(1f))
             Text(NearbyRepo.radiusLabel(cur), color = White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
         }
         Slider(value = idx, onValueChange = { idx = Math.round(it).toFloat() }, valueRange = 0f..steps.lastIndex.toFloat(), steps = (steps.size - 2).coerceAtLeast(0),
@@ -107,34 +107,6 @@ internal fun LocationPermissionCard(onGranted: () -> Unit) {
     }
 }
 
-@Composable
-private fun ProfileDialog(p: RealProfile, distance: String?, onDismiss: () -> Unit) {
-    val scope = rememberCoroutineScope()
-    var msg by remember { mutableStateOf("") }
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(shape = RoundedCornerShape(20.dp), color = Slate900) {
-            Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Avatar(p.avatar, p.displayName, 84)
-                Text(p.displayName + (p.age?.let { ", $it" } ?: ""), color = White, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(top = 8.dp))
-                distance?.let { Text("ห่างประมาณ $it", color = Pink400, fontSize = 12.sp) }
-                if (p.bio.isNotBlank()) Text(p.bio, color = Slate300, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
-                if (p.interests.isNotEmpty()) Text(p.interests.joinToString(" · "), color = Slate400, fontSize = 12.sp)
-                Spacer(Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { scope.launch {
-                        msg = when (NearbyRepo.requestFriend(p.uid)) { "requested" -> "ส่งคำขอเป็นเพื่อนแล้ว"; "friends" -> "เป็นเพื่อนกันแล้ว!"; "already_friends" -> "เป็นเพื่อนกันอยู่แล้ว"; else -> "ส่งคำขอไม่สำเร็จ" }
-                    } }, colors = ButtonDefaults.buttonColors(containerColor = Purple600)) { Text("เพิ่มเพื่อน") }
-                    Button(onClick = { scope.launch {
-                        val cid = SocialRepo.openChatWith(p.uid)
-                        if (cid != null) { onDismiss(); SocialRepo.openChat.value = cid } else msg = SocialRepo.lastOpenError.ifBlank { "เปิดแชทไม่สำเร็จ" }
-                    } }, colors = ButtonDefaults.buttonColors(containerColor = Pink500)) { Text("เริ่มแชท") }
-                }
-                if (msg.isNotBlank()) Text(msg, color = Amber400, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
-                TextButton(onClick = onDismiss) { Text("ปิด", color = Slate400) }
-            }
-        }
-    }
-}
 
 /** Incoming friend requests (accept / decline). */
 @Composable
@@ -189,7 +161,6 @@ fun RealRadarView() {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         FriendRequestsCard()
         if (!granted) { LocationPermissionCard { granted = true }; return@Column }
-        Text("ระยะค้นหา", color = Slate300, fontSize = 12.sp)
         RadiusPicker(radius) { radius = it; NearbyRepo.saveRadius(ctx, it); if (visible) scan() }
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {

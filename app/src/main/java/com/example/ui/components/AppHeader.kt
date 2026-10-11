@@ -41,16 +41,11 @@ fun AppHeader(
     appName: String = "FriendTalk",
     showSearchBar: Boolean = true,
     unreadNotificationsCount: Int,
-    searchQuery: String = "",
-    isSearchActive: Boolean = false,
-    onSearchQueryChange: (String) -> Unit = {},
-    onToggleSearch: (Boolean) -> Unit = {},
     onOpenCoins: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenAuth: () -> Unit,
     onOpenProfile: () -> Unit = onOpenAuth,
-    onOpenPermissions: () -> Unit,
-    onToggleLocationSharing: () -> Unit,
+    onOpenSearch: () -> Unit = {},
     uiConfig: AppUiConfig,
     onRefreshConfig: () -> Unit,
     isRefreshing: Boolean,
@@ -58,7 +53,6 @@ fun AppHeader(
     onOpenUiBuilder: () -> Unit,
     onOpenApkDownload: () -> Unit
 ) {
-    val focusManager = LocalFocusManager.current
     val primaryColor = MaterialTheme.colorScheme.primary
     val secondaryColor = MaterialTheme.colorScheme.secondary
 
@@ -138,22 +132,6 @@ fun AppHeader(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    // Search toggle button
-                    IconButton(
-                        onClick = { onToggleSearch(!isSearchActive) },
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .border(1.dp, if (isSearchActive) Pink500 else Slate700.copy(alpha = 0.6f), CircleShape).background(if (isSearchActive) Pink500.copy(alpha = 0.2f) else Slate900)
-                    ) {
-                        Icon(
-                            imageVector = if (isSearchActive) Icons.Default.Close else Icons.Outlined.Search,
-                            contentDescription = "Search",
-                            tint = if (isSearchActive) Pink400 else Slate200,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
                     // Notification Button with badge
                     Box {
                         IconButton(
@@ -244,8 +222,7 @@ fun AppHeader(
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
-                            // tap = my profile (logout, my posts); long-press = account / linking
-                            .combinedClickable(onClick = { onOpenProfile() }, onLongClick = { onOpenAuth() })
+                            .clickable { onOpenProfile() }
                     )
                 }
             }
@@ -253,66 +230,18 @@ fun AppHeader(
             // Search Bar Expanding Row
             if (showSearchBar) {
                 Surface(
+                    onClick = onOpenSearch,
                     shape = RoundedCornerShape(18.dp),
                     color = Slate900.copy(alpha = 0.85f),
                     border = androidx.compose.foundation.BorderStroke(1.5.dp, Brush.horizontalGradient(listOf(Pink500, Purple500))),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp)
+                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = null,
-                            tint = Pink400,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        TextField(
-                            value = searchQuery,
-                            onValueChange = onSearchQueryChange,
-                            placeholder = {
-                                Text(
-                                    "ค้นหาโพสต์, เพื่อน, คลับ หรือ สตรีมเมอร์...",
-                                    fontSize = 13.sp,
-                                    color = Slate400
-                                )
-                            },
-                            colors = TextFieldDefaults.colors(
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent,
-                                focusedIndicatorColor = Color.Transparent,
-                                unfocusedIndicatorColor = Color.Transparent,
-                                focusedTextColor = White,
-                                unfocusedTextColor = White
-                            ),
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                            keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
-                            modifier = Modifier.weight(1f)
-                        )
-                        if (searchQuery.isEmpty()) {
-                            Box(Modifier.width(1.dp).height(24.dp).background(Slate700))
-                            Icon(Icons.Default.Tune, contentDescription = "ตัวกรอง", tint = Slate300, modifier = Modifier.padding(start = 10.dp).size(22.dp))
-                        }
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(
-                                onClick = { onSearchQueryChange("") },
-                                modifier = Modifier.size(24.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Clear,
-                                    contentDescription = "Clear",
-                                    tint = Slate400,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                        }
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Search, contentDescription = "ค้นหา", tint = Pink400, modifier = Modifier.size(24.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Text("ค้นหาเพื่อน หรือ #แฮชแท็ก…", fontSize = 14.sp, color = Slate400, modifier = Modifier.weight(1f))
+                        Box(Modifier.width(1.dp).height(22.dp).background(Slate700))
+                        Icon(Icons.Default.Tune, contentDescription = null, tint = Slate300, modifier = Modifier.padding(start = 10.dp).size(22.dp))
                     }
                 }
             }
