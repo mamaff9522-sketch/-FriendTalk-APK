@@ -1289,8 +1289,8 @@ app.post('/chats/:chatId/gift', w(notBanned), w(async (q, r) => {
   const g = await giftGuard(chatId, q.uid, to); if (g) return r.status(403).json({ code: 'blocked', error: g });
   const item = (await db.ref(`catalog/chat/${giftId}`).get()).val();
   if (!item || item.enabled === false || !(item.price > 0)) return r.status(404).json({ error: 'ไม่พบของขวัญนี้' });
-  const coins = num((await db.ref(`wallets/${q.uid}/coins`).get()).val()), pend = await pendingSum(q.uid);
-  if (coins < item.price + pend) return r.status(402).json({ code: 'insufficient', error: `เหรียญไม่พอ (มี ${coins}, รอรับอยู่ ${pend}, ต้องการ ${item.price})`, coins, pending: pend, price: item.price });
+  const dia = num((await db.ref(`wallets/${q.uid}/diamonds`).get()).val()), pend = await pendingSum(q.uid);
+  if (dia < item.price + pend) return r.status(402).json({ code: 'insufficient', error: `เพชรไม่พอ (มี 💎${dia}, รอรับอยู่ ${pend}, ต้องการ ${item.price})`, diamonds: dia, pending: pend, price: item.price });
   const t = Date.now(), txId = db.ref('giftTx').push().key;
   const gift = { txId, giftId, name: item.name, price: item.price, imageUrl: item.imageUrl || '', icon: item.icon || '', status: 'pending' };
   await db.ref().update({
@@ -1299,7 +1299,7 @@ app.post('/chats/:chatId/gift', w(notBanned), w(async (q, r) => {
     [`messages/${chatId}/${txId}`]: { senderUid: q.uid, at: t, text: `🎁 ${item.name}`, gift },
     [`chats/${chatId}/lastMessage`]: `🎁 ส่งของขวัญ ${item.name}`, [`chats/${chatId}/lastAt`]: t, [`chats/${chatId}/lastSenderUid`]: q.uid
   });
-  r.json({ txId, status: 'pending', price: item.price });
+  r.json({ txId, status: 'pending', price: item.price, currency: 'diamonds' });
 }));
 app.post('/gifts/:txId/accept', w(notBanned), w(async (q, r) => {
   const { txId } = q.params; if (!/^[A-Za-z0-9_-]{1,40}$/.test(txId)) return r.status(400).json({ error: 'bad id' });
@@ -1313,14 +1313,14 @@ app.post('/gifts/:txId/accept', w(notBanned), w(async (q, r) => {
   if (lock.committed && lock.snapshot.val() !== 'accepting') return r.status(409).json({ error: 'busy, retry' });
   if (!lock.committed) { const s = (await txRef.child('status').get()).val(); return s === 'accepted' ? r.json({ status: 'accepted', already: true }) : r.status(409).json({ error: 'busy, retry' }); }
   const price = num(tx.price);
-  const d = await db.ref(`wallets/${tx.from}/coins`).transaction(c => (c === null ? null : num(c) >= price ? num(c) - price : undefined));
+  const d = await db.ref(`wallets/${tx.from}/diamonds`).transaction(c => (c === null ? null : num(c) >= price ? num(c) - price : undefined));
   if (!d.committed || d.snapshot.val() === null) {
     await txRef.update({ status: 'pending', lastFailAt: Date.now(), lastFail: 'insufficient' });
-    await notifyGift([tx.from, tx.to], { type: 'gift_failed', txId, chatId: tx.chatId, name: tx.name, price, msg: 'รับของขวัญไม่สำเร็จ: เหรียญของผู้ส่งไม่พอ' });
-    return r.status(402).json({ code: 'insufficient', error: 'เหรียญของผู้ส่งไม่พอ รับของขวัญไม่สำเร็จ' });
+    await notifyGift([tx.from, tx.to], { type: 'gift_failed', txId, chatId: tx.chatId, name: tx.name, price, msg: 'รับของขวัญไม่สำเร็จ: เพชรของผู้ส่งไม่พอ' });
+    return r.status(402).json({ code: 'insufficient', error: 'เพชรของผู้ส่งไม่พอ รับของขวัญไม่สำเร็จ' });
   }
   const cfg = await giftCfg(), recipientShare = Math.floor(price * cfg.recipientPercent / 100), adminShare = price - recipientShare;
-  await Promise.all([db.ref(`wallets/${tx.to}/coins`).transaction(c => num(c) + recipientShare), db.ref('wallets/_system/coins').transaction(c => num(c) + adminShare)]);
+  await Promise.all([db.ref(`wallets/${tx.to}/diamonds`).transaction(c => num(c) + recipientShare), db.ref('wallets/_system/diamonds').transaction(c => num(c) + adminShare)]);
   const t = Date.now(), split = { recipientShare, adminShare, adminPercent: cfg.adminPercent, recipientPercent: cfg.recipientPercent, senderBalanceAfter: d.snapshot.val() };
   const upd = { [`giftTx/${txId}/status`]: 'accepted', [`giftTx/${txId}/acceptedAt`]: t, [`giftTx/${txId}/split`]: split,
     [`giftPending/${tx.from}/${txId}`]: null, [`messages/${tx.chatId}/${txId}/gift/status`]: 'accepted' };
@@ -1333,8 +1333,9 @@ app.post('/gifts/:txId/accept', w(notBanned), w(async (q, r) => {
   r.json({ status: 'accepted', ...split, friended });
 }));
 app.get('/gifts/wallet', w(async (q, r) => {
-  const [c, p] = await Promise.all([db.ref(`wallets/${q.uid}/coins`).get(), pendingSum(q.uid)]);
-  r.json({ coins: num(c.val()), pending: p, available: num(c.val()) - p });
+  const [c, dm, p] = await Promise.all([db.ref(`wallets/${q.uid}/coins`).get(), db.ref(`wallets/${q.uid}/diamonds`).get(), pendingSum(q.uid)]);
+  // Gifts are priced/paid in diamonds; pending = diamonds reserved by unaccepted gifts.
+  r.json({ coins: num(c.val()), diamonds: num(dm.val()), pending: p, available: num(dm.val()) - p, currency: 'diamonds' });
 }));
 // ===== VIP room decor for 1:1 chats =====
 const THEMES = ['royal_gold', 'diamond_luxury', 'galaxy', 'romantic', 'neon_vip', 'luxury_palace'];
@@ -1508,11 +1509,11 @@ app.post('/admin/users/:uid/coins', perm('coins_confirm'), w(notBanned), w(async
   if (!Number.isFinite(amount) || amount === 0 || Math.abs(amount) > 100000) return r.status(400).json({ error: 'amount must be a non-zero integer within ±100000' });
   if (reason.length < 3) return r.status(400).json({ error: 'reason required' });
   if (!(await db.ref(`users/${uid}`).get()).exists()) return r.status(404).json({ error: 'user not found' });
-  let insufficient = false;
-  const res = await db.ref(`wallets/${uid}/coins`).transaction(c => { const v = Number(c) || 0; if (v + amount < 0) { insufficient = true; return; } insufficient = false; return v + amount; });
+  let insufficient = false; const cur = q.body?.currency === 'diamonds' ? 'diamonds' : 'coins';
+  const res = await db.ref(`wallets/${uid}/${cur}`).transaction(c => { const v = Number(c) || 0; if (v + amount < 0) { insufficient = true; return; } insufficient = false; return v + amount; });
   if (!res.committed) return r.status(409).json({ error: insufficient ? 'balance would go negative' : 'busy, retry' });
-  await db.ref('adminCoinLedger').push({ uid, amount, reason, by: q.uid, at: Date.now() });
-  r.json({ uid, coins: res.snapshot.val() });
+  await db.ref('adminCoinLedger').push({ uid, amount, currency: cur, reason, by: q.uid, at: Date.now() });
+  r.json({ uid, currency: cur, [cur]: res.snapshot.val() });
 }));
 // superadmin: set role user|moderator|admin with permissions (superadmin roles are not changeable here)
 app.put('/superadmin/users/:uid/role', w(notBanned), w(async (q, r) => {

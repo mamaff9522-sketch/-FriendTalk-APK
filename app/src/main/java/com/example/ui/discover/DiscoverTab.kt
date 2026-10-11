@@ -225,6 +225,7 @@ private fun PersonRow(p: RealProfile, distance: String, onClick: () -> Unit) {
         if (distance.isNotBlank()) Surface(shape = RoundedCornerShape(10.dp), color = Color(0x3310B981)) {
             Text(distance.replace(" m", tr(" ม.")).replace(" km", tr(" กม.")), color = Emerald400, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
         }
+        Spacer(Modifier.width(6.dp)); com.example.ui.social.GiftToUserButton(p.uid, compact = true)
     }
 }
 

@@ -73,7 +73,7 @@ fun AdminGiftsTab() {
                             Box(Modifier.size(44.dp)) { com.example.ui.social.StickerImage(it) }
                             Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
                                 Text(it.name, color = White, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
-                                Text("🪙 ${it.price} · ${it.category}" + if (!it.enabled) " · ปิดอยู่" else "", color = if (it.enabled) Slate400 else Amber400, fontSize = 11.sp)
+                                Text((if (ch == "chat") "💎 " else "🪙 ") + "${it.price} · ${it.category}" + if (!it.enabled) " · ปิดอยู่" else "", color = if (it.enabled) Slate400 else Amber400, fontSize = 11.sp)
                             }
                             TextButton(enabled = page * size + i > 0, onClick = { scope.launch { move(ch, page, size, items, i, -1); tick++ } }) { Text("↑") }
                             TextButton(enabled = page * size + i < total - 1, onClick = { scope.launch { move(ch, page, size, items, i, 1); tick++ } }) { Text("↓") }
@@ -138,7 +138,7 @@ private fun CatalogItemEditor(ch: String, init: CatalogItem, onClose: (Boolean) 
                     Text("เลื่อนขึ้น/ลง", color = Slate300, fontSize = 11.sp); Slider(oy, { oy = it }, valueRange = -0.5f..0.5f)
                 }
                 OutlinedTextField(name, { name = it.take(40) }, label = { Text("ชื่อ") }, singleLine = true)
-                OutlinedTextField(price, { price = it.filter(Char::isDigit).take(7) }, label = { Text("ราคา (เหรียญ)" + if (ch == "stickers") " 0 = ฟรี" else "") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                OutlinedTextField(price, { price = it.filter(Char::isDigit).take(7) }, label = { Text(if (ch == "chat") "ราคา (💎 เพชร)" else "ราคา (เหรียญ)" + if (ch == "stickers") " 0 = ฟรี" else "") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                 OutlinedTextField(category, { category = it.take(30) }, label = { Text("หมวดหมู่") }, singleLine = true)
                 OutlinedTextField(icon, { icon = it.take(4) }, label = { Text("อีโมจิ (ถ้าไม่มีรูป)") }, singleLine = true)
                 Row(verticalAlignment = Alignment.CenterVertically) { Text("เปิดใช้งาน", color = White, modifier = Modifier.weight(1f)); Switch(enabled, { enabled = it }) }
@@ -221,7 +221,7 @@ private fun GiftLedgerSection() {
         val sp = t.optJSONObject("split")
         Surface(shape = RoundedCornerShape(10.dp), color = Slate800, modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(8.dp)) {
-                Text("${t.optString("name")} · 🪙${t.optInt("price")} · ${t.optString("status")}", color = White, fontSize = 13.sp)
+                Text("${t.optString("name")} · 💎${t.optInt("price")} · ${t.optString("status")}", color = White, fontSize = 13.sp)
                 Text("จาก ${t.optString("from").take(8)} → ${t.optString("to").take(8)} · " + java.text.SimpleDateFormat("d MMM HH:mm", java.util.Locale("th")).format(java.util.Date(t.optLong("createdAt"))), color = Slate400, fontSize = 11.sp)
                 sp?.let { Text("ผู้รับ ${it.optInt("recipientShare")} · แอดมิน ${it.optInt("adminShare")}" + if (t.optBoolean("friended")) " · เพิ่มเพื่อนแล้ว" else "", color = Emerald400, fontSize = 11.sp) }
             }

@@ -249,17 +249,38 @@ private fun GiftBubble(g: com.example.social.GiftMsg, mine: Boolean, onAccept: (
     }
 }
 
+/** 🎁 button usable anywhere a person is shown: opens (or creates) the 1:1 chat, then sends the same paid gift (charged on accept). */
+@Composable
+fun GiftToUserButton(otherUid: String, modifier: Modifier = Modifier, compact: Boolean = false) {
+    if (otherUid == FirebaseAuth.getInstance().currentUser?.uid) return
+    val scope = rememberCoroutineScope()
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var open by remember { mutableStateOf(false) }
+    com.example.ui.components.FeatureLockGate("gifts", modifier, compact = true) {
+        if (compact) Surface(shape = RoundedCornerShape(14.dp), color = Pink500.copy(alpha = 0.15f), onClick = { open = true }) { Text("🎁", fontSize = 16.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) }
+        else OutlinedButton(onClick = { open = true }, shape = RoundedCornerShape(20.dp)) { Text(tr("🎁 ส่งของขวัญ"), color = Pink500, fontWeight = FontWeight.Bold) }
+    }
+    if (open) ChatGiftSheet(onDismiss = { open = false }) { item ->
+        open = false
+        scope.launch {
+            val chatId = SocialRepo.openChatWith(otherUid)
+            val msg = if (chatId == null) tr("เปิดแชทไม่สำเร็จ") else com.example.social.GiftRepo.sendGift(chatId, item.id).msg
+            android.widget.Toast.makeText(ctx, msg, android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+}
+
 /** Realtime list of enabled chat gifts (catalog/chat). */
 @Composable
-private fun ChatGiftSheet(onDismiss: () -> Unit, onPick: (com.example.social.CatalogItem) -> Unit) {
+internal fun ChatGiftSheet(onDismiss: () -> Unit, onPick: (com.example.social.CatalogItem) -> Unit) {
     val items by remember { com.example.social.GiftRepo.catalog("chat") }.collectAsState(initial = null)
     val wallet by produceState<Triple<Int, Int, Int>?>(null) { value = com.example.social.GiftRepo.wallet() }
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(18.dp), color = Slate900) {
             Column(Modifier.padding(16.dp).heightIn(max = 520.dp)) {
                 Text(tr("🎁 ส่งของขวัญ"), color = White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                wallet?.let { Text("เหรียญ ${it.first} · รอรับ ${it.second} · ใช้ได้ ${it.third}", color = Slate300, fontSize = 12.sp) }
-                Text(tr("ยังไม่หักเหรียญตอนส่ง จะหักเมื่ออีกฝ่ายกดรับ"), color = Slate400, fontSize = 11.sp)
+                wallet?.let { Text("💎 เพชร ${it.first} · จองไว้ ${it.second} · ใช้ได้ ${it.third}", color = Slate300, fontSize = 12.sp) }
+                Text("ของขวัญใช้เพชร 💎 · ยังไม่หักตอนส่ง จะหักเมื่ออีกฝ่ายกดรับ (ผู้รับได้ 80%)", color = Slate400, fontSize = 11.sp)
                 Spacer(Modifier.height(8.dp))
                 val l = items
                 when {
@@ -271,7 +292,7 @@ private fun ChatGiftSheet(onDismiss: () -> Unit, onPick: (com.example.social.Cat
                                 Column(Modifier.padding(8.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                                     Box(Modifier.size(48.dp)) { StickerImage(it) }
                                     Text(it.name, color = White, fontSize = 11.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                                    Text("🪙 ${it.price}", color = Amber400, fontSize = 11.sp)
+                                    Text("💎 ${it.price}" + if (wallet != null && wallet!!.third < it.price) " · ไม่พอ" else "", color = if (wallet != null && wallet!!.third < it.price) Rose500 else Cyan400, fontSize = 11.sp)
                                 }
                             }
                         }

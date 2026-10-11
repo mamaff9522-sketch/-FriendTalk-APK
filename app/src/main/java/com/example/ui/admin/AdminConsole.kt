@@ -279,13 +279,18 @@ private fun MemberDetail(uid: String, p: Perms, onClose: (Boolean) -> Unit) {
                     Row(verticalAlignment = Alignment.CenterVertically) { Text("ห้ามแชท", color = White, modifier = Modifier.weight(1f))
                         Switch(checked = !j.isNull("noChat"), onCheckedChange = { act("PUT", "/admin/restrict/$uid", JSONObject().put("noChat", it).put("reason", reason), if (it) "ห้ามแชทแล้ว" else "ปลดห้ามแชทแล้ว") }) }
                 }
-                if (p.has("coins_confirm")) Section("เหรียญ (บันทึกในสมุดบัญชีพร้อมเหตุผล)") {
+                if (p.has("coins_confirm")) Section("เหรียญ / เพชร (บันทึกในสมุดบัญชีพร้อมเหตุผล)") {
+                    var cur by remember { mutableStateOf("coins") }
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(value = amount, onValueChange = { amount = it.filter { c -> c.isDigit() || c == '-' }.take(7) }, label = { Text("จำนวน (+/-)") }, singleLine = true, modifier = Modifier.width(150.dp),
                             colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White))
                         Button(enabled = (amount.toIntOrNull() ?: 0) != 0 && reason.trim().length >= 3, onClick = {
-                            act("POST", "/admin/users/$uid/coins", JSONObject().put("amount", amount.toInt()).put("reason", reason), "ปรับเหรียญแล้ว"); amount = "" },
+                            act("POST", "/admin/users/$uid/coins", JSONObject().put("amount", amount.toInt()).put("reason", reason).put("currency", cur), if (cur == "diamonds") "ปรับเพชรแล้ว" else "ปรับเหรียญแล้ว"); amount = "" },
                             colors = ButtonDefaults.buttonColors(containerColor = Amber500)) { Text("ยืนยัน") }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        FilterChip(selected = cur == "coins", onClick = { cur = "coins" }, label = { Text("🪙 เหรียญ") })
+                        FilterChip(selected = cur == "diamonds", onClick = { cur = "diamonds" }, label = { Text("💎 เพชร (ใช้ส่งของขวัญ)") })
                     }
                     Text("ต้องใส่เหตุผลอย่างน้อย 3 ตัวอักษร", color = Slate500, fontSize = 11.sp)
                 }

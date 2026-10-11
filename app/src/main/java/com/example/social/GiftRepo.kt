@@ -54,7 +54,7 @@ object GiftRepo {
     suspend fun wallet(): Triple<Int, Int, Int>? {
         val u = user() ?: return null
         val r = BrainApi.call(u, "GET", "/gifts/wallet"); val j = r.json ?: return null
-        return if (r.code == 200) Triple(j.optInt("coins"), j.optInt("pending"), j.optInt("available")) else null
+        return if (r.code == 200) Triple(j.optInt("diamonds"), j.optInt("pending"), j.optInt("available")) else null
     }
 
     // ---- admin

@@ -183,6 +183,7 @@ fun RealRadarView() {
                         Avatar(u.profile.avatar, u.profile.displayName, 38); Spacer(Modifier.width(8.dp))
                         Text(u.profile.displayName, color = White, modifier = Modifier.weight(1f))
                         Text(u.distance, color = Pink400, fontSize = 12.sp)
+                        Spacer(Modifier.width(6.dp)); GiftToUserButton(u.profile.uid, compact = true)
                     }
                 }
             }
@@ -313,6 +314,7 @@ fun RealShakeView() {
                     Avatar(p.avatar, p.displayName, 72)
                     Text(p.displayName, color = White, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.padding(top = 6.dp))
                     TextButton(onClick = { showProfile = true }) { Text(tr("ดูโปรไฟล์ / เพิ่มเพื่อน / เริ่มแชท"), color = Pink400) }
+                    GiftToUserButton(p.uid)
                 }
             }
             if (showProfile) UserProfileDialog(p.uid, null) { showProfile = false }
