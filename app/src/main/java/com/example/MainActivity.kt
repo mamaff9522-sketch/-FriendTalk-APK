@@ -216,7 +216,7 @@ fun FriendTalkApp(
                     AppHeader(
                         currentUser = uiState.currentUser,
                         appName = uiState.uiConfig.appName,
-                        showSearchBar = uiState.activeTab == "home" || uiState.activeTab == "chat",
+                        showSearchBar = uiState.activeTab == "chat" // owner: no search bar on Home,
                         unreadNotificationsCount = unreadNotificationsCount,
                         onOpenCoins = { isCoinsOpen = true },
                         onOpenNotifications = { isNotifsOpen = true },

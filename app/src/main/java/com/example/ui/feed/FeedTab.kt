@@ -110,8 +110,8 @@ fun FeedTab(
             contentPadding = PaddingValues(bottom = 88.dp)
         ) {
             val secTabs: LazyListScope.() -> Unit = {
-            item { HomeSearchBar(onOpenSearch) }
-            if (feedConfig.showCategoryTabs) item { HomeChips(realFeed.filter) { k -> when (k) { "near", "online" -> onOpenFindFriends(); "users" -> onOpenSearch(); else -> realFeed.filter = k } } }
+            // owner removed the Home search bar and chip row
+            if (false) item { HomeChips(realFeed.filter) { k -> when (k) { "near", "online" -> onOpenFindFriends(); "users" -> onOpenSearch(); else -> realFeed.filter = k } } }
             }
 
             val secBanners: LazyListScope.() -> Unit = {

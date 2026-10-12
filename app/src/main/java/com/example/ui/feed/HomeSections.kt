@@ -38,11 +38,11 @@ import com.example.ui.theme.*
 
 /** Glassy rounded section card used across the redesigned screens. */
 @Composable
-fun GlassCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+fun GlassCard(modifier: Modifier = Modifier, contentPadding: androidx.compose.ui.unit.Dp = 12.dp, content: @Composable ColumnScope.() -> Unit) {
     // Mockup: navy card, thin neon magenta→violet border with a soft purple glow.
     Surface(shape = RoundedCornerShape(18.dp), color = Color(0xE60B1430), border = BorderStroke(1.dp, Brush.linearGradient(listOf(Color(0xCCC026D3), Color(0xCC7C3AED), Color(0x993B82F6)))),
         modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)
-            .shadow(14.dp, RoundedCornerShape(18.dp), ambientColor = Color(0xFF7C3AED), spotColor = Color(0xFFC026D3))) { Column(Modifier.padding(12.dp), content = content) }
+            .shadow(14.dp, RoundedCornerShape(18.dp), ambientColor = Color(0xFF7C3AED), spotColor = Color(0xFFC026D3))) { Column(Modifier.padding(contentPadding), content = content) }
 }
 
 @Composable
@@ -98,23 +98,27 @@ fun NearbyStoriesSection(onSeeAll: () -> Unit) {
     var open by remember { mutableStateOf<String?>(null) }
     var storyMsg by remember { mutableStateOf(false) }
     val radius = remember { NearbyRepo.loadRadius(ctx) }
-    GlassCard {
-        SectionHeader("📍", tr("คนใกล้คุณ"), onSeeAll)
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(76.dp).clickable { storyMsg = true }) {
-                Box(Modifier.size(68.dp).clip(CircleShape).border(3.dp, Brush.linearGradient(listOf(Purple500, Pink500)), CircleShape).background(Purple600.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
-                    Text("+", color = White, fontSize = 30.sp, fontWeight = FontWeight.Light)
+    GlassCard(contentPadding = 8.dp) {
+        Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) { // compact title
+            Text("📍", fontSize = 13.sp); Spacer(Modifier.width(4.dp))
+            Text(tr("คนใกล้คุณ"), color = White, fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.weight(1f))
+            Text(tr("ดูทั้งหมด ›"), color = Pink400, fontSize = 12.sp, modifier = Modifier.clickable { onSeeAll() })
+        }
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(60.dp).clickable { storyMsg = true }) {
+                Box(Modifier.size(52.dp).clip(CircleShape).border(3.dp, Brush.linearGradient(listOf(Purple500, Pink500)), CircleShape).background(Purple600.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
+                    Text("+", color = White, fontSize = 24.sp, fontWeight = FontWeight.Light)
                 }
-                Text(tr("เพิ่มเรื่องราว"), color = White, fontSize = 11.sp, maxLines = 1)
+                Text(tr("เพิ่มเรื่องราว"), color = White, fontSize = 10.sp, maxLines = 1)
             }
             val l = list
             when {
                 l == null -> Surface(onClick = onSeeAll, shape = RoundedCornerShape(14.dp), color = Slate800, modifier = Modifier.align(Alignment.CenterVertically)) {
-                    Text(tr("📡 เปิดเรดาร์เพื่อดูคนใกล้คุณ ›"), color = Slate200, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) }
+                    Text(tr("📡 เปิดเรดาร์เพื่อดูคนใกล้คุณ ›"), color = Slate200, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) }
                 l.isEmpty() -> Text("ยังไม่มีใครใกล้คุณในระยะ ${NearbyRepo.radiusLabel(radius)}", color = Slate400, fontSize = 12.sp, modifier = Modifier.align(Alignment.CenterVertically))
                 else -> l.forEach { n ->
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(72.dp).clickable { open = n.profile.uid }) {
-                        Box(Modifier.size(68.dp).clip(CircleShape).border(3.dp, Brush.linearGradient(listOf(Pink500, Purple500)), CircleShape).padding(4.dp)) { Avatar(n.profile.avatar, n.profile.displayName, 60) }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(60.dp).clickable { open = n.profile.uid }) {
+                        Box(Modifier.size(52.dp).clip(CircleShape).border(2.5.dp, Brush.linearGradient(listOf(Pink500, Purple500)), CircleShape).padding(3.dp)) { Avatar(n.profile.avatar, n.profile.displayName, 46) }
                         Text(n.profile.displayName, color = White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(n.distance.replace(" m", tr(" ม.")).replace(" km", tr(" กม.")), color = Slate400, fontSize = 10.sp)
                     }
