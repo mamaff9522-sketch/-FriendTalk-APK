@@ -41,7 +41,7 @@ private val tfColors @Composable get() = OutlinedTextFieldDefaults.colors(focuse
 @Composable
 private fun FullDialog(title: String, onClose: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.fillMaxSize(), color = Slate950) {
+        Surface(Modifier.fillMaxSize().systemBarsPadding().imePadding(), color = Slate950) {
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(title, color = White, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, modifier = Modifier.weight(1f))
@@ -156,7 +156,7 @@ fun ChatRulesSheet(requireAccept: Boolean, onDone: (Boolean) -> Unit) {
 }
 
 @Composable
-fun ChatRulesDialog(onClose: () -> Unit) { Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) { Surface(Modifier.fillMaxSize(), color = Slate950) { ChatRulesSheet(false) { onClose() } } } }
+fun ChatRulesDialog(onClose: () -> Unit) { Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) { Surface(Modifier.fillMaxSize().systemBarsPadding().imePadding(), color = Slate950) { ChatRulesSheet(false) { onClose() } } } }
 
 // ===================== เพื่อนคุย =====================
 data class Partner(val uid: String, val name: String, val occupation: String, val age: Int, val slots: List<String>, val hours: Map<String, String>,

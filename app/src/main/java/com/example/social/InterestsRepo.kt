@@ -28,7 +28,9 @@ object InterestsRepo {
             .sortedByDescending { listOf("lookingFor", "personality").indexOf(it.key).let { i -> if (i < 0) -1 else 10 - i } }.toList()
         return categories
     }
-    fun label(cat: String) = categories.firstOrNull { it.key == cat }?.label ?: cat
+    private val BUILTIN = mapOf("hobbies" to "งานอดิเรก", "languages" to "ภาษา", "lifestyle" to "ไลฟ์สไตล์", "lookingFor" to "สิ่งที่มองหา", "personality" to "นิสัย",
+        "freeTime" to "เวลาว่าง", "values" to "คุณค่าที่ให้ความสำคัญ", "occupation" to "อาชีพ", "education" to "การศึกษา")
+    fun label(cat: String) = categories.firstOrNull { it.key == cat }?.label ?: BUILTIN[cat] ?: cat
 
     suspend fun save(map: Map<String, List<String>>): Boolean {
         val u = user() ?: return false

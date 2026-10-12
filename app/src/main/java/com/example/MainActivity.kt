@@ -192,6 +192,17 @@ fun FriendTalkApp(
     FriendTalkTheme(themeConfig = if (uiState.activeTab == "home") com.example.ui.feed.HOME_MOCKUP_THEME.copy(backgrounds = uiState.uiConfig.theme.backgrounds - "app") else uiState.uiConfig.theme) {
         // Maintenance mode from published Remote UI config: blocks normal users, admins still get in.
         LaunchedEffect(uiState.currentUser.id) { com.example.ui.components.AppGates.start(); com.example.social.Wallet.start() }
+        // System back: other tab → Home; on Home press twice within 2s to exit. Dialogs/sub-screens handle back themselves first.
+        val backCtx = LocalContext.current
+        var lastBack by remember { mutableStateOf(0L) }
+        androidx.activity.compose.BackHandler(enabled = true) {
+            if (uiState.activeTab != "home") viewModel.setActiveTab("home")
+            else {
+                val now = System.currentTimeMillis()
+                if (now - lastBack < 2000) (backCtx as? android.app.Activity)?.finish()
+                else { lastBack = now; android.widget.Toast.makeText(backCtx, com.example.ui.components.tr("กดย้อนกลับอีกครั้งเพื่อออก"), android.widget.Toast.LENGTH_SHORT).show() }
+            }
+        }
         if (com.example.ui.components.AppGates.lock.locked && !com.example.ui.components.AppGates.isStaff) {
             com.example.ui.components.AppLockScreen(uiState.uiConfig.appName); return@FriendTalkTheme
         }

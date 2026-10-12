@@ -50,6 +50,7 @@ fun DiscoverTab(
 ) {
     var fn by rememberSaveable { mutableStateOf<String?>(null) }
     val f = fn
+    androidx.activity.compose.BackHandler(enabled = f != null) { fn = null }
     if (f != null) {
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {

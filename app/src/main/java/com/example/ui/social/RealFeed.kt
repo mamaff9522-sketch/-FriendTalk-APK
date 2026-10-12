@@ -356,7 +356,7 @@ fun FilteredFeedDialog(title: String, tag: String?, author: String?, onClose: ()
     val st = remember(tag, author) { RealFeedState(scope, tag, author) }
     LaunchedEffect(tag, author) { st.refresh() }
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.fillMaxSize(), color = Slate950) {
+        Surface(Modifier.fillMaxSize().systemBarsPadding().imePadding(), color = Slate950) {
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(12.dp)) {
                     Text(title, color = White, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.weight(1f))
