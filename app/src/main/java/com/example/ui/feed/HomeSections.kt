@@ -1,5 +1,9 @@
 package com.example.ui.feed
 
+import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.ui.draw.shadow
 import com.example.ui.components.tr
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -35,8 +39,10 @@ import com.example.ui.theme.*
 /** Glassy rounded section card used across the redesigned screens. */
 @Composable
 fun GlassCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    Surface(shape = RoundedCornerShape(18.dp), color = Slate900.copy(alpha = 0.9f), border = BorderStroke(1.dp, Purple500.copy(alpha = 0.35f)),
-        modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) { Column(Modifier.padding(12.dp), content = content) }
+    // Mockup: navy card, thin neon magenta→violet border with a soft purple glow.
+    Surface(shape = RoundedCornerShape(18.dp), color = Color(0xE60B1430), border = BorderStroke(1.dp, Brush.linearGradient(listOf(Color(0xCCC026D3), Color(0xCC7C3AED), Color(0x993B82F6)))),
+        modifier = modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)
+            .shadow(14.dp, RoundedCornerShape(18.dp), ambientColor = Color(0xFF7C3AED), spotColor = Color(0xFFC026D3))) { Column(Modifier.padding(12.dp), content = content) }
 }
 
 @Composable
@@ -51,16 +57,17 @@ fun SectionHeader(icon: String, title: String, onSeeAll: (() -> Unit)? = null) {
 /** Home chips = real filters over the real feed (applied to loaded posts; paging continues underneath). */
 @Composable
 fun HomeChips(selected: String, onSelect: (String) -> Unit) {
-    val chips: List<Pair<String, ImageVector>> = listOf("all" to Icons.Filled.Home, "photos" to Icons.Filled.Image, "places" to Icons.Filled.Place, "liked" to Icons.Filled.Favorite)
-    val labels = mapOf("all" to tr("ทั้งหมด"), "photos" to tr("รูปภาพ"), "places" to tr("มีตำแหน่ง"), "liked" to tr("ที่ฉันถูกใจ"))
+    // Mockup chips: ทั้งหมด (feed filter) · ใกล้คุณ / ออนไลน์ (open Find Friends) · ผู้ใช้ทั้งหมด (user search)
+    val chips: List<Pair<String, ImageVector>> = listOf("all" to Icons.Filled.Home, "near" to Icons.Filled.Place, "users" to Icons.Filled.Group, "online" to Icons.Filled.Favorite)
+    val labels = mapOf("all" to tr("ทั้งหมด"), "near" to tr("ใกล้คุณ"), "users" to tr("ผู้ใช้ทั้งหมด"), "online" to tr("ออนไลน์"))
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         chips.forEach { (k, icon) ->
             val sel = selected == k
             Surface(onClick = { onSelect(k) }, shape = RoundedCornerShape(16.dp),
-                color = if (sel) Color.Transparent else Slate900, border = if (sel) null else BorderStroke(1.dp, Slate700.copy(alpha = 0.7f))) {
+                color = if (sel) Color.Transparent else Color(0xFF0B1430), border = if (sel) null else BorderStroke(1.dp, Color(0xFF26305A))) {
                 Row(Modifier.then(if (sel) Modifier.background(Brush.horizontalGradient(listOf(Pink500, Pink400))) else Modifier).padding(horizontal = 18.dp, vertical = 11.dp),
                     verticalAlignment = Alignment.CenterVertically) {
-                    Icon(icon, null, tint = if (sel) PureWhite else if (k == "liked") Pink400 else Slate300, modifier = Modifier.size(20.dp))
+                    Icon(icon, null, tint = if (sel) PureWhite else if (k == "online") Pink400 else Slate300, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(8.dp)); Text(labels[k]!!, color = if (sel) PureWhite else White, fontSize = 14.sp, fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium)
                 }
             }
@@ -119,3 +126,23 @@ fun NearbyStoriesSection(onSeeAll: () -> Unit) {
     if (storyMsg) AlertDialog(onDismissRequest = { storyMsg = false }, confirmButton = { TextButton(onClick = { storyMsg = false }) { Text(tr("ตกลง")) } },
         title = { Text(tr("เรื่องราว")) }, text = { Text(tr("ฟีเจอร์เรื่องราว (Stories) ยังไม่เปิดให้ใช้ — ตอนนี้โพสต์ในฟีดได้เลย")) })
 }
+
+
+/** Mockup search bar: magenta neon outline, magnifier + filter icon; opens the real global search (users + #hashtag). */
+@Composable
+fun HomeSearchBar(onOpen: () -> Unit) {
+    Surface(onClick = onOpen, shape = RoundedCornerShape(16.dp), color = Color(0xFF0B1430),
+        border = BorderStroke(1.5.dp, Brush.horizontalGradient(listOf(Color(0xFFEC4899), Color(0xFFC026D3), Color(0xFFA855F7)))),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp).shadow(10.dp, RoundedCornerShape(16.dp), ambientColor = Color(0xFFEC4899), spotColor = Color(0xFFEC4899))) {
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.Search, null, tint = Color(0xFFEC4899), modifier = Modifier.size(24.dp)); Spacer(Modifier.width(10.dp))
+            Text(tr("ค้นหาโพสต์, เพื่อน, คลับ หรือ สตรีมเมอร์..."), color = Color(0xFFB8C0D9), fontSize = 14.sp, maxLines = 1, modifier = Modifier.weight(1f))
+            Box(Modifier.width(1.dp).height(22.dp).background(Color(0xFF3A4270))); Spacer(Modifier.width(10.dp))
+            Icon(Icons.Filled.Tune, null, tint = Color(0xFFD1D5F0), modifier = Modifier.size(22.dp))
+        }
+    }
+}
+
+/** Original Home mockup palette (dark navy + magenta/purple). Applied on Home only. */
+val HOME_MOCKUP_THEME = com.example.model.AppUiThemeConfig(primaryColorHex = "#EC4899", secondaryColorHex = "#A855F7", accentColorHex = "#8B5CF6",
+    backgroundColorHex = "#060B1A", surfaceColorHex = "#0B1430", cardColorHex = "#101A3A", textPrimaryHex = "#FFFFFF", textSecondaryHex = "#B8C0D9")

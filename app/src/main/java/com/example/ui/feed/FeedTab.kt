@@ -37,6 +37,7 @@ import com.example.ui.theme.*
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FeedTab(
+    onOpenSearch: () -> Unit = {},
     posts: List<Post>,
     stories: List<Story>,
     users: List<User>,
@@ -109,7 +110,8 @@ fun FeedTab(
             contentPadding = PaddingValues(bottom = 88.dp)
         ) {
             val secTabs: LazyListScope.() -> Unit = {
-            if (feedConfig.showCategoryTabs) item { HomeChips(realFeed.filter) { realFeed.filter = it } }
+            item { HomeSearchBar(onOpenSearch) }
+            if (feedConfig.showCategoryTabs) item { HomeChips(realFeed.filter) { k -> when (k) { "near", "online" -> onOpenFindFriends(); "users" -> onOpenSearch(); else -> realFeed.filter = k } } }
             }
 
             val secBanners: LazyListScope.() -> Unit = {

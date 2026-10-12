@@ -188,7 +188,8 @@ fun FriendTalkApp(
     val appBgColor = parseHexColor(uiState.uiConfig.theme.backgroundColorHex, Slate950)
 
     com.example.ui.social.ProfileNav.openOwn = { viewModel.setActiveTab("profile") }
-    FriendTalkTheme(themeConfig = uiState.uiConfig.theme) {
+    // Home uses the original mockup palette (dark navy + magenta/purple neon); other pages keep the published theme.
+    FriendTalkTheme(themeConfig = if (uiState.activeTab == "home") com.example.ui.feed.HOME_MOCKUP_THEME.copy(backgrounds = uiState.uiConfig.theme.backgrounds - "app") else uiState.uiConfig.theme) {
         // Maintenance mode from published Remote UI config: blocks normal users, admins still get in.
         LaunchedEffect(uiState.currentUser.id) { com.example.ui.components.AppGates.start(); com.example.social.Wallet.start() }
         if (com.example.ui.components.AppGates.lock.locked && !com.example.ui.components.AppGates.isStaff) {
@@ -250,6 +251,7 @@ fun FriendTalkApp(
             ) {
                 com.example.ui.components.UiPage(uiState.activeTab) { com.example.ui.components.UiSection("page", "ทั้งหน้า") { com.example.ui.components.ComingSoonGate("tab_" + uiState.activeTab, Modifier.fillMaxSize()) { com.example.ui.components.FeatureLockGate(when (uiState.activeTab) { "movie" -> "video"; else -> uiState.activeTab }, Modifier.fillMaxSize()) { when (uiState.activeTab) {
                     "home" -> FeedTab(
+                        onOpenSearch = { globalSearch = true },
                         onOpenFindFriends = { viewModel.setActiveTab("discover") },
                         onOpenLive = { viewModel.setActiveTab("live") },
                         posts = uiState.posts,
