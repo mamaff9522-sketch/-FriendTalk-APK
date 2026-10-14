@@ -25,7 +25,11 @@ import com.example.model.AppUiConfig
 import com.example.ui.theme.*
 
 /** Turns off swiping between tabs while a screen needs horizontal drags itself (e.g. ปัดหาเพื่อน cards). */
-object TabSwipe { var locked by mutableStateOf(false) }
+object TabSwipe {
+    var locked by mutableStateOf(false)
+    /** Owner: hide the วิดีโอสั้น tab for now (the page and its code stay; set true to bring it back). */
+    const val SHOW_SHORT_VIDEO_TAB = false
+}
 
 data class NavItem(
     val id: String,
@@ -50,7 +54,7 @@ fun BottomNavBar(
     val right = mutableListOf<NavItem>()
     if (uiConfig.bottomNav.showHomeTab) left.add(NavItem("home", tr("หน้าแรก"), Icons.Filled.Home, Icons.Outlined.Home))
     if (uiConfig.bottomNav.showDiscoverTab) left.add(NavItem("discover", tr("หาเพื่อน"), Icons.Filled.People, Icons.Outlined.People))
-    if (uiConfig.bottomNav.showMovieTab && uiConfig.isMovieFeatureEnabled) right.add(NavItem("movie", tr("วิดีโอสั้น"), Icons.Filled.Videocam, Icons.Outlined.Videocam))
+    if (TabSwipe.SHOW_SHORT_VIDEO_TAB && uiConfig.bottomNav.showMovieTab && uiConfig.isMovieFeatureEnabled) right.add(NavItem("movie", tr("วิดีโอสั้น"), Icons.Filled.Videocam, Icons.Outlined.Videocam))
     if (uiConfig.bottomNav.showChatTab) right.add(NavItem("chat", tr("แชท"), Icons.Filled.Sms, Icons.Outlined.Sms, badgeCount = totalUnreadMessages))
     right.add(NavItem("profile", tr("ฉัน"), Icons.Filled.Person, Icons.Outlined.Person))
 

@@ -332,7 +332,7 @@ fun FriendTalkApp(
                     buildList {
                         if (uiState.uiConfig.bottomNav.showHomeTab) add("home")
                         if (uiState.uiConfig.bottomNav.showDiscoverTab) add("discover")
-                        if (uiState.uiConfig.bottomNav.showMovieTab && uiState.uiConfig.isMovieFeatureEnabled) add("movie")
+                        if (com.example.ui.components.TabSwipe.SHOW_SHORT_VIDEO_TAB && uiState.uiConfig.bottomNav.showMovieTab && uiState.uiConfig.isMovieFeatureEnabled) add("movie")
                         if (uiState.uiConfig.bottomNav.showChatTab) add("chat")
                         add("profile")
                     }
