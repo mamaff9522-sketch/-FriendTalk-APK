@@ -309,7 +309,7 @@ fun GiftToUserButton(otherUid: String, modifier: Modifier = Modifier, compact: B
         open = false
         scope.launch {
             val chatId = SocialRepo.openChatWith(otherUid)
-            val msg = if (chatId == null) tr("เปิดแชทไม่สำเร็จ") else com.example.social.GiftRepo.sendGift(chatId, item.id).msg
+            val msg = if (chatId == null) SocialRepo.lastOpenError.ifBlank { tr("เปิดแชทไม่สำเร็จ") } else com.example.social.GiftRepo.sendGift(chatId, item.id).msg
             android.widget.Toast.makeText(ctx, msg, android.widget.Toast.LENGTH_LONG).show()
         }
     }
