@@ -227,7 +227,8 @@ fun FriendTalkApp(
                 Column {
                 com.example.ui.social.VerifyEmailBanner()
                 if (globalSearch) com.example.ui.social.GlobalSearchDialog { globalSearch = false }
-                if (uiState.uiConfig.feed.showHeader && uiState.activeTab == "home") {
+                // Same header as Home on every page (owner request). AppHeader / FriendsHeader are kept in code but no longer shown.
+                if (uiState.uiConfig.feed.showHeader) {
                     com.example.ui.feed.HomeHeader(
                         currentUser = uiState.currentUser,
                         onAvatar = { if (com.google.firebase.auth.FirebaseAuth.getInstance().currentUser != null) viewModel.setActiveTab("profile") else isAuthOpen = true },
@@ -236,26 +237,8 @@ fun FriendTalkApp(
                         onBell = { isHomeNotifsOpen = true },
                         onAdmin = { isAdminDashboardOpen = true }
                     )
-                } else if (uiState.uiConfig.feed.showHeader && uiState.activeTab == "discover") {
-                    com.example.ui.discover.FriendsHeader(onBell = { isHomeNotifsOpen = true }, onChat = { viewModel.setActiveTab("chat") })
-                } else if (uiState.uiConfig.feed.showHeader) {
-                    AppHeader(
-                        currentUser = uiState.currentUser,
-                        appName = uiState.uiConfig.appName,
-                        showSearchBar = uiState.activeTab == "chat", // owner: no search bar on Home
-                        unreadNotificationsCount = unreadNotificationsCount,
-                        onOpenCoins = { isCoinsOpen = true },
-                        onOpenNotifications = { isNotifsOpen = true },
-                        onOpenAuth = { isAuthOpen = true },
-                        onOpenProfile = { if (com.google.firebase.auth.FirebaseAuth.getInstance().currentUser != null) viewModel.setActiveTab("profile") else isAuthOpen = true },
-                        onOpenSearch = { globalSearch = true },
-                        uiConfig = uiState.uiConfig,
-                        onRefreshConfig = { viewModel.refreshRemoteUiConfig() },
-                        isRefreshing = uiState.isRefreshingConfig,
-                        onOpenAdminDashboard = { isAdminDashboardOpen = true },
-                        onOpenUiBuilder = { isUiBuilderOpen = true },
-                        onOpenApkDownload = { isApkDownloadOpen = true }
-                    )
+                    // The chat page kept its global search (friends / #hashtags) under the header
+                    if (uiState.activeTab == "chat") com.example.ui.feed.HomeSearchPill { globalSearch = true }
                 }
                 }
             },

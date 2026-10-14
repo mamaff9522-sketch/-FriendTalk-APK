@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
@@ -272,6 +273,18 @@ fun HomeHeader(currentUser: User, onAvatar: () -> Unit, onCoins: () -> Unit, onD
             }
             HorizontalDivider(color = HLine.copy(alpha = 0.7f), thickness = 0.8.dp)
         }
+    }
+}
+
+/** Search pill in the Home header style; opens the existing global search. */
+@Composable
+fun HomeSearchPill(onOpen: () -> Unit) {
+    Row(Modifier.fillMaxWidth().background(HBg).padding(horizontal = 10.dp, vertical = 6.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xFF130F30))
+        .border(1.5.dp, Color(0xBFBE5AFF), RoundedCornerShape(16.dp)).clickable(onClick = onOpen).padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        Icon(androidx.compose.material.icons.Icons.Filled.Search, null, tint = Color(0xFFC48CFF), modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(10.dp))
+        Text(tr("ค้นหาเพื่อน หรือ #แฮชแท็ก…"), color = Color(0xFF8E86B8), fontSize = 14.sp)
     }
 }
 
