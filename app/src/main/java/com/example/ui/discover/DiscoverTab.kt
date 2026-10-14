@@ -76,6 +76,7 @@ fun DiscoverTab(
                     "similar" -> PersonalityMatchView()
                     "requests" -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) { FriendRequestsCard(); FriendsList() }
                     "companion" -> com.example.ui.social.CompanionGridScreen() // approved companions as small profile cards
+                    "rewards" -> com.example.ads.AdsPage()
                 }
             }
         }
@@ -86,11 +87,13 @@ fun DiscoverTab(
 
 private val TILES = listOf(
     "random" to tr("สุ่มหาเพื่อน"), "shake" to tr("เขย่าหาเพื่อน"), "radar" to tr("เรดาร์"), "swipe" to tr("ปัดหาเพื่อน"),
-    "similar" to tr("คนที่ชอบคล้ายกัน"), "requests" to tr("คำขอเป็นเพื่อน"), "companion" to tr("เพื่อนคุย")
+    "similar" to tr("คนที่ชอบคล้ายกัน"), "requests" to tr("คำขอเป็นเพื่อน"), "companion" to tr("เพื่อนคุย"),
+    // 8th tile fills the empty slot of the 4 + 3 grid: watch a short ad -> extra quota (existing Ad Room / หน้าโฆษณา)
+    "rewards" to tr("รับสิทธิ์ฟรี")
 )
-private val TILE_ART = mapOf("random" to com.example.R.drawable.art_dice, "shake" to com.example.R.drawable.art_phone, "radar" to com.example.R.drawable.art_radar, "swipe" to com.example.R.drawable.art_heart, "similar" to com.example.R.drawable.art_puzzle, "requests" to com.example.R.drawable.art_handshake, "companion" to com.example.R.drawable.art_chat)
-private val TILE_TINT = mapOf("random" to Color(0xFFEC4899), "shake" to Color(0xFF6366F1), "radar" to Color(0xFF8B5CF6), "swipe" to Color(0xFFDB2777), "similar" to Color(0xFF10B981), "requests" to Color(0xFFF59E0B), "companion" to Color(0xFF7C3AED))
-private val TILE_ICONS = mapOf("random" to "🎲", "shake" to "📱", "radar" to "📡", "swipe" to "💘", "similar" to "🧩", "requests" to "🤝", "companion" to "💗")
+private val TILE_ART = mapOf("random" to com.example.R.drawable.art_dice, "shake" to com.example.R.drawable.art_phone, "radar" to com.example.R.drawable.art_radar, "swipe" to com.example.R.drawable.art_heart, "similar" to com.example.R.drawable.art_puzzle, "requests" to com.example.R.drawable.art_handshake, "companion" to com.example.R.drawable.art_chat, "rewards" to com.example.R.drawable.art_gift)
+private val TILE_TINT = mapOf("random" to Color(0xFFEC4899), "shake" to Color(0xFF6366F1), "radar" to Color(0xFF8B5CF6), "swipe" to Color(0xFFDB2777), "similar" to Color(0xFF10B981), "requests" to Color(0xFFF59E0B), "companion" to Color(0xFF7C3AED), "rewards" to Color(0xFFF59E0B))
+private val TILE_ICONS = mapOf("random" to "🎲", "shake" to "📱", "radar" to "📡", "swipe" to "💘", "similar" to "🧩", "requests" to "🤝", "companion" to "💗", "rewards" to "🎁")
 
 // ---- mockup palette (light lavender page, glassy cards, colourful tiles) ----
 // colours follow the user's mode (โหมดปกติ = this lavender look, โหมดมืด = Home's dark look)
@@ -105,13 +108,15 @@ private val FCardBorder: Color get() = if (AppThemeMode.dark) Color(0xFF2A2357) 
 
 private val TILE_SUB = mapOf(
     "random" to "เจอเพื่อนใหม่\nแบบสุ่ม", "shake" to "เขย่าเพื่อเจอ\nเพื่อนรอบตัว", "radar" to "ค้นหาเพื่อน\nรอบตัวคุณ", "swipe" to "ปัดซ้ายขวา\nหาเพื่อนที่ใช่",
-    "similar" to "หาเพื่อนจากความสนใจ\nที่เหมือนกัน", "requests" to "จัดการคำขอ\nและแนะนำเพื่อน", "companion" to "หาเพื่อนคุย\nเริ่มบทสนทนา"
+    "similar" to "หาเพื่อนจากความสนใจ\nที่เหมือนกัน", "requests" to "จัดการคำขอ\nและแนะนำเพื่อน", "companion" to "หาเพื่อนคุย\nเริ่มบทสนทนา",
+    "rewards" to "ดูโฆษณาสั้น ๆ\nแลกโควตาเพิ่ม"
 )
 private val TILE_GRAD = mapOf(
     "random" to listOf(Color(0xFFFF63B8), Color(0xFFB63BD8)), "shake" to listOf(Color(0xFF4F86FF), Color(0xFF7A4DFF)),
     "radar" to listOf(Color(0xFF8C6BFF), Color(0xFF5530D0)), "swipe" to listOf(Color(0xFFFF8A8A), Color(0xFFE0409F)),
     "similar" to listOf(Color(0xFFEC4FAE), Color(0xFF8E3BD9)), "requests" to listOf(Color(0xFF5B6CF5), Color(0xFF7A3FE0)),
-    "companion" to listOf(Color(0xFF9550FF), Color(0xFFC94BE0))
+    "companion" to listOf(Color(0xFF9550FF), Color(0xFFC94BE0)),
+    "rewards" to listOf(Color(0xFFFFB547), Color(0xFFFF4F8B))
 )
 
 /** Header of the 'หาเพื่อน' page (mockup): FriendTalk♡ 🦋, bell and chat with real counts. */

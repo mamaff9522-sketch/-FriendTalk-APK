@@ -191,6 +191,22 @@ fun ProfileTab(
                         }
                     }
 
+                    // 🎁 watch a short ad -> extra quota (opens the existing Ad Room in browse mode)
+                    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                        .background(Brush.horizontalGradient(listOf(androidx.compose.ui.graphics.Color(0xFFFFB547), androidx.compose.ui.graphics.Color(0xFFFF4F8B), androidx.compose.ui.graphics.Color(0xFF9B3DFF))))
+                        .clickable { com.example.ads.AdRoom.open.value = "" }) {
+                        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(com.example.R.drawable.art_gift), null, modifier = Modifier.size(44.dp))
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(tr("รับสิทธิ์ฟรี — ดูโฆษณาสั้น ๆ"), fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = PureWhite)
+                                Text(tr("แลกโควตาเพิ่ม เช่น แชท ปัดหาเพื่อน เรดาร์"), fontSize = 12.sp, color = PureWhite.copy(alpha = 0.9f))
+                            }
+                            Text(tr("ดูเลย ›"), color = PureWhite, fontWeight = FontWeight.Bold, fontSize = 13.sp,
+                                modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(androidx.compose.ui.graphics.Color(0x33FFFFFF)).padding(horizontal = 10.dp, vertical = 5.dp))
+                        }
+                    }
+
                     if (currentUser.age >= 18) {
                         Surface(
                             shape = RoundedCornerShape(14.dp),

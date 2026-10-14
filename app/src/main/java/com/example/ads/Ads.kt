@@ -262,7 +262,8 @@ fun AdRoomHost() {
 @Composable
 fun AdRoomScreen(feature: String, onClose: () -> Unit) {
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        Surface(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding(), color = Slate950) { AdsPageContent(feature, onClose = onClose, returnAfterReward = true) }
+        // feature "" = opened from a menu just to browse offers (no quota ran out, stay after a reward)
+        Surface(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding(), color = Slate950) { AdsPageContent(feature.ifBlank { null }, onClose = onClose, returnAfterReward = feature.isNotBlank()) }
     }
 }
 
