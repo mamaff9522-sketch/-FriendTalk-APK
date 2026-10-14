@@ -50,10 +50,18 @@ import java.io.ByteArrayOutputStream
  * Shown only while the real list is empty and always labelled "ตัวอย่าง AI", so they hide by themselves once real users appear.
  */
 object Showcase {
-    data class Item(val url: String, val name: String)
+    data class Item(val url: String, val name: String, val res: Int = 0) { val model: Any get() = if (res != 0) res else url }
+    /** Built-in AI sample faces (res/drawable-nodpi/showcase_XX.webp) used until the admin uploads their own set. */
+    private val BUILT_IN = listOf(
+        com.example.R.drawable.showcase_01, com.example.R.drawable.showcase_02, com.example.R.drawable.showcase_03, com.example.R.drawable.showcase_04, com.example.R.drawable.showcase_05,
+        com.example.R.drawable.showcase_06, com.example.R.drawable.showcase_07, com.example.R.drawable.showcase_08, com.example.R.drawable.showcase_09, com.example.R.drawable.showcase_10,
+    ).map { Item("", "", it) }
     var enabled by mutableStateOf(true)
-    var live by mutableStateOf<List<Item>>(emptyList())
-    var nearby by mutableStateOf<List<Item>>(emptyList())
+    var live by mutableStateOf(BUILT_IN.take(5))
+    var nearby by mutableStateOf(BUILT_IN.drop(5))
+    /** Admin's uploaded lists only (empty = using the built-in faces). */
+    var adminLive by mutableStateOf<List<Item>>(emptyList())
+    var adminNearby by mutableStateOf<List<Item>>(emptyList())
     private var loaded = false
 
     private fun items(s: com.google.firebase.database.DataSnapshot) =
@@ -64,7 +72,8 @@ object Showcase {
         runCatching {
             val s = FirebaseDatabase.getInstance(SocialRepo.DB_URL).getReference("appConfig/showcase").get().await()
             enabled = s.child("enabled").getValue(Boolean::class.java) != false
-            live = items(s.child("live")); nearby = items(s.child("nearby")); loaded = true
+            adminLive = items(s.child("live")); adminNearby = items(s.child("nearby"))
+            live = adminLive.ifEmpty { BUILT_IN.take(5) }; nearby = adminNearby.ifEmpty { BUILT_IN.drop(5) }; loaded = true
         }
     }
 }
@@ -83,9 +92,9 @@ fun ShowcaseLiveRow(cardW: Dp, onClick: () -> Unit): Boolean {
     val l = Showcase.live
     if (!Showcase.enabled || l.isEmpty()) return false
     LazyRow(contentPadding = PaddingValues(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        itemsIndexed(l, key = { i, it -> "sl$i" + it.url }) { _, it ->
+        itemsIndexed(l, key = { i, it -> "sl$i" + it.url + it.res }) { _, it ->
             Box(Modifier.width(cardW).aspectRatio(0.75f).clip(RoundedCornerShape(12.dp)).border(1.dp, Color(0xFF3A2C72), RoundedCornerShape(12.dp)).background(Color(0xFF16123A)).clickable(onClick = onClick)) {
-                AsyncImage(model = it.url, contentDescription = it.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                AsyncImage(model = it.model, contentDescription = it.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                 AiBadge(Modifier.align(Alignment.TopStart).padding(3.dp))
                 Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.4f).background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xD9000000)))))
                 if (it.name.isNotBlank()) Text(it.name, color = PureWhite, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.align(Alignment.BottomStart).padding(4.dp))
@@ -102,10 +111,10 @@ fun ShowcaseNearbyRow(itemW: Dp, onClick: () -> Unit): Boolean {
     val l = Showcase.nearby
     if (!Showcase.enabled || l.isEmpty()) return false
     LazyRow(contentPadding = PaddingValues(horizontal = 6.dp)) {
-        itemsIndexed(l, key = { i, it -> "sn$i" + it.url }) { _, it ->
+        itemsIndexed(l, key = { i, it -> "sn$i" + it.url + it.res }) { _, it ->
             Column(Modifier.width(itemW).clickable(onClick = onClick), horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(Modifier.height(64.dp), contentAlignment = Alignment.TopCenter) {
-                    AsyncImage(model = it.url, contentDescription = it.name, contentScale = ContentScale.Crop, modifier = Modifier.size(56.dp).clip(CircleShape).border(2.dp, Color(0xFFBE5AFF), CircleShape))
+                    AsyncImage(model = it.model, contentDescription = it.name, contentScale = ContentScale.Crop, modifier = Modifier.size(56.dp).clip(CircleShape).border(2.dp, Color(0xFFBE5AFF), CircleShape))
                     AiBadge(Modifier.align(Alignment.BottomCenter))
                 }
                 Spacer(Modifier.height(3.dp))
@@ -128,7 +137,7 @@ fun AdminShowcasePane() {
     var name by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var msg by remember { mutableStateOf("") }
-    LaunchedEffect(Unit) { Showcase.load(force = true); enabled = Showcase.enabled; live.clear(); live.addAll(Showcase.live); nearby.clear(); nearby.addAll(Showcase.nearby) }
+    LaunchedEffect(Unit) { Showcase.load(force = true); enabled = Showcase.enabled; live.clear(); live.addAll(Showcase.adminLive); nearby.clear(); nearby.addAll(Showcase.adminNearby) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         val u = FirebaseAuth.getInstance().currentUser
         if (uri == null || u == null) return@rememberLauncherForActivityResult
@@ -154,6 +163,7 @@ fun AdminShowcasePane() {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("รูปตัวอย่าง AI ช่วงเปิดระบบใหม่", color = PureWhite, fontWeight = FontWeight.Bold)
         Text("แสดงในช่อง 'ไลฟ์สดตอนนี้' และ 'คนใกล้คุณ' เฉพาะตอนที่ยังไม่มีผู้ใช้จริง และมีป้าย 'ตัวอย่าง AI' กำกับเสมอ — เมื่อมีคนไลฟ์จริงหรือมีคนใกล้จริง รูปตัวอย่างจะซ่อนเองอัตโนมัติ", color = Slate400, fontSize = 12.sp)
+        Text("ถ้าหมวดไหนไม่มีรูปที่อัปโหลด แอปจะใช้รูปตัวอย่างที่ติดมากับแอป (10 รูป)", color = Slate400, fontSize = 12.sp)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("เปิดใช้รูปตัวอย่าง", color = PureWhite, modifier = Modifier.weight(1f)); Switch(checked = enabled, onCheckedChange = { enabled = it })
         }
