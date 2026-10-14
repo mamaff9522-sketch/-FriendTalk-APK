@@ -17,6 +17,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -82,7 +88,8 @@ internal fun RadiusPicker(radius: Double, onPick: (Double) -> Unit) {
         }
         Slider(value = idx, onValueChange = { idx = Math.round(it).toFloat() }, valueRange = 0f..steps.lastIndex.toFloat(), steps = (steps.size - 2).coerceAtLeast(0),
             onValueChangeFinished = { if (cur != radius) onPick(cur) },
-            colors = SliderDefaults.colors(thumbColor = Pink500, activeTrackColor = Pink500))
+            colors = SliderDefaults.colors(thumbColor = Pink500, activeTrackColor = Pink500, inactiveTrackColor = AppThemeMode.divider,
+                activeTickColor = androidx.compose.ui.graphics.Color.Transparent, inactiveTickColor = androidx.compose.ui.graphics.Color.Transparent))
         Row { Text(NearbyRepo.radiusLabel(steps.first()), color = Slate400, fontSize = 10.sp, modifier = Modifier.weight(1f)); Text(NearbyRepo.radiusLabel(steps.last()), color = Slate400, fontSize = 10.sp) }
     }
 }
@@ -324,44 +331,104 @@ fun RealShakeView() {
         onDispose { lifecycle.removeObserver(obs); unreg() }
     }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(tr("📱 เขย่าเจอเพื่อน"), color = White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-        Text(tr("เปิดโหมดรับการเขย่า แล้วเขย่าโทรศัพท์แรง ๆ 2–3 ครั้ง ระบบจะจับคู่กับคนที่เขย่าพร้อมกันภายใน 15 วินาที"),
-            color = Slate300, fontSize = 13.sp, modifier = Modifier.padding(vertical = 8.dp))
-        Text(tr("ระยะจับคู่"), color = Slate300, fontSize = 12.sp)
-        RadiusPicker(radius) { radius = it; NearbyRepo.saveRadius(ctx, it) }
-        if (!granted) {
-            Text(tr("ยังไม่อนุญาตตำแหน่ง: ตัวกรองระยะใช้ไม่ได้ ระบบจะจับคู่กับคนที่เขย่าโดยไม่เปิดตำแหน่งเหมือนกัน (ที่ไหนก็ได้)"),
-                color = Amber400, fontSize = 12.sp, modifier = Modifier.padding(vertical = 6.dp))
-            LocationPermissionCard { granted = true }
+    val grad = androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(androidx.compose.ui.graphics.Color(0xFFFF2FA8), androidx.compose.ui.graphics.Color(0xFF9B3DFF)))
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        // hero: dark gradient stage with the animated shake orb
+        Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(26.dp))
+            .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(androidx.compose.ui.graphics.Color(0xFF140F35), androidx.compose.ui.graphics.Color(0xFF2B1660), androidx.compose.ui.graphics.Color(0xFF5A1A6E))))) {
+            Column(Modifier.fillMaxWidth().padding(vertical = 20.dp, horizontal = 18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(tr("เขย่าเจอเพื่อน"), color = PureWhite, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp)
+                Text(tr("เขย่าพร้อมกันภายใน 15 วินาที แล้วเจอเพื่อนใหม่ทันที"), color = PureWhite.copy(alpha = 0.75f), fontSize = 13.sp, modifier = Modifier.padding(top = 2.dp))
+                Spacer(Modifier.height(18.dp))
+                ShakeOrb(level = if (listening) motion else 0f, burst = burst.value, active = listening || state == "searching", matched = state == "matched")
+                Spacer(Modifier.height(16.dp))
+                // status chip
+                val (dot, label) = when (state) {
+                    "searching" -> androidx.compose.ui.graphics.Color(0xFFFFC94D) to tr("กำลังหาคนที่เขย่าพร้อมกัน…")
+                    "timeout" -> androidx.compose.ui.graphics.Color(0xFFFF8A8A) to tr("ไม่พบใคร ลองเขย่าอีกครั้ง")
+                    "error" -> androidx.compose.ui.graphics.Color(0xFFFF5D73) to tr("เชื่อมต่อไม่สำเร็จ (ยืนยันอีเมลแล้วหรือยัง?)")
+                    "matched" -> androidx.compose.ui.graphics.Color(0xFF34D399) to tr("เจอแล้ว! 🎉")
+                    else -> if (listening) androidx.compose.ui.graphics.Color(0xFF34D399) to tr("พร้อมแล้ว — เขย่าได้เลย") else androidx.compose.ui.graphics.Color(0xFF9A90C2) to tr("ยังไม่ได้เปิดรับการเขย่า")
+                }
+                Row(Modifier.clip(RoundedCornerShape(16.dp)).background(androidx.compose.ui.graphics.Color(0x26FFFFFF)).padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(8.dp).clip(androidx.compose.foundation.shape.CircleShape).background(dot)); Spacer(Modifier.width(8.dp))
+                    Text(label, color = PureWhite, fontSize = 13.sp)
+                    if (state == "searching") { Spacer(Modifier.width(8.dp)); CircularProgressIndicator(color = PureWhite, strokeWidth = 2.dp, modifier = Modifier.size(14.dp)) }
+                }
+                Spacer(Modifier.height(16.dp))
+                // This button only toggles the sensor listener; it never starts a search by itself.
+                Box(Modifier.fillMaxWidth().height(50.dp).clip(RoundedCornerShape(16.dp))
+                    .then(if (listening) Modifier.background(androidx.compose.ui.graphics.Color(0x33FFFFFF)) else Modifier.background(grad))
+                    .clickable { listening = !listening; if (!listening && state != "searching") state = "idle" }, contentAlignment = Alignment.Center) {
+                    Text(if (listening) tr("หยุดรับการเขย่า") else tr("เริ่มรับการเขย่า"), color = PureWhite, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+            }
         }
-        ShakeIcon(level = if (listening) motion else 0f, burst = burst.value, burstStrength = burstStrength,
-            idleHint = state != "searching", icon = if (state == "matched") "🎉" else "📱")
-        Spacer(Modifier.height(12.dp))
-        // This button only toggles the sensor listener; it never starts a search by itself.
-        Button(onClick = { listening = !listening; if (!listening && state != "searching") state = "idle" },
-            colors = ButtonDefaults.buttonColors(containerColor = if (listening) Slate700 else Pink500)) {
-            Text(if (listening) tr("หยุดรับการเขย่า") else tr("เริ่มรับการเขย่า"))
-        }
-        Spacer(Modifier.height(12.dp))
-        Text(when (state) {
-            "searching" -> tr("กำลังหาคนที่เขย่าพร้อมกัน… (สูงสุด ~15 วินาที)")
-            "timeout" -> tr("ไม่พบใครเขย่าพร้อมกัน ลองเขย่าใหม่")
-            "error" -> tr("เชื่อมต่อไม่สำเร็จ (ยืนยันอีเมลแล้วหรือยัง?)")
-            "matched" -> tr("เจอแล้ว! 🎉")
-            else -> if (listening) tr("พร้อมแล้ว — เขย่าได้เลย") else tr("กด 'เริ่มรับการเขย่า' ก่อน")
-        }, color = if (state == "matched") Emerald400 else Slate300, fontSize = 13.sp)
-        if (state == "searching") CircularProgressIndicator(color = Pink500, modifier = Modifier.padding(12.dp))
+        // match result
         found?.let { p ->
-            Surface(shape = RoundedCornerShape(16.dp), color = Slate800, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
-                Column(Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Avatar(p.avatar, p.displayName, 72)
-                    Text(p.displayName, color = White, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.padding(top = 6.dp))
-                    TextButton(onClick = { showProfile = true }) { Text(tr("ดูโปรไฟล์ / เพิ่มเพื่อน / เริ่มแชท"), color = Pink400) }
+            Column(Modifier.padding(top = 14.dp).fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(AppThemeMode.cardSolid)
+                .border(1.5.dp, grad, RoundedCornerShape(22.dp)).padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(Modifier.clip(androidx.compose.foundation.shape.CircleShape).background(grad).padding(3.dp)) { Avatar(p.avatar, p.displayName, 80) }
+                Text(p.displayName, color = AppThemeMode.text, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(top = 8.dp))
+                Text(tr("เขย่าพร้อมกับคุณ"), color = AppThemeMode.muted, fontSize = 12.sp)
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.clip(RoundedCornerShape(14.dp)).background(grad).clickable { showProfile = true }.padding(horizontal = 18.dp, vertical = 11.dp)) {
+                        Text(tr("ดูโปรไฟล์ · เริ่มแชท"), color = PureWhite, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
                     GiftToUserButton(p.uid)
                 }
             }
             if (showProfile) UserProfileDialog(p.uid, null) { showProfile = false }
         }
+        // distance
+        Column(Modifier.padding(top = 14.dp).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(AppThemeMode.cardSolid)
+            .border(1.dp, AppThemeMode.divider, RoundedCornerShape(20.dp)).padding(vertical = 12.dp, horizontal = 8.dp)) {
+            Text(tr("ระยะจับคู่"), color = AppThemeMode.text, fontWeight = FontWeight.Bold, fontSize = 15.sp, modifier = Modifier.padding(start = 8.dp, bottom = 4.dp))
+            RadiusPicker(radius) { radius = it; NearbyRepo.saveRadius(ctx, it) }
+            if (!granted) {
+                Text(tr("ยังไม่อนุญาตตำแหน่ง: จะจับคู่กับคนที่เขย่าโดยไม่เปิดตำแหน่งเหมือนกัน (ที่ไหนก็ได้)"),
+                    color = Amber400, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp))
+                LocationPermissionCard { granted = true }
+            }
+        }
+        // how it works
+        Row(Modifier.padding(top = 14.dp, bottom = 8.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("1" to tr("กดเริ่มรับการเขย่า"), "2" to tr("เขย่าแรง ๆ 2–3 ครั้ง"), "3" to tr("เจอคนที่เขย่าพร้อมกัน")).forEach { (n, t) ->
+                Column(Modifier.weight(1f).clip(RoundedCornerShape(16.dp)).background(AppThemeMode.cardSolid).border(1.dp, AppThemeMode.divider, RoundedCornerShape(16.dp))
+                    .padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(Modifier.size(24.dp).clip(androidx.compose.foundation.shape.CircleShape).background(grad), contentAlignment = Alignment.Center) { Text(n, color = PureWhite, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                    Text(t, color = AppThemeMode.text, fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.padding(top = 6.dp))
+                }
+            }
+        }
     }
 }
+
+/** Glowing gradient orb with a vibration icon: wiggles with the phone's motion, pulses rings while listening, bursts on a shake. */
+@Composable
+private fun ShakeOrb(level: Float, burst: Float, active: Boolean, matched: Boolean) {
+    val t = rememberInfiniteTransition(label = "orb")
+    val pulse by t.animateFloat(0f, 1f, infiniteRepeatable(tween(1800, easing = LinearEasing)), label = "pulse")
+    val wiggle = (if (active) level * 14f else 0f) * kotlin.math.sin(pulse * 40f)
+    Box(Modifier.size(190.dp), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            val c = Offset(size.width / 2, size.height / 2); val r0 = size.minDimension * 0.27f
+            // soft glow
+            drawCircle(androidx.compose.ui.graphics.Brush.radialGradient(listOf(androidx.compose.ui.graphics.Color(0x66FF2FA8), androidx.compose.ui.graphics.Color.Transparent), c, size.minDimension / 2), size.minDimension / 2, c)
+            if (active) for (k in 0 until 3) {
+                val f = (pulse + k / 3f) % 1f
+                drawCircle(androidx.compose.ui.graphics.Color.White.copy(alpha = (1f - f) * 0.35f), r0 + f * size.minDimension * 0.22f, c, style = Stroke(2.dp.toPx()))
+            }
+            if (burst > 0f) drawCircle(androidx.compose.ui.graphics.Color(0xFFFFC94D).copy(alpha = burst * 0.6f), r0 + (1f - burst) * size.minDimension * 0.25f, c, style = Stroke(4.dp.toPx()))
+        }
+        Box(Modifier.size(104.dp).graphicsRotation(wiggle).clip(androidx.compose.foundation.shape.CircleShape)
+            .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(androidx.compose.ui.graphics.Color(0xFFFF4FB8), androidx.compose.ui.graphics.Color(0xFF7B3DFF)))),
+            contentAlignment = Alignment.Center) {
+            androidx.compose.material3.Icon(if (matched) androidx.compose.material.icons.Icons.Rounded.Favorite else androidx.compose.material.icons.Icons.Rounded.Vibration,
+                null, tint = PureWhite, modifier = Modifier.size(50.dp))
+        }
+    }
+}
+
+private fun Modifier.graphicsRotation(deg: Float): Modifier = this.then(Modifier.graphicsLayer { rotationZ = deg })
