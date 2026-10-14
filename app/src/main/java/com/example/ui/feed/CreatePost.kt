@@ -75,13 +75,15 @@ import java.util.Locale
 /* Post composer: text, images, one video, privacy (public / friends / only_me) and an optional place.
  * Uploads use the existing Storage folder posts/{uid}/ and friendtalk-brain POST /posts (which enforces visibility). */
 
-private val CBg = Color(0xFF0A0820)
-private val CCard = Color(0xFF16123A)
-private val CLine = Color(0xFF2A2357)
+// colours follow the user's mode (โหมดมืด / โหมดปกติ)
+private val CBg: Color get() = AppThemeMode.bg
+private val CCard: Color get() = AppThemeMode.cardSolid
+private val CLine: Color get() = AppThemeMode.divider
+private val CText: Color get() = AppThemeMode.text
 private val CNeon = Color(0xFFFF2FA8)
 private val CViolet = Color(0xFFB04DFF)
-private val CMuted = Color(0xFFA49CC8)
-private val CSoft = Color(0xFFD9D3F7)
+private val CMuted: Color get() = AppThemeMode.muted
+private val CSoft: Color get() = AppThemeMode.textSoft
 
 private data class Privacy(val key: String, val icon: String, val label: String, val desc: String)
 private val PRIVACY = listOf(
@@ -183,7 +185,7 @@ fun CreatePostDialog(startWith: String? = null, onDismiss: () -> Unit, onPosted:
                 // top bar: ✕  สร้างโพสต์  [โพสต์]
                 Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { close() }) { Icon(Icons.Filled.Close, tr("ปิด"), tint = CSoft) }
-                    Text(tr("สร้างโพสต์"), color = PureWhite, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text(tr("สร้างโพสต์"), color = CText, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     Box(Modifier.clip(RoundedCornerShape(20.dp)).background(if (canPost) Brush.horizontalGradient(listOf(CNeon, CViolet)) else SolidColor(Color(0xFF2A2357)))
                         .clickable(enabled = canPost) { publish() }.padding(horizontal = 18.dp, vertical = 8.dp)) {
                         Text(if (busy) tr("กำลังโพสต์…") else tr("โพสต์"), color = if (canPost || busy) PureWhite else CMuted, fontSize = 15.sp, fontWeight = FontWeight.Bold)
@@ -198,7 +200,7 @@ fun CreatePostDialog(startWith: String? = null, onDismiss: () -> Unit, onPosted:
                         Avatar(myInfo?.avatar ?: me?.photoUrl?.toString().orEmpty(), myInfo?.name ?: me?.displayName ?: tr("ฉัน"), 48)
                         Spacer(Modifier.width(10.dp))
                         Column {
-                            Text(myInfo?.name ?: me?.displayName ?: tr("ฉัน"), color = PureWhite, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text(myInfo?.name ?: me?.displayName ?: tr("ฉัน"), color = CText, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                             Spacer(Modifier.height(4.dp))
                             val cur = PRIVACY.first { it.key == visibility }
                             Box {
@@ -220,9 +222,9 @@ fun CreatePostDialog(startWith: String? = null, onDismiss: () -> Unit, onPosted:
                     }
                     Spacer(Modifier.height(14.dp))
                     BasicTextField(value = text, onValueChange = { if (it.length <= 2000) text = it }, enabled = !busy,
-                        textStyle = TextStyle(color = PureWhite, fontSize = 18.sp, lineHeight = 26.sp), cursorBrush = SolidColor(CNeon),
+                        textStyle = TextStyle(color = CText, fontSize = 18.sp, lineHeight = 26.sp), cursorBrush = SolidColor(CNeon),
                         modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp),
-                        decorationBox = { inner -> Box { if (text.isEmpty()) Text(tr("คุณกำลังคิดอะไรอยู่?"), color = Color(0xFF8E86B8), fontSize = 18.sp); inner() } })
+                        decorationBox = { inner -> Box { if (text.isEmpty()) Text(tr("คุณกำลังคิดอะไรอยู่?"), color = AppThemeMode.fieldHint, fontSize = 18.sp); inner() } })
                     if (text.length > 1800) Text("${text.length}/2000", color = CMuted, fontSize = 11.sp)
 
                     // place chip: change / remove, and consent for showing a ~1 km point
@@ -231,7 +233,7 @@ fun CreatePostDialog(startWith: String? = null, onDismiss: () -> Unit, onPosted:
                         Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(CCard).border(1.dp, Color(0xFF4A3590), RoundedCornerShape(12.dp)).padding(start = 10.dp),
                             verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Filled.LocationOn, null, tint = CNeon, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
-                            Text(pl.label, color = PureWhite, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            Text(pl.label, color = CText, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                             TextButton(onClick = { placePicker = true }, enabled = !busy) { Text(tr("เปลี่ยน"), color = CNeon, fontSize = 13.sp) }
                             IconButton(onClick = { place = null }, enabled = !busy) { Icon(Icons.Filled.Close, tr("ลบสถานที่"), tint = CMuted, modifier = Modifier.size(18.dp)) }
                         }
@@ -394,11 +396,11 @@ fun PlacePickerDialog(current: PostPlace?, onDismiss: () -> Unit, onPick: (PostP
     if (mode == "map") { MapPickDialog(start = point ?: current?.let { c -> if (c.lat != null && c.lng != null) c.lat to c.lng else null }, onDismiss = { mode = "menu" }, onPick = { la, lo -> usePoint(la, lo) }); return }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.fillMaxWidth(0.94f).heightIn(max = 640.dp), shape = RoundedCornerShape(22.dp), color = Color(0xFF120E2E), border = BorderStroke(1.dp, Color(0xFF4A3590))) {
+        Surface(Modifier.fillMaxWidth(0.94f).heightIn(max = 640.dp), shape = RoundedCornerShape(22.dp), color = AppThemeMode.dialog, border = BorderStroke(1.dp, Color(0xFF4A3590))) {
             Column(Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (mode != "menu") TextButton(onClick = { mode = "menu"; info = "" }, enabled = !busy) { Text("‹ " + tr("กลับ"), color = CSoft) }
-                    Text(tr("เพิ่มสถานที่ 📍"), color = PureWhite, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text(tr("เพิ่มสถานที่ 📍"), color = CText, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, tr("ปิด"), tint = CMuted) }
                 }
                 if (info.isNotBlank()) Text(info, color = if (busy) CSoft else Amber400, fontSize = 13.sp, modifier = Modifier.padding(vertical = 6.dp))
@@ -441,7 +443,7 @@ private fun PickRow(icon: @Composable () -> Unit, title: String, sub: String?, o
         Box(Modifier.size(28.dp), contentAlignment = Alignment.Center) { icon() }
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
-            Text(title, color = PureWhite, fontSize = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(title, color = CText, fontSize = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (!sub.isNullOrBlank()) Text(sub, color = CMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
@@ -453,7 +455,7 @@ private fun PlaceTextField(value: String, onChange: (String) -> Unit, hint: Stri
         placeholder = { Text(hint, color = CMuted) },
         keyboardOptions = KeyboardOptions(imeAction = if (onDone != null) ImeAction.Search else ImeAction.Done),
         keyboardActions = KeyboardActions(onSearch = { onDone?.invoke() }),
-        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = PureWhite, unfocusedTextColor = PureWhite, focusedBorderColor = CNeon, unfocusedBorderColor = Color(0xFF4A3590)))
+        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = CText, unfocusedTextColor = CText, focusedBorderColor = CNeon, unfocusedBorderColor = Color(0xFF4A3590)))
 }
 
 @Composable
@@ -498,12 +500,12 @@ private fun ProvincePicker(onPick: (PostPlace) -> Unit) {
         PlaceTextField(filter, { filter = it }, tr("ค้นหาจังหวัด"))
         LazyColumn(Modifier.heightIn(max = 380.dp)) {
             items(THAI_PROVINCES.filter { filter.isBlank() || it.contains(filter.trim()) }) { name ->
-                Text(name, color = PureWhite, fontSize = 15.sp, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { province = name }.padding(horizontal = 8.dp, vertical = 11.dp))
+                Text(name, color = CText, fontSize = 15.sp, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { province = name }.padding(horizontal = 8.dp, vertical = 11.dp))
             }
         }
     } else Column {
         val bkk = p == "กรุงเทพมหานคร"
-        Text(tr("จังหวัด") + ": $p", color = PureWhite, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+        Text(tr("จังหวัด") + ": $p", color = CText, fontSize = 15.sp, fontWeight = FontWeight.Medium)
         TextButton(onClick = { province = null; district = "" }) { Text(tr("เปลี่ยนจังหวัด"), color = CNeon, fontSize = 13.sp) }
         PlaceTextField(district, { district = it }, if (bkk) tr("เขต (ไม่บังคับ)") else tr("อำเภอ (ไม่บังคับ)"))
         Button(onClick = {
@@ -537,7 +539,7 @@ fun MapPickDialog(start: Pair<Double, Double>?, onDismiss: () -> Unit, onPick: (
             Column(Modifier.fillMaxSize().systemBarsPadding()) {
                 Row(Modifier.fillMaxWidth().padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, tr("ปิด"), tint = CSoft) }
-                    Text(tr("เลือกตำแหน่งจากแผนที่"), color = PureWhite, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text(tr("เลือกตำแหน่งจากแผนที่"), color = CText, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 }
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())

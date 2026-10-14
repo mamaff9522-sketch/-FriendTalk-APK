@@ -60,7 +60,7 @@ fun DiscoverTab(
     val f = fn
     androidx.activity.compose.BackHandler(enabled = f != null) { fn = null }
     if (f != null) {
-        Column(Modifier.fillMaxSize().background(Color(0xFF0A0820))) {
+        Column(Modifier.fillMaxSize().background(AppThemeMode.pageBrush)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = { fn = null }) { Text(tr("← หาเพื่อน"), color = White, fontSize = 15.sp) }
                 Text(TILES.firstOrNull { it.first == f }?.second ?: "", color = Slate300, fontSize = 14.sp)
@@ -90,14 +90,15 @@ private val TILE_TINT = mapOf("random" to Color(0xFFEC4899), "shake" to Color(0x
 private val TILE_ICONS = mapOf("random" to "🎲", "shake" to "📱", "radar" to "📡", "swipe" to "💘", "similar" to "🧩", "requests" to "🤝", "companion" to "💗")
 
 // ---- mockup palette (light lavender page, glassy cards, colourful tiles) ----
-private val FPageBg = Brush.verticalGradient(listOf(Color(0xFFE9D9FF), Color(0xFFF3DDF5), Color(0xFFE6CFF4), Color(0xFFD9B8EE)))
-private val FInk = Color(0xFF3B1C5A)
-private val FInkSoft = Color(0xFF7A5B98)
+// colours follow the user's mode (โหมดปกติ = this lavender look, โหมดมืด = Home's dark look)
+private val FPageBg: Brush get() = AppThemeMode.pageBrush
+private val FInk: Color get() = AppThemeMode.text
+private val FInkSoft: Color get() = AppThemeMode.muted
 private val FViolet = Color(0xFF8B3DFF)
 private val FPink = Color(0xFFE6399B)
 private val FOnline = Color(0xFF22C55E)
-private val FCard = Color(0x8CFFFFFF)
-private val FCardBorder = Color(0xCCFFFFFF)
+private val FCard: Color get() = AppThemeMode.card
+private val FCardBorder: Color get() = if (AppThemeMode.dark) Color(0xFF2A2357) else Color(0xCCFFFFFF)
 
 private val TILE_SUB = mapOf(
     "random" to "เจอเพื่อนใหม่\nแบบสุ่ม", "shake" to "เขย่าเพื่อเจอ\nเพื่อนรอบตัว", "radar" to "ค้นหาเพื่อน\nรอบตัวคุณ", "swipe" to "ปัดซ้ายขวา\nหาเพื่อนที่ใช่",
@@ -166,11 +167,11 @@ private fun CircleRow(people: List<Pair<RealProfile, String>>, online: Boolean, 
             Column(Modifier.width(w).clip(RoundedCornerShape(10.dp)).clickable { onOpen(p.uid) }, horizontalAlignment = Alignment.CenterHorizontally) {
                 val ring = if (online) Brush.linearGradient(listOf(Color(0xFF34D399), FOnline)) else Brush.linearGradient(listOf(Color(0xFFFF7AD0), Color(0xFFB45CFF)))
                 Box(Modifier.size(w - 4.dp)) {
-                    Box(Modifier.fillMaxSize().clip(CircleShape).background(ring).padding(2.5.dp).clip(CircleShape).background(Color.White).padding(1.5.dp)) {
+                    Box(Modifier.fillMaxSize().clip(CircleShape).background(ring).padding(2.5.dp).clip(CircleShape).background(AppThemeMode.bg).padding(1.5.dp)) {
                         Avatar(p.avatar, p.displayName, (w - 12.dp).value.toInt())
                     }
                     if (online) Box(Modifier.align(Alignment.BottomEnd).padding(end = 2.dp, bottom = 2.dp).size(13.dp).clip(CircleShape).background(Color.White).padding(2.dp).clip(CircleShape).background(FOnline))
-                    else if (dist.isNotBlank()) Row(Modifier.align(Alignment.BottomCenter).offset(y = 4.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xE6FFFFFF)).padding(horizontal = 5.dp, vertical = 1.dp),
+                    else if (dist.isNotBlank()) Row(Modifier.align(Alignment.BottomCenter).offset(y = 4.dp).clip(RoundedCornerShape(10.dp)).background(AppThemeMode.pill).padding(horizontal = 5.dp, vertical = 1.dp),
                         verticalAlignment = Alignment.CenterVertically) {
                         Icon(androidx.compose.material.icons.Icons.Filled.LocationOn, null, tint = FPink, modifier = Modifier.size(11.dp))
                         Text(com.example.ui.feed.thaiDistance(dist), color = FInk, fontSize = 10.sp, maxLines = 1)
@@ -245,19 +246,19 @@ private fun FindFriendsHome(onTile: (String) -> Unit, showCompanion: Boolean) {
     Box(Modifier.fillMaxSize().background(FPageBg)) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 10.dp, bottom = 16.dp)) {
             // search pill: 🔍 ค้นหาเพื่อน … [filters]
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp).clip(RoundedCornerShape(28.dp)).background(Color(0xB3FFFFFF))
-                .border(1.5.dp, Color(0xE6FFFFFF), RoundedCornerShape(28.dp)).padding(start = 16.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp).clip(RoundedCornerShape(28.dp)).background(AppThemeMode.field)
+                .border(1.5.dp, if (AppThemeMode.dark) Color(0xBFBE5AFF) else Color(0xE6FFFFFF), RoundedCornerShape(28.dp)).padding(start = 16.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                Icon(androidx.compose.material.icons.Icons.Filled.Search, null, tint = Color(0xFF6B2FB0), modifier = Modifier.size(24.dp))
+                Icon(androidx.compose.material.icons.Icons.Filled.Search, null, tint = if (AppThemeMode.dark) Color(0xFFC48CFF) else Color(0xFF6B2FB0), modifier = Modifier.size(24.dp))
                 Spacer(Modifier.width(10.dp))
                 androidx.compose.foundation.text.BasicTextField(value = query, onValueChange = { query = it.take(50); if (it.isBlank()) { results = null; searchMsg = "" } },
                     singleLine = true, textStyle = androidx.compose.ui.text.TextStyle(color = FInk, fontSize = 16.sp),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = { search() }),
                     modifier = Modifier.weight(1f).padding(vertical = 10.dp),
-                    decorationBox = { inner -> Box { if (query.isEmpty()) Text(tr("ค้นหาเพื่อน"), color = Color(0xFF9B83B5), fontSize = 16.sp); inner() } })
+                    decorationBox = { inner -> Box { if (query.isEmpty()) Text(tr("ค้นหาเพื่อน"), color = AppThemeMode.fieldHint, fontSize = 16.sp); inner() } })
                 if (query.isNotBlank()) TextButton(onClick = { query = ""; results = null; searchMsg = "" }) { Text(tr("ล้าง"), color = FInkSoft, fontSize = 13.sp) }
-                Box(Modifier.size(44.dp).clip(CircleShape).background(Color(0x99FFFFFF)).border(1.dp, Color(0xFFE2CFF5), CircleShape).clickable { filters = true }, contentAlignment = Alignment.Center) {
-                    Icon(androidx.compose.material.icons.Icons.Filled.Tune, tr("ตัวกรอง"), tint = Color(0xFF6B2FB0), modifier = Modifier.size(22.dp))
+                Box(Modifier.size(44.dp).clip(CircleShape).background(AppThemeMode.pill).border(1.dp, AppThemeMode.divider, CircleShape).clickable { filters = true }, contentAlignment = Alignment.Center) {
+                    Icon(androidx.compose.material.icons.Icons.Filled.Tune, tr("ตัวกรอง"), tint = if (AppThemeMode.dark) Color(0xFFC48CFF) else Color(0xFF6B2FB0), modifier = Modifier.size(22.dp))
                 }
             }
             if (searchMsg.isNotBlank()) Text(searchMsg, color = Color(0xFFB45309), fontSize = 12.sp, modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp))

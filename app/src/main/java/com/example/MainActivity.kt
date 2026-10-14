@@ -193,7 +193,10 @@ fun FriendTalkApp(
 
     com.example.ui.social.ProfileNav.openOwn = { viewModel.setActiveTab("profile") }
     // Home uses the original mockup palette (dark navy + magenta/purple neon); other pages keep the published theme.
-    FriendTalkTheme(themeConfig = if (uiState.activeTab == "home") com.example.ui.feed.HOME_MOCKUP_THEME.copy(backgrounds = uiState.uiConfig.theme.backgrounds - "app") else uiState.uiConfig.theme) {
+    // User's mode from the "ฉัน" page: โหมดมืด = Home look on every page, โหมดปกติ = 'หาเพื่อน' look on every page.
+    val modeCtx = LocalContext.current
+    remember { com.example.ui.theme.AppThemeMode.load(modeCtx) }
+    FriendTalkTheme(themeConfig = com.example.ui.theme.AppThemeMode.themeConfig()) {
         // Maintenance mode from published Remote UI config: blocks normal users, admins still get in.
         LaunchedEffect(uiState.currentUser.id) { com.example.ui.components.AppGates.start(); com.example.social.Wallet.start() }
         // System back: other tab → Home; on Home press twice within 2s to exit. Dialogs/sub-screens handle back themselves first.
@@ -217,8 +220,7 @@ fun FriendTalkApp(
             }
             return@FriendTalkTheme
         }
-        val bgs = uiState.uiConfig.theme.backgrounds
-        com.example.ui.theme.AppBackground(bgs["tab_" + uiState.activeTab] ?: bgs["app"])
+        com.example.ui.theme.ModeBackground()
         Scaffold(
             containerColor = androidx.compose.ui.graphics.Color.Transparent,
             modifier = Modifier

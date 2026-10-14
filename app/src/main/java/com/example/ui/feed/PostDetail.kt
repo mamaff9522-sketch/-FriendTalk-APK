@@ -56,13 +56,15 @@ import kotlinx.coroutines.launch
  * Uses the post already returned by /feed (the server only returns posts the viewer may see); comments use the
  * existing /posts/{id}/comments endpoints, which check visibility again. */
 
-private val DBg = Color(0xFF0A0820)
-private val DCard = Color(0xFF16123A)
-private val DLine = Color(0xFF2A2357)
+// colours follow the user's mode (โหมดมืด / โหมดปกติ)
+private val DBg: Color get() = AppThemeMode.bg
+private val DCard: Color get() = AppThemeMode.cardSolid
+private val DLine: Color get() = AppThemeMode.divider
+private val DText: Color get() = AppThemeMode.text
 private val DNeon = Color(0xFFFF2FA8)
 private val DViolet = Color(0xFFB04DFF)
-private val DMuted = Color(0xFFA49CC8)
-private val DSoft = Color(0xFFD9D3F7)
+private val DMuted: Color get() = AppThemeMode.muted
+private val DSoft: Color get() = AppThemeMode.textSoft
 
 fun sharePost(ctx: android.content.Context, p: FeedPost) {
     val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, (p.authorName + ": " + p.text).trim() + "\n— FriendTalk")
@@ -110,7 +112,7 @@ fun PostDetailDialog(post: FeedPost, onDismiss: () -> Unit, onLike: () -> Unit, 
                 // top bar
                 Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onDismiss) { Icon(Icons.AutoMirrored.Filled.ArrowBack, tr("กลับ"), tint = DSoft) }
-                    Text("โพสต์ของ ${post.authorName.ifBlank { tr("ผู้ใช้") }}", color = PureWhite, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.weight(1f))
+                    Text("โพสต์ของ ${post.authorName.ifBlank { tr("ผู้ใช้") }}", color = DText, fontSize = 17.sp, fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.weight(1f))
                     Box {
                         IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, tr("เพิ่มเติม"), tint = DSoft) }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
@@ -129,7 +131,7 @@ fun PostDetailDialog(post: FeedPost, onDismiss: () -> Unit, onLike: () -> Unit, 
                                 Spacer(Modifier.width(10.dp))
                                 Column(Modifier.weight(1f)) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(post.authorName, color = PureWhite, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.clickable { author = post.authorId })
+                                        Text(post.authorName, color = DText, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.clickable { author = post.authorId })
                                         if (info?.verified == true) Icon(Icons.Filled.Verified, null, tint = DNeon, modifier = Modifier.padding(start = 4.dp).size(16.dp))
                                     }
                                     Text(thaiTimeAgo(post.createdAt) + " · " + privacyIcon(post.visibility), color = DMuted, fontSize = 12.sp)
@@ -141,7 +143,7 @@ fun PostDetailDialog(post: FeedPost, onDismiss: () -> Unit, onLike: () -> Unit, 
                                 Text(post.placeLabel, color = Color(0xFFFF8BCB), fontSize = 13.sp)
                                 Text("  · " + tr("ดูแผนที่ ›"), color = DMuted, fontSize = 12.sp)
                             }
-                            if (post.text.isNotBlank()) Text(post.text, color = PureWhite, fontSize = 16.sp, lineHeight = 23.sp, modifier = Modifier.padding(top = 10.dp))
+                            if (post.text.isNotBlank()) Text(post.text, color = DText, fontSize = 16.sp, lineHeight = 23.sp, modifier = Modifier.padding(top = 10.dp))
                             if (post.hashtags.isNotEmpty()) Text(post.hashtags.joinToString("  ") { "#$it" }, color = Cyan400, fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp))
                         }
                     }
@@ -163,7 +165,7 @@ fun PostDetailDialog(post: FeedPost, onDismiss: () -> Unit, onLike: () -> Unit, 
                                 DetailAction(Modifier.weight(1f), { Icon(Icons.AutoMirrored.Outlined.Reply, null, tint = DSoft, modifier = Modifier.size(19.dp).graphicsLayer(scaleX = -1f)) }, tr("แชร์")) { sharePost(ctx, post) }
                             }
                             HorizontalDivider(color = DLine, thickness = 0.8.dp, modifier = Modifier.padding(top = 8.dp))
-                            Text(tr("ความคิดเห็น"), color = PureWhite, fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 10.dp))
+                            Text(tr("ความคิดเห็น"), color = DText, fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 10.dp))
                         }
                     }
                     val list = comments
@@ -198,7 +200,7 @@ fun PostDetailDialog(post: FeedPost, onDismiss: () -> Unit, onLike: () -> Unit, 
                     if (msg.isNotBlank()) Text(msg, color = Amber400, fontSize = 12.sp, modifier = Modifier.padding(bottom = 4.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         BasicTextField(value = input, onValueChange = { if (it.length <= 1000) input = it }, enabled = !sending, maxLines = 4,
-                            textStyle = TextStyle(color = PureWhite, fontSize = 15.sp), cursorBrush = SolidColor(DNeon),
+                            textStyle = TextStyle(color = DText, fontSize = 15.sp), cursorBrush = SolidColor(DNeon),
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send), keyboardActions = KeyboardActions(onSend = { send() }),
                             modifier = Modifier.weight(1f).clip(RoundedCornerShape(20.dp)).background(DCard).padding(horizontal = 14.dp, vertical = 11.dp),
                             decorationBox = { inner -> Box { if (input.isEmpty()) Text(tr("เขียนความคิดเห็น…"), color = DMuted, fontSize = 15.sp); inner() } })
@@ -236,7 +238,7 @@ private fun CommentItem(c: FeedComment, isReply: Boolean, canDelete: Boolean, on
         Column(Modifier.weight(1f)) {
             Surface(shape = RoundedCornerShape(16.dp), color = DCard, border = BorderStroke(0.5.dp, DLine)) {
                 Column(Modifier.padding(horizontal = 12.dp, vertical = 7.dp)) {
-                    Text(c.authorName, color = PureWhite, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Text(c.authorName, color = DText, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     Text(c.text, color = DSoft, fontSize = 14.sp)
                 }
             }

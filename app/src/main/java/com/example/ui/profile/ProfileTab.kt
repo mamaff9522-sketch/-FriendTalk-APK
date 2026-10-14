@@ -49,10 +49,10 @@ fun ProfileTab(
         dismissButton = { TextButton(onClick = { confirmLogout = false }) { Text(tr("ยกเลิก")) } })
     LazyColumn(
         modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .fillMaxSize(),
         contentPadding = PaddingValues(bottom = 80.dp)
     ) {
+        item(key = "theme_mode") { ThemeModeCard() }
         item(key = "logout_row") {
             Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.End) {
                 OutlinedButton(onClick = { myPosts = true }) { Text(tr("📝 โพสต์ของฉัน"), color = White, fontSize = 13.sp) }
@@ -295,6 +295,36 @@ fun ProfileTab(
                                 Text(tr("จัดการการเข้าถึงกล้อง ไมโครโฟน และตำแหน่ง"), fontSize = 12.sp, color = Slate400)
                             }
                             Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Slate400)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+/** โหมดมืด (Home look on every page) / โหมดปกติ ('หาเพื่อน' look on every page). Saved on this device. */
+@Composable
+private fun ThemeModeCard() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val dark = com.example.ui.theme.AppThemeMode.dark
+    Surface(shape = RoundedCornerShape(18.dp), color = com.example.ui.theme.AppThemeMode.card,
+        border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.AppThemeMode.line),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
+        Column(Modifier.padding(14.dp)) {
+            Text(tr("🎨 รูปแบบการแสดงผล"), color = White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            Text(tr("เลือกได้ว่าจะให้ทุกหน้าเป็นโหมดมืด หรือโหมดปกติ"), color = Slate400, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp, bottom = 10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                listOf(true to tr("🌙 โหมดมืด"), false to tr("☀️ โหมดปกติ")).forEach { (isDark, label) ->
+                    val on = dark == isDark
+                    Surface(onClick = { com.example.ui.theme.AppThemeMode.set(ctx, isDark) }, shape = RoundedCornerShape(14.dp),
+                        color = if (on) androidx.compose.ui.graphics.Color.Transparent else com.example.ui.theme.AppThemeMode.cardSolid,
+                        border = androidx.compose.foundation.BorderStroke(if (on) 0.dp else 1.dp, com.example.ui.theme.AppThemeMode.divider),
+                        modifier = Modifier.weight(1f)) {
+                        Box(Modifier.fillMaxWidth().then(if (on) Modifier.background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(androidx.compose.ui.graphics.Color(0xFFFF2FA8), androidx.compose.ui.graphics.Color(0xFFB04DFF)))) else Modifier)
+                            .padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
+                            Text(label + if (on) "  ✓" else "", color = if (on) PureWhite else White, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, fontSize = 14.sp)
                         }
                     }
                 }

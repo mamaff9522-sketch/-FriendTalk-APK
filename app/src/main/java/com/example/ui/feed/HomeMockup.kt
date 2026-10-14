@@ -92,13 +92,15 @@ import kotlin.coroutines.resume
  * lives + users from RTDB, nearby from friendtalk-brain /radar/nearby, feed from /feed. */
 
 // ---- mockup palette ----
-private val HBg = Color(0xFF0A0820)
-private val HCard = Color(0xFF120E2E)
-private val HLine = Color(0xFF2A2357)
+// colours follow the user's mode (โหมดมืด / โหมดปกติ, set on the "ฉัน" page)
+private val HBg: Color get() = AppThemeMode.bg
+private val HCard: Color get() = AppThemeMode.card
+private val HLine: Color get() = AppThemeMode.line
+private val HText: Color get() = AppThemeMode.text
 private val HNeon = Color(0xFFFF2FA8)
 private val HViolet = Color(0xFFB04DFF)
-private val HMuted = Color(0xFFA49CC8)
-private val HSoft = Color(0xFFCFC9EE)
+private val HMuted: Color get() = AppThemeMode.muted
+private val HSoft: Color get() = AppThemeMode.textSoft
 private val HOnline = Color(0xFF2BD96B)
 private val HRed = Color(0xFFFF2D55)
 private val ringBrush = Brush.sweepGradient(listOf(HNeon, HViolet, Color(0xFF6D5BFF), HNeon))
@@ -239,7 +241,7 @@ private fun WalletChip(onClick: () -> Unit, icon: @Composable () -> Unit, value:
 fun HomeHeader(currentUser: User, onAvatar: () -> Unit, onCoins: () -> Unit, onDiamonds: () -> Unit, onBell: () -> Unit, onAdmin: () -> Unit) {
     val notif by HomeRepo.notifCount.collectAsState()
     val signedIn = FirebaseAuth.getInstance().currentUser != null
-    Surface(color = HBg, modifier = Modifier.fillMaxWidth()) {
+    Box(Modifier.fillMaxWidth().background(AppThemeMode.headerBrush)) {
         Column(Modifier.statusBarsPadding()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.clip(CircleShape).clickable(onClick = onAvatar)) {
@@ -271,7 +273,7 @@ fun HomeHeader(currentUser: User, onAvatar: () -> Unit, onCoins: () -> Unit, onD
                     }
                 }
             }
-            HorizontalDivider(color = HLine.copy(alpha = 0.7f), thickness = 0.8.dp)
+            HorizontalDivider(color = AppThemeMode.divider.copy(alpha = 0.7f), thickness = 0.8.dp)
         }
     }
 }
@@ -279,12 +281,12 @@ fun HomeHeader(currentUser: User, onAvatar: () -> Unit, onCoins: () -> Unit, onD
 /** Search pill in the Home header style; opens the existing global search. */
 @Composable
 fun HomeSearchPill(onOpen: () -> Unit) {
-    Row(Modifier.fillMaxWidth().background(HBg).padding(horizontal = 10.dp, vertical = 6.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xFF130F30))
+    Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp).clip(RoundedCornerShape(16.dp)).background(AppThemeMode.field)
         .border(1.5.dp, Color(0xBFBE5AFF), RoundedCornerShape(16.dp)).clickable(onClick = onOpen).padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically) {
         Icon(androidx.compose.material.icons.Icons.Filled.Search, null, tint = Color(0xFFC48CFF), modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(10.dp))
-        Text(tr("ค้นหาเพื่อน หรือ #แฮชแท็ก…"), color = Color(0xFF8E86B8), fontSize = 14.sp)
+        Text(tr("ค้นหาเพื่อน หรือ #แฮชแท็ก…"), color = AppThemeMode.fieldHint, fontSize = 14.sp)
     }
 }
 
@@ -292,7 +294,7 @@ fun HomeSearchPill(onOpen: () -> Unit) {
 private fun HomeSectionTitle(icon: @Composable () -> Unit, title: String, onSeeAll: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         icon(); Spacer(Modifier.width(6.dp))
-        Text(title, color = PureWhite, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+        Text(title, color = HText, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
         Text(tr("ดูทั้งหมด ›"), color = HNeon, fontSize = 12.5.sp, modifier = Modifier.clickable(onClick = onSeeAll).padding(4.dp))
     }
 }
@@ -319,7 +321,7 @@ fun HomeLiveSection(onSeeAll: () -> Unit) {
         val l = lives
         when {
             l == null -> Row(Modifier.padding(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                repeat(5) { Box(Modifier.width(cardW).aspectRatio(0.75f).clip(RoundedCornerShape(12.dp)).background(Color(0xFF1B1640))) }
+                repeat(5) { Box(Modifier.width(cardW).aspectRatio(0.75f).clip(RoundedCornerShape(12.dp)).background(AppThemeMode.skeleton)) }
             }
             l.isEmpty() -> EmptyRow(if (failed) tr("โหลดไลฟ์ไม่สำเร็จ") else tr("ยังไม่มีใครไลฟ์ตอนนี้"))
             else -> LazyRow(contentPadding = PaddingValues(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -366,7 +368,7 @@ fun HomeNearbySection(onSeeAll: () -> Unit) {
         Spacer(Modifier.height(10.dp))
         val l = list
         when {
-            l == null && !done -> Row(Modifier.padding(horizontal = 6.dp)) { repeat(6) { Box(Modifier.width(itemW), contentAlignment = Alignment.Center) { Box(Modifier.size(54.dp).clip(CircleShape).background(Color(0xFF1B1640))) } } }
+            l == null && !done -> Row(Modifier.padding(horizontal = 6.dp)) { repeat(6) { Box(Modifier.width(itemW), contentAlignment = Alignment.Center) { Box(Modifier.size(54.dp).clip(CircleShape).background(AppThemeMode.skeleton)) } } }
             l == null -> EmptyRow(tr("เปิดเรดาร์เพื่อดูคนใกล้คุณ ›"), onSeeAll)
             l.isEmpty() -> EmptyRow(tr("ยังไม่พบคนใกล้คุณ"), onSeeAll)
             else -> LazyRow(contentPadding = PaddingValues(horizontal = 6.dp)) {
@@ -375,12 +377,12 @@ fun HomeNearbySection(onSeeAll: () -> Unit) {
                         Box(Modifier.height(64.dp), contentAlignment = Alignment.TopCenter) {
                             RingAvatar(n.profile.avatar, n.profile.displayName, 56.dp)
                             Box(Modifier.padding(start = 42.dp, top = 40.dp).size(12.dp).clip(CircleShape).background(HBg).padding(2.dp).clip(CircleShape).background(HOnline))
-                            Box(Modifier.align(Alignment.BottomCenter).clip(RoundedCornerShape(10.dp)).background(Color(0xFF151033)).border(1.dp, Color(0xFF3B2F6E), RoundedCornerShape(10.dp)).padding(horizontal = 5.dp)) {
-                                Text(thaiDistance(n.distance), color = PureWhite, fontSize = 9.5.sp, maxLines = 1)
+                            Box(Modifier.align(Alignment.BottomCenter).clip(RoundedCornerShape(10.dp)).background(AppThemeMode.pill).border(1.dp, if (AppThemeMode.dark) Color(0xFF3B2F6E) else Color(0xFFE2CFF5), RoundedCornerShape(10.dp)).padding(horizontal = 5.dp)) {
+                                Text(thaiDistance(n.distance), color = HText, fontSize = 9.5.sp, maxLines = 1)
                             }
                         }
                         Spacer(Modifier.height(3.dp))
-                        Text(n.profile.displayName, color = PureWhite, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(n.profile.displayName, color = HText, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
@@ -395,11 +397,11 @@ fun HomeComposerBar(onPosted: (FeedPost) -> Unit) {
     var open by remember { mutableStateOf<String?>(null) } // null = closed, "" = text, "image" = open with photo picker
     Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp)) {
         Row(Modifier.fillMaxWidth().shadow(10.dp, RoundedCornerShape(16.dp), ambientColor = HViolet, spotColor = HViolet).clip(RoundedCornerShape(16.dp))
-            .background(Color(0xFF130F30)).border(1.5.dp, Color(0xBFBE5AFF), RoundedCornerShape(16.dp)).clickable { open = "" }.padding(horizontal = 14.dp, vertical = 11.dp),
+            .background(AppThemeMode.field).border(1.5.dp, Color(0xBFBE5AFF), RoundedCornerShape(16.dp)).clickable { open = "" }.padding(horizontal = 14.dp, vertical = 11.dp),
             verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.Edit, null, tint = Color(0xFFC48CFF), modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(10.dp))
-            Text(tr("โพสต์..."), color = Color(0xFF8E86B8), fontSize = 15.sp, modifier = Modifier.weight(1f))
+            Text(tr("โพสต์..."), color = AppThemeMode.fieldHint, fontSize = 15.sp, modifier = Modifier.weight(1f))
             Icon(Icons.Outlined.Image, tr("แนบรูป"), tint = Color(0xFFC48CFF), modifier = Modifier.size(24.dp).clip(RoundedCornerShape(4.dp)).clickable { open = "image" })
         }
     }
@@ -472,7 +474,7 @@ fun HomeFeedTabs(selected: String, onSelect: (String) -> Unit) {
             listOf("all" to tr("ทั้งหมด"), "near" to tr("ใกล้คุณ"), "following" to tr("กำลังติดตาม")).forEach { (k, label) ->
                 val on = selected == k
                 Column(Modifier.width(IntrinsicSize.Max).clickable { if (!on) onSelect(k) }.padding(horizontal = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(label, color = if (on) HNeon else Color(0xFFBDB6E0), fontSize = 14.sp, fontWeight = if (on) FontWeight.Medium else FontWeight.Normal,
+                    Text(label, color = if (on) HNeon else HMuted, fontSize = 14.sp, fontWeight = if (on) FontWeight.Medium else FontWeight.Normal,
                         style = if (on) neonGlow else TextStyle.Default, modifier = Modifier.padding(vertical = 6.dp))
                     Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(if (on) Brush.horizontalGradient(listOf(HNeon, HViolet)) else SolidColor(Color.Transparent)))
                 }
@@ -506,7 +508,7 @@ fun HomePostCard(p: FeedPost, distance: String, modifier: Modifier, onLike: () -
                 Spacer(Modifier.width(6.dp))
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(p.authorName, color = PureWhite, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                        Text(p.authorName, color = HText, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                         if (info?.verified == true) Icon(Icons.Filled.Verified, null, tint = HNeon, modifier = Modifier.padding(start = 3.dp).size(14.dp))
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -525,7 +527,7 @@ fun HomePostCard(p: FeedPost, distance: String, modifier: Modifier, onLike: () -
                 Icon(Icons.Filled.LocationOn, tr("ดูบนแผนที่"), tint = HNeon, modifier = Modifier.size(12.dp)); Spacer(Modifier.width(2.dp))
                 Text(p.placeLabel, color = Color(0xFFFF8BCB), fontSize = 10.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            if (p.text.isNotBlank()) Text(p.text, color = PureWhite, fontSize = 12.5.sp, maxLines = 3, overflow = TextOverflow.Ellipsis, lineHeight = 17.sp,
+            if (p.text.isNotBlank()) Text(p.text, color = HText, fontSize = 12.5.sp, maxLines = 3, overflow = TextOverflow.Ellipsis, lineHeight = 17.sp,
                 modifier = Modifier.padding(start = 8.dp, end = 8.dp, bottom = 6.dp))
             if (p.videoUrl.isNotBlank()) PostVideoThumb(p, Modifier.padding(horizontal = 6.dp).fillMaxWidth().aspectRatio(1f / 1.08f))
             else p.imageUrls.firstOrNull()?.let { url ->
@@ -587,10 +589,10 @@ fun HomeNotificationsDialog(onDismiss: () -> Unit) {
         HomeRepo.refreshCounts()
     }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.fillMaxWidth(0.94f).fillMaxHeight(0.7f), shape = RoundedCornerShape(22.dp), color = HCard, border = BorderStroke(1.dp, Color(0xFF4A3590))) {
+        Surface(Modifier.fillMaxWidth(0.94f).fillMaxHeight(0.7f), shape = RoundedCornerShape(22.dp), color = AppThemeMode.dialog, border = BorderStroke(1.dp, Color(0xFF4A3590))) {
             Column(Modifier.padding(14.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(tr("การแจ้งเตือน"), color = PureWhite, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text(tr("การแจ้งเตือน"), color = HText, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     TextButton(onClick = onDismiss) { Text(tr("ปิด"), color = HSoft) }
                 }
                 val r = reqs
@@ -601,7 +603,7 @@ fun HomeNotificationsDialog(onDismiss: () -> Unit) {
                         Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             Avatar(q.profile.avatar, q.profile.displayName, 42); Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f)) {
-                                Text("${q.profile.displayName} ขอเป็นเพื่อน", color = PureWhite, fontSize = 14.sp, maxLines = 2)
+                                Text("${q.profile.displayName} ขอเป็นเพื่อน", color = HText, fontSize = 14.sp, maxLines = 2)
                                 Text(thaiTimeAgo(q.at), color = HMuted, fontSize = 11.sp)
                             }
                             TextButton(onClick = { scope.launch { NearbyRepo.respond(q.profile.uid, true); reqs = reqs?.filter { it !== q }; HomeRepo.refreshCounts() } }) { Text(tr("ตอบรับ"), color = HNeon) }
@@ -613,7 +615,7 @@ fun HomeNotificationsDialog(onDismiss: () -> Unit) {
                         Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             Avatar(u?.avatar ?: "", u?.name ?: "?", 42); Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f)) {
-                                Text("คุณกับ ${u?.name ?: tr("ผู้ใช้")} แมตช์กันแล้ว 💞", color = PureWhite, fontSize = 14.sp, maxLines = 2)
+                                Text("คุณกับ ${u?.name ?: tr("ผู้ใช้")} แมตช์กันแล้ว 💞", color = HText, fontSize = 14.sp, maxLines = 2)
                                 Text(thaiTimeAgo(m.at), color = HMuted, fontSize = 11.sp)
                             }
                             if (!m.seen) Box(Modifier.size(8.dp).clip(CircleShape).background(HNeon))
