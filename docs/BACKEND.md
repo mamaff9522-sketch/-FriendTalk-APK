@@ -57,3 +57,9 @@ Open:
 - Endpoints (Firebase ID token required): `POST /match` (real waiting user first, else an enabled bot if bots are on, else `waiting`), `POST /bot/chat {botId, message}`, `DELETE /bot/chat/:botId` (end chat). Admin (`config_edit`): `GET /admin/bots`, `PUT /admin/bots/enabled {enabled}`, `PUT /admin/bots/:botId {enabled, ...}`.
 - Model: Vertex AI `gemini-2.5-flash-lite` (global endpoint), max 150 output tokens, last 10 messages as context, safety filters at BLOCK_LOW_AND_ABOVE. `ft-brain-sa` has `roles/aiplatform.user`.
 - Limits (env): `BOT_HOURLY_PER_USER=30`, `BOT_DAILY_LIMIT=2000` messages/day total; over the limit the endpoint returns 429.
+
+## Posts: video, place and privacy (2026-10-14)
+- `POST /posts` accepts `videoRef` (Storage `posts/{uid}/…`, `video/*`, ≤ 50 MB) and optional `posterRef` (cover image, moderated like post images). Saved as `posts/{id}/video {path,url,posterPath,posterUrl}`; older app versions ignore it.
+- Place: `place` (name, ≤ 80 chars) and optional `lat`/`lng`, rounded to ~1 km. `/feed` returns the point only to the author, or to everyone when the author sent `shareCoords: true` (stored as `place.share`).
+- Privacy: `visibility` = `public` / `friends` / `only_me`, checked on the server (`canView`) for `/feed`, likes, comments and now `/reports` too.
+- Needs deploying: `firebase/storage.rules` (allows `video/*` under `posts/{uid}/`) and friendtalk-brain. Until both are deployed, the app shows an error for video posts; text, photo and place posts keep working.

@@ -211,6 +211,7 @@ private val fmt = SimpleDateFormat("d MMM HH:mm", Locale("th", "TH"))
 @Composable
 fun RealPostCard(p: FeedPost, onLike: () -> Unit, onComments: () -> Unit, onDelete: () -> Unit, onTag: (String) -> Unit = {}, onVisibility: (String) -> Unit = {}) {
     val me = FirebaseAuth.getInstance().currentUser?.uid
+    val ctx = LocalContext.current
     var confirm by remember { mutableStateOf(false) }
     var showAuthor by remember { mutableStateOf(false) }
     if (showAuthor) UserProfileDialog(p.authorId) { showAuthor = false }
@@ -223,7 +224,8 @@ fun RealPostCard(p: FeedPost, onLike: () -> Unit, onComments: () -> Unit, onDele
                 Column(Modifier.weight(1f)) {
                     Text(p.authorName, color = White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     Text(fmt.format(Date(p.createdAt)) + "  " + when (p.visibility) { "friends" -> "👥"; "only_me" -> "🔒"; else -> "🌐" }, color = Slate400, fontSize = 10.sp)
-                    if (p.placeLabel.isNotBlank()) Text("📍 ${p.placeLabel}", color = Pink400, fontSize = 11.sp)
+                    if (p.placeLabel.isNotBlank()) Text("📍 ${p.placeLabel}", color = Pink400, fontSize = 11.sp,
+                        modifier = Modifier.clickable { com.example.ui.feed.openPlaceOnMap(ctx, p.placeLabel, p.placeLat, p.placeLng) })
                 }
                 if (p.authorId == me) {
                     var visMenu by remember { mutableStateOf(false) }
@@ -251,6 +253,7 @@ fun RealPostCard(p: FeedPost, onLike: () -> Unit, onComments: () -> Unit, onDele
                 AsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp).padding(vertical = 3.dp).clip(RoundedCornerShape(12.dp)))
             }
+            if (p.videoUrl.isNotBlank()) com.example.ui.feed.PostVideoThumb(p, Modifier.fillMaxWidth().height(260.dp).padding(vertical = 3.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = onLike) { Text((if (p.likedByMe) "❤️ " else "🤍 ") + p.likeCount, color = White) }
                 TextButton(onClick = onComments) { Text("💬 ${p.commentCount}", color = White) }

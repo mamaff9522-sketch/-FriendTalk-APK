@@ -374,61 +374,21 @@ fun HomeNearbySection(onSeeAll: () -> Unit) {
     open?.let { n -> UserProfileDialog(n.profile.uid, thaiDistance(n.distance)) { open = null } }
 }
 
-/** Mockup composer bar: ✎ "โพสต์..." [image]. Posts through friendtalk-brain like the full composer. */
+/** Mockup composer bar: ✎ "โพสต์..." [image]. Tapping opens the full "สร้างโพสต์" screen (CreatePostDialog). */
 @Composable
 fun HomeComposerBar(onPosted: (FeedPost) -> Unit) {
-    val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var text by remember { mutableStateOf("") }
-    var image by remember { mutableStateOf<Uri?>(null) }
-    var busy by remember { mutableStateOf(false) }
-    var msg by remember { mutableStateOf("") }
-    val limits by com.example.ads.AdRoom.limits.collectAsState()
-    LaunchedEffect(Unit) { com.example.ads.AdRoom.refresh() }
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { if (it != null) image = it }
-    val posting = limits?.posting
-    val locked = posting != null && !posting.first
-    fun send() {
-        if (busy || (text.isBlank() && image == null)) return
-        if (locked) { msg = "🔒 โพสต์ไม่ได้ตอนนี้: ${posting?.second}"; return }
-        busy = true; msg = ""
-        scope.launch {
-            FeedRepo.createPost(ctx, text, listOfNotNull(image)).onSuccess { onPosted(it); text = ""; image = null }.onFailure { msg = it.message ?: tr("โพสต์ไม่สำเร็จ") }
-            busy = false
-        }
-    }
+    var open by remember { mutableStateOf<String?>(null) } // null = closed, "" = text, "image" = open with photo picker
     Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp)) {
         Row(Modifier.fillMaxWidth().shadow(10.dp, RoundedCornerShape(16.dp), ambientColor = HViolet, spotColor = HViolet).clip(RoundedCornerShape(16.dp))
-            .background(Color(0xFF130F30)).border(1.5.dp, Color(0xBFBE5AFF), RoundedCornerShape(16.dp)).padding(horizontal = 14.dp, vertical = 10.dp),
+            .background(Color(0xFF130F30)).border(1.5.dp, Color(0xBFBE5AFF), RoundedCornerShape(16.dp)).clickable { open = "" }.padding(horizontal = 14.dp, vertical = 11.dp),
             verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.Edit, null, tint = Color(0xFFC48CFF), modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(10.dp))
-            BasicTextField(value = text, onValueChange = { if (it.length <= 2000) text = it }, enabled = !busy, maxLines = 4,
-                textStyle = TextStyle(color = PureWhite, fontSize = 15.sp), cursorBrush = SolidColor(HNeon),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send), keyboardActions = KeyboardActions(onSend = { send() }),
-                modifier = Modifier.weight(1f),
-                decorationBox = { inner -> Box { if (text.isEmpty()) Text(tr("โพสต์..."), color = Color(0xFF8E86B8), fontSize = 15.sp); inner() } })
-            image?.let { u ->
-                Box(Modifier.padding(start = 6.dp).size(32.dp)) {
-                    AsyncImage(model = u, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(6.dp)))
-                    Box(Modifier.align(Alignment.TopEnd).size(14.dp).clip(CircleShape).background(HRed).clickable { image = null }, contentAlignment = Alignment.Center) {
-                        Text("×", color = PureWhite, fontSize = 10.sp, lineHeight = 10.sp)
-                    }
-                }
-            }
-            Spacer(Modifier.width(8.dp))
-            Icon(Icons.Outlined.Image, tr("แนบรูป"), tint = Color(0xFFC48CFF), modifier = Modifier.size(24.dp).clip(RoundedCornerShape(4.dp))
-                .clickable { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) })
-            if (text.isNotBlank() || image != null) {
-                Spacer(Modifier.width(8.dp))
-                Box(Modifier.size(30.dp).clip(CircleShape).background(Brush.linearGradient(listOf(HNeon, HViolet))).clickable(enabled = !busy) { send() }, contentAlignment = Alignment.Center) {
-                    if (busy) CircularProgressIndicator(color = PureWhite, strokeWidth = 2.dp, modifier = Modifier.size(14.dp))
-                    else Text("➤", color = PureWhite, fontSize = 13.sp)
-                }
-            }
+            Text(tr("โพสต์..."), color = Color(0xFF8E86B8), fontSize = 15.sp, modifier = Modifier.weight(1f))
+            Icon(Icons.Outlined.Image, tr("แนบรูป"), tint = Color(0xFFC48CFF), modifier = Modifier.size(24.dp).clip(RoundedCornerShape(4.dp)).clickable { open = "image" })
         }
-        if (msg.isNotBlank()) Text(msg, color = Amber400, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp, start = 4.dp))
     }
+    open?.let { start -> CreatePostDialog(startWith = start.ifBlank { null }, onDismiss = { open = null }, onPosted = onPosted) }
 }
 
 /** Posts for 'ใกล้คุณ' (radar people) and 'กำลังติดตาม' (friends). 'ทั้งหมด' uses the paged RealFeedState. */
@@ -477,7 +437,7 @@ fun LazyListScope.homeFeedItems(all: RealFeedState, tabFeed: HomeTabFeed, tab: S
         if (idx > 0 && idx % adEvery == 0) com.example.ads.PlacementBanner("inFeed", Modifier.padding(vertical = 6.dp))
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
             row.forEach { p ->
-                HomePostCard(p, distances[p.authorId] ?: p.placeLabel, Modifier.weight(1f),
+                HomePostCard(p, distances[p.authorId] ?: "", Modifier.weight(1f),
                     onLike = { if (isAll) all.toggleLike(p) else tabFeed.toggleLike(p) },
                     onComments = { all.commentsFor = p },
                     onDelete = { if (isAll) all.delete(p) else tabFeed.delete(p) })
@@ -531,7 +491,7 @@ fun HomePostCard(p: FeedPost, distance: String, modifier: Modifier, onLike: () -
                         if (info?.verified == true) Icon(Icons.Filled.Verified, null, tint = HNeon, modifier = Modifier.padding(start = 3.dp).size(14.dp))
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(thaiTimeAgo(p.createdAt), color = HMuted, fontSize = 9.5.sp, maxLines = 1)
+                        Text(thaiTimeAgo(p.createdAt) + " · " + privacyIcon(p.visibility), color = HMuted, fontSize = 9.5.sp, maxLines = 1)
                         if (distance.isNotBlank()) {
                             Text(" • ", color = HMuted, fontSize = 9.5.sp)
                             Icon(Icons.Outlined.Place, null, tint = HMuted, modifier = Modifier.size(10.dp))
@@ -541,9 +501,15 @@ fun HomePostCard(p: FeedPost, distance: String, modifier: Modifier, onLike: () -
                 }
                 more()
             }
+            if (p.placeLabel.isNotBlank()) Row(Modifier.padding(start = 8.dp, end = 8.dp, bottom = 4.dp).clip(RoundedCornerShape(6.dp))
+                .clickable { openPlaceOnMap(ctx, p.placeLabel, p.placeLat, p.placeLng) }, verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.LocationOn, tr("ดูบนแผนที่"), tint = HNeon, modifier = Modifier.size(12.dp)); Spacer(Modifier.width(2.dp))
+                Text(p.placeLabel, color = Color(0xFFFF8BCB), fontSize = 10.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
             if (p.text.isNotBlank()) Text(p.text, color = PureWhite, fontSize = 12.5.sp, maxLines = 3, overflow = TextOverflow.Ellipsis, lineHeight = 17.sp,
                 modifier = Modifier.padding(start = 8.dp, end = 8.dp, bottom = 6.dp))
-            p.imageUrls.firstOrNull()?.let { url ->
+            if (p.videoUrl.isNotBlank()) PostVideoThumb(p, Modifier.padding(horizontal = 6.dp).fillMaxWidth().aspectRatio(1f / 1.08f))
+            else p.imageUrls.firstOrNull()?.let { url ->
                 val video = Regex("\\.(mp4|webm|mov|m4v)(\\?|$)", RegexOption.IGNORE_CASE).containsMatchIn(Uri.decode(url))
                 Box(Modifier.padding(horizontal = 6.dp).fillMaxWidth().aspectRatio(1f / 1.08f).clip(RoundedCornerShape(10.dp)).background(Color.Black), contentAlignment = Alignment.Center) {
                     if (!video) AsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())

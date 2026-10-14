@@ -1541,11 +1541,14 @@ function parseHashtags(text) {
   return out;
 }
 const cleanText = (t, max) => (typeof t === 'string' ? t.trim() : '').slice(0, max);
-async function postImageUrl(uid, path) {
+async function postImageUrl(uid, path) { return postMediaUrl(uid, path, 'image/', 10 * 1024 * 1024); }
+const POST_VIDEO_MAX = 50 * 1024 * 1024;
+/** Download-token URL for a file the caller uploaded under posts/{uid}/ (type and size checked from Storage metadata). */
+async function postMediaUrl(uid, path, typePrefix, maxBytes) {
   if (typeof path !== 'string' || !path.startsWith(`posts/${uid}/`) || path.includes('..') || path.length > 300) return null;
   const f = admin.storage().bucket(STORAGE_BUCKET).file(path);
   const [m] = await f.getMetadata().catch(() => [null]);
-  if (!m || !String(m.contentType || '').startsWith('image/') || Number(m.size) > 10 * 1024 * 1024) return null;
+  if (!m || !String(m.contentType || '').startsWith(typePrefix) || Number(m.size) > maxBytes) return null;
   let tok = (m.metadata?.firebaseStorageDownloadTokens || '').split(',')[0];
   if (!tok) { tok = crypto.randomUUID(); await f.setMetadata({ metadata: { firebaseStorageDownloadTokens: tok } }); }
   return `https://firebasestorage.googleapis.com/v0/b/${STORAGE_BUCKET}/o/${encodeURIComponent(path)}?alt=media&token=${tok}`;
@@ -1561,20 +1564,31 @@ app.post('/posts', w(notBanned), w(async (q, r) => {
   if (refs.length > 4) return r.status(400).json({ error: 'max 4 images' });
   const images = [];
   for (const p of refs) { const u = await postImageUrl(q.uid, p); if (!u) return r.status(400).json({ error: 'invalid image' }); images.push({ path: p, url: u }); }
-  if (!text && !images.length) return r.status(400).json({ error: 'text or image required' });
+  let video = null;
+  if (q.body?.videoRef !== undefined && q.body?.videoRef !== null) {
+    const vu = await postMediaUrl(q.uid, q.body.videoRef, 'video/', POST_VIDEO_MAX);
+    if (!vu) return r.status(400).json({ error: 'invalid video' });
+    video = { path: q.body.videoRef, url: vu };
+    if (q.body.posterRef) { const pu = await postImageUrl(q.uid, q.body.posterRef); if (!pu) return r.status(400).json({ error: 'invalid video cover' }); video.posterPath = q.body.posterRef; video.posterUrl = pu; }
+  }
+  if (!text && !images.length && !video) return r.status(400).json({ error: 'text, image or video required' });
   { const m = await moderateText(q.uid, [text, cleanText(q.body?.place, 80)].join(' '), { kind: 'post' }); if (!m.ok) return r.status(422).json({ code: 'moderated', error: m.message }); }
   for (const im of images) { const mi = await moderateImage(q.uid, im.path, { kind: 'post_image' }); if (!mi.ok) return r.status(422).json({ code: 'moderated', error: 'รูปภาพนี้ขัดกติกาความปลอดภัย' }); }
+  if (video?.posterPath) { const mv = await moderateImage(q.uid, video.posterPath, { kind: 'post_video_cover' }); if (!mv.ok) return r.status(422).json({ code: 'moderated', error: 'วิดีโอนี้ขัดกติกาความปลอดภัย' }); }
   const hashtags = parseHashtags(text);
   const label = cleanText(q.body?.place, 80).replace(/[\u0000-\u001f]/g, '');
   let place = null;
   if (label) {
     place = { label };
     const { lat, lng } = q.body || {};
-    if (validLatLng(lat, lng)) { place.lat = Math.round(lat * 100) / 100; place.lng = Math.round(lng * 100) / 100; } // ~1 km
+    if (validLatLng(lat, lng)) {
+      place.lat = Math.round(lat * 100) / 100; place.lng = Math.round(lng * 100) / 100; // ~1 km
+      if (q.body?.shareCoords === true) place.share = true; // author agreed to show the ~1 km point to viewers
+    }
   }
   const ref = db.ref('posts').push();
   const visibility = VIS.includes(q.body?.visibility) ? q.body.visibility : 'public';
-  const post = { authorId: q.uid, ...(await authorInfo(q.uid)), text, images, hashtags, place, visibility, createdAt: Date.now(), likeCount: 0, commentCount: 0 };
+  const post = { authorId: q.uid, ...(await authorInfo(q.uid)), text, images, ...(video ? { video } : {}), hashtags, place, visibility, createdAt: Date.now(), likeCount: 0, commentCount: 0 };
   const upd = { [`posts/${ref.key}`]: post };
   for (const t of hashtags) upd[`hashtags/${t}/${ref.key}`] = post.createdAt;
   upd[`authorPosts/${q.uid}/${ref.key}`] = post.createdAt;
@@ -1590,7 +1604,7 @@ app.delete('/posts/:id', w(async (q, r) => {
   for (const t of post.hashtags || []) del[`hashtags/${t}/${id}`] = null;
   del[`authorPosts/${post.authorId}/${id}`] = null;
   await db.ref().update(del);
-  for (const im of post.images || []) await admin.storage().bucket(STORAGE_BUCKET).file(im.path).delete().catch(() => {});
+  for (const im of post.images || []) await admin.storage().bucket(STORAGE_BUCKET).file(im.path).delete().catch(() => {}); for (const vp of [post.video?.path, post.video?.posterPath].filter(Boolean)) await admin.storage().bucket(STORAGE_BUCKET).file(vp).delete().catch(() => {});
   r.json({ ok: true });
 }));
 app.patch('/posts/:id', w(notBanned), w(async (q, r) => {
@@ -1631,7 +1645,7 @@ app.get('/feed', w(async (q, r) => {
   posts.splice(0, posts.length, ...posts.filter((_, i) => vis[i]));
   const liked = await Promise.all(posts.map(p => db.ref(`postLikes/${p.id}/${q.uid}`).get()));
   posts.forEach((p, i) => { p.likedByMe = liked[i].exists(); p.images = p.images || []; });
-  posts.forEach(p => { p.commentsOff = p.commentsOff === true; p.visibility = p.visibility || 'public'; if (p.authorId !== q.uid) delete p.place?.lat, delete p.place?.lng; });
+  posts.forEach(p => { p.commentsOff = p.commentsOff === true; p.visibility = p.visibility || 'public'; if (p.authorId !== q.uid && p.place?.share !== true) delete p.place?.lat, delete p.place?.lng; });
   r.json({ posts, nextCursor: rawCount === limit ? oldest : null });
 }));
 async function setLike(q, r, on) {
@@ -2197,7 +2211,7 @@ app.post('/reports', w(notBanned), w(async (q, r) => {
   const cnt = await db.ref(`usage/${q.uid}/${today.replace(/-/g, '')}/reports`).transaction(c => (Number(c) || 0) + 1);
   if (cnt.snapshot.val() > 30) return r.status(429).json({ error: 'too many reports today' });
   let targetUid = typeof b.targetUid === 'string' ? b.targetUid : null, preview = '';
-  if (type === 'post') { const p = (await db.ref(`posts/${b.targetId}`).get()).val(); if (!p) return r.status(404).json({ error: 'post not found' }); targetUid = p.authorId; preview = String(p.text || '').slice(0, 140); }
+  if (type === 'post') { const p = (await db.ref(`posts/${b.targetId}`).get()).val(); if (!p || !(await canView(q.uid, p))) return r.status(404).json({ error: 'post not found' }); targetUid = p.authorId; preview = String(p.text || '').slice(0, 140); }
   if (type === 'user') targetUid = b.targetId;
   const ref = db.ref('reports').push();
   await ref.set({ reporterUid: q.uid, targetType: type, targetId: b.targetId, targetUid, preview, reason: String(b.reason || '').slice(0, 300) || 'ไม่ระบุ', status: 'open', createdAt: Date.now() });
@@ -2224,7 +2238,7 @@ app.post('/admin/reports/:id/resolve', perm('manage_content'), w(notBanned), w(a
       const del = { [`posts/${pid}`]: null, [`postLikes/${pid}`]: null, [`postComments/${pid}`]: null, [`authorPosts/${post.authorId}/${pid}`]: null };
       for (const t of post.hashtags || []) del[`hashtags/${t}/${pid}`] = null;
       await db.ref().update(del);
-      for (const im of post.images || []) await admin.storage().bucket(STORAGE_BUCKET).file(im.path).delete().catch(() => {});
+      for (const im of post.images || []) await admin.storage().bucket(STORAGE_BUCKET).file(im.path).delete().catch(() => {}); for (const vp of [post.video?.path, post.video?.posterPath].filter(Boolean)) await admin.storage().bucket(STORAGE_BUCKET).file(vp).delete().catch(() => {});
     }
   }
   if (action === 'ban') {
