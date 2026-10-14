@@ -7,8 +7,6 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.widget.MediaController
-import android.widget.VideoView
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -655,18 +653,54 @@ fun PostVideoThumb(p: FeedPost, modifier: Modifier) {
 
 @Composable
 fun VideoPlayerDialog(url: String, onDismiss: () -> Unit) {
+    // TextureView + MediaPlayer: a VideoView (SurfaceView) inside a Compose dialog window showed only a black screen on some phones.
+    var player by remember { mutableStateOf<android.media.MediaPlayer?>(null) }
+    var ready by remember { mutableStateOf(false) }
+    var playing by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf("") }
+    var size by remember { mutableStateOf(0 to 0) }
+    var pos by remember { mutableStateOf(0) }
+    var dur by remember { mutableStateOf(0) }
+    LaunchedEffect(player, playing) { while (player != null && playing) { runCatching { pos = player!!.currentPosition }; kotlinx.coroutines.delay(300) } }
+    DisposableEffect(Unit) { onDispose { runCatching { player?.release() }; player = null } }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Box(Modifier.fillMaxSize().background(Color.Black)) {
-            var view by remember { mutableStateOf<VideoView?>(null) }
+            val ratio = if (size.first > 0 && size.second > 0) size.first.toFloat() / size.second else 16f / 9f
             AndroidView(factory = { c ->
-                VideoView(c).apply {
-                    setMediaController(MediaController(c).also { it.setAnchorView(this) })
-                    setVideoURI(Uri.parse(url))
-                    setOnPreparedListener { start() }
-                    view = this
+                android.view.TextureView(c).apply {
+                    surfaceTextureListener = object : android.view.TextureView.SurfaceTextureListener {
+                        override fun onSurfaceTextureAvailable(st: android.graphics.SurfaceTexture, w: Int, h: Int) {
+                            val mp = android.media.MediaPlayer()
+                            player = mp
+                            runCatching {
+                                mp.setSurface(android.view.Surface(st))
+                                mp.setAudioAttributes(android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_MEDIA).setContentType(android.media.AudioAttributes.CONTENT_TYPE_MOVIE).build())
+                                mp.setDataSource(c, Uri.parse(url))
+                                mp.setOnVideoSizeChangedListener { _, vw, vh -> size = vw to vh }
+                                mp.setOnPreparedListener { ready = true; dur = it.duration; it.start(); playing = true }
+                                mp.setOnCompletionListener { playing = false; pos = dur }
+                                mp.setOnErrorListener { _, what, extra -> error = "เล่นวิดีโอไม่ได้ ($what/$extra)"; playing = false; true }
+                                mp.prepareAsync()
+                            }.onFailure { error = "เปิดวิดีโอไม่ได้" }
+                        }
+                        override fun onSurfaceTextureSizeChanged(st: android.graphics.SurfaceTexture, w: Int, h: Int) {}
+                        override fun onSurfaceTextureDestroyed(st: android.graphics.SurfaceTexture): Boolean { runCatching { player?.release() }; player = null; return true }
+                        override fun onSurfaceTextureUpdated(st: android.graphics.SurfaceTexture) {}
+                    }
                 }
-            }, modifier = Modifier.align(Alignment.Center).fillMaxWidth())
-            DisposableEffect(Unit) { onDispose { view?.stopPlayback() } }
+            }, modifier = Modifier.align(Alignment.Center).fillMaxWidth().aspectRatio(ratio)
+                .clickable(enabled = ready) { player?.let { if (it.isPlaying) { it.pause(); playing = false } else { if (pos >= dur && dur > 0) it.seekTo(0); it.start(); playing = true } } })
+            if (!ready && error.isBlank()) CircularProgressIndicator(color = PureWhite, modifier = Modifier.align(Alignment.Center))
+            if (ready && !playing && error.isBlank()) Box(Modifier.align(Alignment.Center).size(64.dp).clip(CircleShape).background(Color(0x88000000)), contentAlignment = Alignment.Center) {
+                Icon(Icons.Filled.PlayArrow, tr("เล่น"), tint = PureWhite, modifier = Modifier.size(40.dp))
+            }
+            if (error.isNotBlank()) Text(error, color = PureWhite, modifier = Modifier.align(Alignment.Center).padding(24.dp))
+            // bottom bar: time + seek
+            if (ready) Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color(0x66000000)).navigationBarsPadding().dialogNavPadding().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                Slider(value = if (dur > 0) pos.toFloat() / dur else 0f, onValueChange = { f -> pos = (f * dur).toInt(); runCatching { player?.seekTo(pos) } },
+                    colors = SliderDefaults.colors(thumbColor = CNeon, activeTrackColor = CNeon))
+                Text("${fmtDuration(pos.toLong())} / ${fmtDuration(dur.toLong())}", color = PureWhite, fontSize = 12.sp)
+            }
             IconButton(onClick = onDismiss, modifier = Modifier.align(Alignment.TopEnd).systemBarsPadding().padding(8.dp)) {
                 Icon(Icons.Filled.Close, tr("ปิด"), tint = PureWhite)
             }

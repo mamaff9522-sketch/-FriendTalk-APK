@@ -1569,6 +1569,12 @@ async function postMediaUrl(uid, path, typePrefix, maxBytes) {
   if (!tok) { tok = crypto.randomUUID(); await f.setMetadata({ metadata: { firebaseStorageDownloadTokens: tok } }); }
   return `https://firebasestorage.googleapis.com/v0/b/${STORAGE_BUCKET}/o/${encodeURIComponent(path)}?alt=media&token=${tok}`;
 }
+/** Posts / comments store the author's name + avatar at the time of writing; show the current ones (profile photo changed later). */
+async function freshAuthors(items) {
+  const ids = [...new Set(items.map(x => x && x.authorId).filter(x => typeof x === 'string' && UID_RE.test(x)))];
+  const info = new Map(await Promise.all(ids.map(async id => [id, await authorInfo(id)])));
+  for (const x of items) { const a = x && info.get(x.authorId); if (a) { x.authorName = a.authorName; x.authorAvatar = a.authorAvatar; } }
+}
 async function authorInfo(uid) {
   const u = (await db.ref(`users/${uid}`).get()).val() || {};
   return { authorName: String(u.displayName || 'ผู้ใช้').slice(0, 50), authorAvatar: String(u.avatar || '').slice(0, 500) };
@@ -1690,6 +1696,7 @@ app.get('/feed', w(async (q, r) => {
   const liked = await Promise.all(posts.map(p => db.ref(`postLikes/${p.id}/${q.uid}`).get()));
   posts.forEach((p, i) => { p.likedByMe = liked[i].exists(); p.images = p.images || []; });
   posts.forEach(p => { p.commentsOff = p.commentsOff === true; p.visibility = p.visibility || 'public'; if (p.authorId !== q.uid && p.place?.share !== true) delete p.place?.lat, delete p.place?.lng; });
+  await freshAuthors(posts);
   r.json({ posts, nextCursor: rawCount === limit ? oldest : null });
 }));
 async function setLike(q, r, on) {
@@ -1740,6 +1747,7 @@ app.get('/posts/:id/comments', w(async (q, r) => {
   if (cursor) { if (!POST_ID_RE.test(cursor)) return r.status(400).json({ error: 'bad cursor' }); qq = qq.startAfter(cursor); }
   const snap = await qq.limitToFirst(limit).get();
   const comments = []; snap.forEach(c => { comments.push({ id: c.key, parentId: null, ...c.val() }); });
+  await freshAuthors(comments);
   r.json({ comments, nextCursor: comments.length === limit ? comments[comments.length - 1].id : null });
 }));
 app.delete('/posts/:id/comments/:cid', w(async (q, r) => {
