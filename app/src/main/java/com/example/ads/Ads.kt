@@ -124,6 +124,16 @@ private fun Context.activity(): Activity? { var c: Context? = this; while (c is 
 
 object AdsManager {
     @Volatile private var started = false
+    /** Why the last rewarded ad could not be shown (Thai, for the user); null when it was shown. */
+    @Volatile var lastError: String? = null
+    private fun explain(code: Int, message: String): String = when (code) {
+        3 -> "ตอนนี้ยังไม่มีโฆษณาให้แสดง (No fill) ลองใหม่อีกครั้งภายหลัง"
+        2 -> "เชื่อมต่ออินเทอร์เน็ตไม่ได้ หรือถูกบล็อกโฆษณา (เช่น Private DNS / แอปบล็อกโฆษณา)"
+        1 -> "คำขอโฆษณาไม่ถูกต้อง (รหัสโฆษณาหรือแอปใน AdMob ยังไม่พร้อม)"
+        0 -> "AdMob ขัดข้องชั่วคราว ลองใหม่อีกครั้ง"
+        8 -> "แอปยังไม่ถูกต้องในระบบ AdMob (App ID)"
+        else -> "โหลดโฆษณาไม่ได้"
+    } + " [รหัส $code${if (message.isNotBlank()) ": " + message.take(80) else ""}]"
     /** UMP consent (required in EEA, no-op elsewhere) then MobileAds.initialize. */
     fun init(activity: Activity) {
         if (started) return; started = true
@@ -139,13 +149,14 @@ object AdsManager {
 
     /** Loads (only now, after the user's tap) and shows one ad of [format]. customData goes to SSV (e.g. "offer:standard"). */
     suspend fun showRewardedFormat(activity: Activity, format: String, customData: String): Boolean {
+        lastError = null
         val uid = FirebaseAuth.getInstance().currentUser?.uid
         if (format == "rewarded_interstitial") {
             val ad = suspendCancellableCoroutine<com.google.android.gms.ads.rewardedinterstitial.RewardedInterstitialAd?> { c ->
                 com.google.android.gms.ads.rewardedinterstitial.RewardedInterstitialAd.load(activity, AdUnits.unit(BuildConfig.ADMOB_REWARDED_INTERSTITIAL_ID, BuildConfig.ADMOB_TEST_REWARDED_INTERSTITIAL_ID), AdRequest.Builder().build(),
                     object : com.google.android.gms.ads.rewardedinterstitial.RewardedInterstitialAdLoadCallback() {
                         override fun onAdLoaded(a: com.google.android.gms.ads.rewardedinterstitial.RewardedInterstitialAd) { c.resume(a) }
-                        override fun onAdFailedToLoad(e: LoadAdError) { c.resume(null) }
+                        override fun onAdFailedToLoad(e: LoadAdError) { lastError = explain(e.code, e.message); c.resume(null) }
                     })
             } ?: return false
             uid?.let { ad.setServerSideVerificationOptions(ServerSideVerificationOptions.Builder().setUserId(it).setCustomData(customData).build()) }
@@ -153,7 +164,7 @@ object AdsManager {
                 var earned = false
                 ad.fullScreenContentCallback = object : FullScreenContentCallback() {
                     override fun onAdDismissedFullScreenContent() { if (c.isActive) c.resume(earned) }
-                    override fun onAdFailedToShowFullScreenContent(e: AdError) { if (c.isActive) c.resume(false) }
+                    override fun onAdFailedToShowFullScreenContent(e: AdError) { lastError = "แสดงโฆษณาไม่ได้ [รหัส ${e.code}: ${e.message.take(80)}]"; if (c.isActive) c.resume(false) }
                 }
                 ad.show(activity) { earned = true }
             }
@@ -162,7 +173,7 @@ object AdsManager {
         val ad = suspendCancellableCoroutine<RewardedAd?> { c ->
             RewardedAd.load(activity, AdUnits.unit(BuildConfig.ADMOB_REWARDED_ID, BuildConfig.ADMOB_TEST_REWARDED_ID), AdRequest.Builder().build(), object : RewardedAdLoadCallback() {
                 override fun onAdLoaded(a: RewardedAd) { c.resume(a) }
-                override fun onAdFailedToLoad(e: LoadAdError) { c.resume(null) }
+                override fun onAdFailedToLoad(e: LoadAdError) { lastError = explain(e.code, e.message); c.resume(null) }
             })
         } ?: return false
         FirebaseAuth.getInstance().currentUser?.uid?.let {
@@ -172,7 +183,7 @@ object AdsManager {
             var earned = false
             ad.fullScreenContentCallback = object : FullScreenContentCallback() {
                 override fun onAdDismissedFullScreenContent() { if (c.isActive) c.resume(earned) }
-                override fun onAdFailedToShowFullScreenContent(e: AdError) { if (c.isActive) c.resume(false) }
+                override fun onAdFailedToShowFullScreenContent(e: AdError) { lastError = "แสดงโฆษณาไม่ได้ [รหัส ${e.code}: ${e.message.take(80)}]"; if (c.isActive) c.resume(false) }
             }
             ad.show(activity) { earned = true }
         }
@@ -336,11 +347,11 @@ fun AdsPageContent(feature: String?, onClose: (() -> Unit)?, returnAfterReward: 
                         Box(Modifier.fillMaxWidth().padding(top = 12.dp).clip(RoundedCornerShape(26.dp))
                             .background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Pink500, Pink400))).alpha(if (en) 1f else 0.5f)
                             .clickable(enabled = en) {
-                                val act = ctx.activity() ?: return@clickable
+                                val act = ctx.activity() ?: run { msg = tr("เปิดโฆษณาไม่ได้ในหน้านี้ ลองเปิดจากหน้าอื่น"); return@clickable }
                                 busy = o.id; msg = ""
                                 scope.launch {
                                     val earned = AdsManager.showRewardedFormat(act, o.adFormat, "offer:${o.id}")
-                                    if (!earned) { msg = tr("ยังไม่ได้รับรางวัล (ดูโฆษณาไม่จบ หรือโหลดโฆษณาไม่ได้)"); busy = null; return@launch }
+                                    if (!earned) { msg = AdsManager.lastError ?: tr("ยังไม่ได้รับรางวัล (ดูโฆษณาไม่จบ)"); busy = null; return@launch }
                                     val err = AdRoom.claimReward(o.feature, o.id)
                                     busy = null
                                     if (err != null) msg = err
