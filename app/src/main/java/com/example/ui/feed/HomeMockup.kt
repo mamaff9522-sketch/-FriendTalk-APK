@@ -323,7 +323,7 @@ fun HomeLiveSection(onSeeAll: () -> Unit) {
             l == null -> Row(Modifier.padding(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 repeat(5) { Box(Modifier.width(cardW).aspectRatio(0.75f).clip(RoundedCornerShape(12.dp)).background(AppThemeMode.skeleton)) }
             }
-            l.isEmpty() -> EmptyRow(if (failed) tr("โหลดไลฟ์ไม่สำเร็จ") else tr("ยังไม่มีใครไลฟ์ตอนนี้"))
+            l.isEmpty() -> if (failed || !ShowcaseLiveRow(cardW, onSeeAll)) EmptyRow(if (failed) tr("โหลดไลฟ์ไม่สำเร็จ") else tr("ยังไม่มีใครไลฟ์ตอนนี้"))
             else -> LazyRow(contentPadding = PaddingValues(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(l.take(10), key = { it.id }) { LiveCard(it, cardW, onSeeAll) }
             }
@@ -369,8 +369,8 @@ fun HomeNearbySection(onSeeAll: () -> Unit) {
         val l = list
         when {
             l == null && !done -> Row(Modifier.padding(horizontal = 6.dp)) { repeat(6) { Box(Modifier.width(itemW), contentAlignment = Alignment.Center) { Box(Modifier.size(54.dp).clip(CircleShape).background(AppThemeMode.skeleton)) } } }
-            l == null -> EmptyRow(tr("เปิดเรดาร์เพื่อดูคนใกล้คุณ ›"), onSeeAll)
-            l.isEmpty() -> EmptyRow(tr("ยังไม่พบคนใกล้คุณ"), onSeeAll)
+            l == null -> { if (!ShowcaseNearbyRow(itemW, onSeeAll)) EmptyRow(tr("เปิดเรดาร์เพื่อดูคนใกล้คุณ ›"), onSeeAll) }
+            l.isEmpty() -> { if (!ShowcaseNearbyRow(itemW, onSeeAll)) EmptyRow(tr("ยังไม่พบคนใกล้คุณ"), onSeeAll) }
             else -> LazyRow(contentPadding = PaddingValues(horizontal = 6.dp)) {
                 items(l.take(12), key = { it.profile.uid }) { n ->
                     Column(Modifier.width(itemW).clickable { open = n }, horizontalAlignment = Alignment.CenterHorizontally) {

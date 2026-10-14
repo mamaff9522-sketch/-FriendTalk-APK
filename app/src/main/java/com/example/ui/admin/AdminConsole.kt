@@ -380,12 +380,12 @@ private fun ReportsPane(p: Perms) {
 
 @Composable
 private fun EconomyPane(p: Perms) {
-    val subs = buildList { if (p.has("coins_confirm")) add("topup" to "เติมเงิน (โอน)"); if (p.has("config_edit")) { add("limits" to "ลิมิต & โฆษณา"); add("placements" to "ตำแหน่งโฆษณา"); add("rates" to "อัตราค่าเพื่อนคุย"); add("packs" to "ราคาแพ็กเพชร/เหรียญ") }; if (p.has("manage_content")) add("gifts" to "ของขวัญ & สติกเกอร์") }
+    val subs = buildList { if (p.has("coins_confirm")) add("topup" to "เติมเงิน (โอน)"); if (p.has("config_edit")) { add("limits" to "ลิมิต & โฆษณา"); add("placements" to "ตำแหน่งโฆษณา"); add("rates" to "อัตราค่าเพื่อนคุย"); add("packs" to "ราคาแพ็กเพชร/เหรียญ"); add("showcase" to "รูปตัวอย่าง AI") }; if (p.has("manage_content")) add("gifts" to "ของขวัญ & สติกเกอร์") }
     var sub by remember { mutableStateOf(subs.firstOrNull()?.first ?: "") }
     Column(Modifier.fillMaxSize()) {
         Text(com.example.ui.social.AD_REVENUE_NOTE, color = Slate400, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 12.dp))
         Row(Modifier.horizontalScroll(rememberScrollState()).padding(12.dp, 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) { subs.forEach { (k, l) -> FilterChip(selected = sub == k, onClick = { sub = k }, label = { Text(l) }) } }
-        Box(Modifier.fillMaxSize()) { when (sub) { "limits" -> AdminLimitsTab(); "placements" -> AdPlacementsCard(); "rates" -> com.example.ui.social.AdminCompanionRatesPane(); "packs" -> com.example.ui.social.AdminShopPacksPane(); "gifts" -> AdminGiftsTab(); "topup" -> com.example.ui.shop.AdminTopupPane() } }
+        Box(Modifier.fillMaxSize()) { when (sub) { "limits" -> AdminLimitsTab(); "placements" -> AdPlacementsCard(); "rates" -> com.example.ui.social.AdminCompanionRatesPane(); "packs" -> com.example.ui.social.AdminShopPacksPane(); "gifts" -> AdminGiftsTab(); "topup" -> com.example.ui.shop.AdminTopupPane(); "showcase" -> com.example.ui.feed.AdminShowcasePane() } }
     }
 }
 

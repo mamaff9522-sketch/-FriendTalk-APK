@@ -15,6 +15,7 @@ import com.example.ui.components.ft.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -178,15 +179,7 @@ fun RealCompanionScreen() {
         var signup by remember { mutableStateOf(false) }
         var pick by remember { mutableStateOf<Partner?>(null) }
         var openChat by remember { mutableStateOf<Pair<String, String>?>(null) }
-        LaunchedEffect(Unit) {
-            val s = runCatching { FirebaseDatabase.getInstance("https://friendtalk-4e623-default-rtdb.asia-southeast1.firebasedatabase.app").getReference("companions").get().await() }.getOrNull()
-            list = s?.children?.map { c -> Partner(c.key.orEmpty(), c.child("displayName").getValue(String::class.java).orEmpty(), c.child("occupation").getValue(String::class.java).orEmpty(),
-                (c.child("age").getValue(Long::class.java) ?: 0L).toInt(), c.child("slots").children.mapNotNull { it.getValue(String::class.java) },
-                c.child("hours").children.associate { (it.key ?: "") to (it.getValue(String::class.java) ?: "") },
-                c.child("talkStyle").getValue(String::class.java).orEmpty(), c.child("personality").getValue(String::class.java).orEmpty(),
-                c.child("modes").children.mapNotNull { it.getValue(String::class.java) }.ifEmpty { listOf("text") },
-                c.child("rating/avg").getValue(Double::class.java) ?: 0.0, (c.child("rating/count").getValue(Long::class.java) ?: 0L).toInt()) } ?: emptyList()
-        }
+        LaunchedEffect(Unit) { list = loadPartners() }
         if (signup) CompanionSignupDialog { signup = false }
         pick?.let { p -> ModeSelectDialog(p, onClose = { pick = null }) { chatId -> pick = null; openChat = chatId to p.uid } }
         openChat?.let { (cid, puid) -> com.example.ui.components.UiPage("chatroom") { RealChatRoomDialog(cid) { openChat = null; CompanionRating.maybeAsk(puid) } } }
@@ -195,7 +188,7 @@ fun RealCompanionScreen() {
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("💗 " + tr("เพื่อนคุย"), color = White, fontWeight = FontWeight.ExtraBold, fontSize = 24.sp, modifier = Modifier.weight(1f))
-                    OutlinedButton(onClick = { signup = true }) { Text("สมัครเป็นเพื่อนคุย", color = Pink500, fontSize = 12.sp) }
+                    // sign-up moved to the "ฉัน" page (owner request)
                 }
                 Text("18+ เท่านั้น · คิดค่าบริการเป็นเพชรตามอัตราที่แอดมินกำหนด", color = Slate400, fontSize = 12.sp)
             }
@@ -203,6 +196,64 @@ fun RealCompanionScreen() {
             if (l == null) item { CircularProgressIndicator(color = Pink500) }
             else if (l.isEmpty()) item { Text("ยังไม่มีเพื่อนคุยที่ได้รับอนุมัติ", color = Slate400) }
             else items(l, key = { it.uid }) { p -> PartnerCard(p) { pick = p } }
+        }
+    }
+}
+
+/** Approved companions (companions/ in RTDB), best rated first. */
+internal suspend fun loadPartners(): List<Partner> {
+    val s = runCatching { FirebaseDatabase.getInstance("https://friendtalk-4e623-default-rtdb.asia-southeast1.firebasedatabase.app").getReference("companions").get().await() }.getOrNull()
+    return s?.children?.map { c -> Partner(c.key.orEmpty(), c.child("displayName").getValue(String::class.java).orEmpty(), c.child("occupation").getValue(String::class.java).orEmpty(),
+        (c.child("age").getValue(Long::class.java) ?: 0L).toInt(), c.child("slots").children.mapNotNull { it.getValue(String::class.java) },
+        c.child("hours").children.associate { (it.key ?: "") to (it.getValue(String::class.java) ?: "") },
+        c.child("talkStyle").getValue(String::class.java).orEmpty(), c.child("personality").getValue(String::class.java).orEmpty(),
+        c.child("modes").children.mapNotNull { it.getValue(String::class.java) }.ifEmpty { listOf("text") },
+        c.child("rating/avg").getValue(Double::class.java) ?: 0.0, (c.child("rating/count").getValue(Long::class.java) ?: 0L).toInt()) }
+        ?.sortedWith(compareByDescending<Partner> { it.avg }.thenByDescending { it.count }) ?: emptyList()
+}
+
+/**
+ * 'เพื่อนคุย' inside หาเพื่อน: small profile cards of approved companions in a grid.
+ * Tap → the same mode picker → paid chat as before (rates set by admins, 18+ gate stays at the tile).
+ */
+@Composable
+fun CompanionGridScreen() {
+    ChatRulesGate {
+        var list by remember { mutableStateOf<List<Partner>?>(null) }
+        var pick by remember { mutableStateOf<Partner?>(null) }
+        var openChat by remember { mutableStateOf<Pair<String, String>?>(null) }
+        LaunchedEffect(Unit) { list = loadPartners() }
+        pick?.let { p -> ModeSelectDialog(p, onClose = { pick = null }) { chatId -> pick = null; openChat = chatId to p.uid } }
+        openChat?.let { (cid, puid) -> com.example.ui.components.UiPage("chatroom") { RealChatRoomDialog(cid) { openChat = null; CompanionRating.maybeAsk(puid) } } }
+        CompanionRating.Host()
+        Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
+            Text("18+ เท่านั้น · คิดค่าบริการเป็นเพชรตามอัตราที่แอดมินกำหนด · สมัครเป็นเพื่อนคุยได้ที่หน้า \"ฉัน\"", color = Slate400, fontSize = 11.sp, modifier = Modifier.padding(vertical = 6.dp))
+            val l = list
+            when {
+                l == null -> Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Pink500) }
+                l.isEmpty() -> Text(tr("ยังไม่มีเพื่อนคุยที่พร้อมให้บริการ"), color = Slate400, modifier = Modifier.padding(vertical = 24.dp))
+                else -> androidx.compose.foundation.lazy.grid.LazyVerticalGrid(androidx.compose.foundation.lazy.grid.GridCells.Fixed(3),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 16.dp)) {
+                    items(l.size, key = { l[it].uid }) { i -> PartnerTile(l[i]) { pick = l[i] } }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PartnerTile(p: Partner, onClick: () -> Unit) {
+    val prof = rememberProfile(p.uid)
+    val photo = prof?.avatar.orEmpty()
+    Box(Modifier.fillMaxWidth().aspectRatio(0.78f).clip(RoundedCornerShape(16.dp)).background(Slate800).clickable(onClick = onClick)) {
+        if (photo.isNotBlank()) coil.compose.AsyncImage(model = photo, contentDescription = p.name, contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(p.name.take(1), color = White, fontSize = 32.sp, fontWeight = FontWeight.Bold) }
+        Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.5f)
+            .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(androidx.compose.ui.graphics.Color.Transparent, androidx.compose.ui.graphics.Color(0xD9000000)))))
+        Column(Modifier.align(Alignment.BottomStart).padding(8.dp)) {
+            Text("${p.name}${if (p.age > 0) " · ${p.age}" else ""}", color = PureWhite, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
+            Text(if (p.count > 0) "★ ${"%.1f".format(p.avg)} (${p.count})" else tr("ใหม่"), color = Amber400, fontSize = 11.sp, maxLines = 1)
+            Text(p.modes.joinToString(" ") { MODE_TH[it] ?: it }, color = PureWhite.copy(alpha = 0.85f), fontSize = 10.sp, maxLines = 1)
         }
     }
 }

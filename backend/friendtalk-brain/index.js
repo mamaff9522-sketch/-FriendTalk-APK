@@ -2373,6 +2373,17 @@ app.post('/push/chat/:chatId', w(async (q, r) => {
   r.json({ sent });
 }));
 
+// ===== Launch showcase: admin-uploaded AI sample images for 'ไลฟ์สดตอนนี้' / 'คนใกล้คุณ' while there are no real users yet.
+// The app shows them labelled "ตัวอย่าง" only when the real list is empty, so they disappear by themselves once people use the app.
+const SHOW_URL = /^https:\/\/friendtalk-brain-123224091480\.asia-southeast1\.run\.app\/ui-bg\/[A-Za-z0-9_-]{1,60}-\d{10,14}$/;
+const cleanShow = a => (Array.isArray(a) ? a : []).filter(x => SHOW_URL.test(String(x?.url || ''))).slice(0, 12)
+  .map(x => ({ url: String(x.url), name: String(x.name || '').slice(0, 30) }));
+app.put('/admin/showcase', perm('config_edit'), w(notBanned), w(async (q, r) => {
+  const b = q.body || {};
+  const v = { enabled: b.enabled !== false, live: cleanShow(b.live), nearby: cleanShow(b.nearby), updatedBy: q.uid, updatedAt: Date.now() };
+  await db.ref('appConfig/showcase').set(v); r.json(v);
+}));
+
 // ===== Coin / diamond top-up by bank transfer (works without Google Play). Admin sets pay info + packages, then confirms each request. =====
 const TOPUP_DEF = { enabled: false, bankName: '', accountName: '', accountNo: '', promptPay: '', note: '', packages: [] };
 async function topupCfg() { return { ...TOPUP_DEF, ...((await db.ref('appConfig/topup').get()).val() || {}) }; }

@@ -75,3 +75,4 @@ Open:
 
 ## Coin / diamond top-up by bank transfer (2026-10-14)
 - Works without Google Play: Admin → เศรษฐกิจ → เติมเงิน (โอน) sets bank / PromptPay info and packages (`appConfig/topup`), users send a request with the transfer reference (`POST /coins/topup`), admins confirm (`/admin/coins/confirm`, now also credits diamonds) or reject (`/admin/coins/reject`). Users see their requests (`GET /coins/topup/mine`) and get a push when done.
+- Launch showcase: Admin → เศรษฐกิจ → รูปตัวอย่าง AI uploads sample images (via `/admin/ui/bg/sec_showcase_*`) and saves them with `PUT /admin/showcase` (`appConfig/showcase` = `{enabled, live[], nearby[]}`). The app shows them, labelled "ตัวอย่าง AI", only while the real live list / nearby list is empty, so they hide by themselves once real users appear.

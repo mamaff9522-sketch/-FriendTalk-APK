@@ -75,12 +75,13 @@ fun DiscoverTab(
                     "swipe" -> RealSwipeView()
                     "similar" -> PersonalityMatchView()
                     "requests" -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) { FriendRequestsCard(); FriendsList() }
+                    "companion" -> com.example.ui.social.CompanionGridScreen() // approved companions as small profile cards
                 }
             }
         }
         return
     }
-    FindFriendsHome(onTile = { key -> if (key == "companion") onOpenCompanion() else fn = key }, showCompanion = showCompanion)
+    FindFriendsHome(onTile = { key -> fn = key }, showCompanion = showCompanion) // เพื่อนคุย now opens inside หาเพื่อน too
 }
 
 private val TILES = listOf(
