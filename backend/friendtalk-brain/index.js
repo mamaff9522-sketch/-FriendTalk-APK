@@ -508,6 +508,8 @@ app.post('/admin/creator-metrics-all', perm('manage_content'), w(async (_q, r) =
 // ======================= Age / onboarding / ID verification =======================
 function ageFrom(bd) { const [y, m, d] = bd.split('-').map(Number); const n = BKK(); let a = n.getUTCFullYear() - y; if (n.getUTCMonth() + 1 < m || (n.getUTCMonth() + 1 === m && n.getUTCDate() < d)) a--; return a; }
 const OB_STEPS = ['signin', 'terms', 'id_scan', 'liveness', 'profile', 'interests', 'looking_for', 'details'];
+// Only these gate the app; interests / looking_for / details can be filled in later from the profile (sign-up was too long).
+const OB_REQUIRED = ['signin', 'terms', 'id_scan', 'liveness', 'profile'];
 const LOOKING = ['friends', 'chat', 'dating', 'activity', 'gaming', 'study', 'work', 'travel', 'other'];
 const DEFAULT_TERMS = ['FriendTalk สำหรับผู้มีอายุ 18 ปีขึ้นไปเท่านั้น ข้อมูลอายุที่ให้ต้องเป็นความจริง', 'ห้ามโพสต์ ส่ง หรือขอเนื้อหาลามกอนาจาร/ทางเพศ ทุกรูปแบบ', 'ห้ามเนื้อหาหรือกิจกรรมผิดกฎหมาย ยาเสพติด การพนัน อาวุธ',
   'ห้ามคุกคาม กลั่นแกล้ง ข่มขู่ หรือใช้ถ้อยคำแสดงความเกลียดชัง', 'ห้ามหลอกลวง ฉ้อโกง ขอเงิน ชักชวนลงทุน หรือขายของโดยไม่ได้รับอนุญาต', 'ห้ามแอบอ้างเป็นบุคคลอื่นหรือใช้บัญชีปลอม',
@@ -559,20 +561,21 @@ async function obState(uid) {
   const ip = u.interestProfile || {};
   if (!done.interests && Object.keys(ip).some(k => k !== 'lookingFor')) done.interests = Date.now();
   if (!done.looking_for && Array.isArray(ip.lookingFor) && ip.lookingFor.length) done.looking_for = Date.now();
-  const next = steps.find(s => !done[s]) || null;
-  return { steps, done, next, complete: !next, kycEnabled: cfg.kycEnabled, termsVersion: cfg.termsVersion, minor: (await db.ref(`onboarding/${uid}/blockedMinor`).get()).exists() };
+  const next = steps.find(s => OB_REQUIRED.includes(s) && !done[s]) || null;
+  return { steps: steps.filter(s => OB_REQUIRED.includes(s)), optional: steps.filter(s => !OB_REQUIRED.includes(s) && !done[s]), done, next, complete: !next, kycEnabled: cfg.kycEnabled, termsVersion: cfg.termsVersion, minor: (await db.ref(`onboarding/${uid}/blockedMinor`).get()).exists() };
 }
 app.get('/onboarding', w(async (q, r) => r.json(await obState(q.uid))));
 app.post('/onboarding/:step', w(notBanned), w(async (q, r) => {
   const step = q.params.step, st = await obState(q.uid), b = q.body || {}, t = Date.now();
-  if (!st.steps.includes(step)) return r.status(400).json({ error: 'unknown step' });
-  if (st.next !== step && !st.done[step]) return r.status(409).json({ error: 'ต้องทำขั้นตอนตามลำดับ', next: st.next });
+  if (!OB_STEPS.includes(step) || (!st.steps.includes(step) && OB_REQUIRED.includes(step))) return r.status(400).json({ error: 'unknown step' });
+  if (OB_REQUIRED.includes(step) && st.next !== step && !st.done[step]) return r.status(409).json({ error: 'ต้องทำขั้นตอนตามลำดับ', next: st.next });
   if (step === 'id_scan' || step === 'liveness') return r.status(501).json({ error: 'ยังไม่ได้เชื่อมผู้ให้บริการ eKYC' });
-  if (step === 'terms') { if (b.accept !== true || b.scrolledToEnd !== true || +b.version !== st.termsVersion) return r.status(400).json({ error: 'ต้องอ่านจนจบและยอมรับกฎ' }); await db.ref(`termsAccepted/${q.uid}`).set({ version: st.termsVersion, at: t }); }
+  if (step === 'terms') { if (b.accept !== true || +b.version !== st.termsVersion) return r.status(400).json({ error: 'ต้องยอมรับกฎก่อน' }); await db.ref(`termsAccepted/${q.uid}`).set({ version: st.termsVersion, at: t }); }
   if (step === 'profile') {
-    const vf = validFields(OB_FIELDS.profile, b); if (vf.error) return r.status(400).json({ error: vf.error });
+    // Only nickname, age and gender are required; real name and the 'who I want to talk to' fields are optional now.
+    const vf = { out: {} };
+    for (const f of OB_FIELDS.profile) { const v = b[f.key]; if (f.options.includes(v)) vf.out[f.key] = v; else if (f.key === 'gender') return r.status(400).json({ error: 'เลือกเพศ' }); else vf.out[f.key] = null; }
     const real = String(b.realName || '').trim().slice(0, 80), n = String(b.displayName || '').trim();
-    if (real.length < 2) return r.status(400).json({ error: 'กรอกชื่อ' });
     if (n.length < 2 || n.length > 30) return r.status(400).json({ error: 'ชื่อเล่น 2-30 ตัวอักษร' });
     let age = parseInt(b.age), bd = String(b.birthDate || '');
     if (/^\d{4}-\d{2}-\d{2}$/.test(bd)) age = ageFrom(bd); else bd = '';
@@ -584,7 +587,7 @@ app.post('/onboarding/:step', w(notBanned), w(async (q, r) => {
     const m = await moderateText(q.uid, n + ' ' + real, { kind: 'profile_name' }); if (!m.ok || (m.flags || []).length) return r.status(422).json({ error: 'ชื่อนี้ใช้ไม่ได้' });
     const key = n.toLowerCase().replace(/[.#$\[\]\/\s]/g, '_'), own = await db.ref(`displayNames/${key}`).transaction(v => (v === null || v === q.uid ? q.uid : undefined));
     if (!own.committed || own.snapshot.val() !== q.uid) return r.status(409).json({ error: 'ชื่อเล่นนี้ถูกใช้แล้ว' });
-    await db.ref().update({ [`users/${q.uid}/displayName`]: n, [`private/${q.uid}/realName`]: real, [`users/${q.uid}/profileDetails/gender`]: vf.out.gender, [`users/${q.uid}/profileDetails/interestedIn`]: vf.out.interestedIn, [`users/${q.uid}/profileDetails/ageRange`]: vf.out.ageRange, [`users/${q.uid}/profileDetails/province`]: vf.out.province, [`users/${q.uid}/age`]: age });
+    await db.ref().update({ [`users/${q.uid}/displayName`]: n, ...(real.length >= 2 ? { [`private/${q.uid}/realName`]: real } : {}), [`users/${q.uid}/profileDetails/gender`]: vf.out.gender, [`users/${q.uid}/profileDetails/interestedIn`]: vf.out.interestedIn, [`users/${q.uid}/profileDetails/ageRange`]: vf.out.ageRange, [`users/${q.uid}/profileDetails/province`]: vf.out.province, [`users/${q.uid}/age`]: age });
   }
   if (step === 'interests' && Array.isArray(b.hobbies)) { const l = [...new Set(b.hobbies.filter(x => OB_FIELDS.interests.options.includes(x)))]; if (l.length) await db.ref(`users/${q.uid}/interestProfile/hobbies`).set(l); }
   if (step === 'interests') { const u = (await db.ref(`users/${q.uid}/interestProfile`).get()).val() || {}; if (!Object.keys(u).some(k => k !== 'lookingFor')) return r.status(400).json({ error: 'เลือกสิ่งที่ชอบก่อน' }); }
