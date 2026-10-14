@@ -309,26 +309,12 @@ fun ProfileTab(
 private fun ThemeModeCard() {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val dark = com.example.ui.theme.AppThemeMode.dark
-    Surface(shape = RoundedCornerShape(18.dp), color = com.example.ui.theme.AppThemeMode.card,
-        border = androidx.compose.foundation.BorderStroke(1.dp, com.example.ui.theme.AppThemeMode.line),
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
-        Column(Modifier.padding(14.dp)) {
-            Text(tr("🎨 รูปแบบการแสดงผล"), color = White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-            Text(tr("เลือกได้ว่าจะให้ทุกหน้าเป็นโหมดมืด หรือโหมดปกติ"), color = Slate400, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp, bottom = 10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                listOf(true to tr("🌙 โหมดมืด"), false to tr("☀️ โหมดปกติ")).forEach { (isDark, label) ->
-                    val on = dark == isDark
-                    Surface(onClick = { com.example.ui.theme.AppThemeMode.set(ctx, isDark) }, shape = RoundedCornerShape(14.dp),
-                        color = if (on) androidx.compose.ui.graphics.Color.Transparent else com.example.ui.theme.AppThemeMode.cardSolid,
-                        border = androidx.compose.foundation.BorderStroke(if (on) 0.dp else 1.dp, com.example.ui.theme.AppThemeMode.divider),
-                        modifier = Modifier.weight(1f)) {
-                        Box(Modifier.fillMaxWidth().then(if (on) Modifier.background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(androidx.compose.ui.graphics.Color(0xFFFF2FA8), androidx.compose.ui.graphics.Color(0xFFB04DFF)))) else Modifier)
-                            .padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
-                            Text(label + if (on) "  ✓" else "", color = if (on) PureWhite else White, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal, fontSize = 14.sp)
-                        }
-                    }
-                }
-            }
+    // one small row: caption on the left, a plain button that switches to the other mode
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(if (dark) tr("🌙 โหมดมืด") else tr("☀️ โหมดปกติ"), color = Slate400, fontSize = 12.sp, modifier = Modifier.weight(1f))
+        OutlinedButton(onClick = { com.example.ui.theme.AppThemeMode.set(ctx, !dark) }, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+            modifier = Modifier.height(32.dp)) {
+            Text(if (dark) tr("เปลี่ยนเป็นโหมดปกติ") else tr("เปลี่ยนเป็นโหมดมืด"), color = White, fontSize = 12.sp)
         }
     }
 }
