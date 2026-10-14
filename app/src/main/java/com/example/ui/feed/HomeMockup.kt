@@ -586,7 +586,7 @@ fun HomeNotificationsDialog(onDismiss: () -> Unit) {
         matches.filter { !it.seen }.forEach { HomeRepo.markMatchSeen(it.id) }
         HomeRepo.refreshCounts()
     }
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(Modifier.fillMaxWidth(0.94f).fillMaxHeight(0.7f), shape = RoundedCornerShape(22.dp), color = AppThemeMode.dialog, border = BorderStroke(1.dp, Color(0xFF4A3590))) {
             Column(Modifier.padding(14.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

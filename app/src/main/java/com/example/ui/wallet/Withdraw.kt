@@ -28,7 +28,7 @@ fun WithdrawDialog(isStaff: Boolean, onDismiss: () -> Unit) {
     var tab by remember { mutableStateOf(0) }
     var reload by remember { mutableStateOf(0) }
     LaunchedEffect(reload) { data = BrainApi.call(user, "GET", "/withdraw").json }
-    Dialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(Modifier.fillMaxSize()) { Box(Modifier.systemBarsPadding().imePadding()) {
             Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
                 Row { Text("💸 ถอนเงิน", fontWeight = FontWeight.Bold, fontSize = 20.sp, modifier = Modifier.weight(1f)); TextButton(onDismiss) { Text("ปิด") } }

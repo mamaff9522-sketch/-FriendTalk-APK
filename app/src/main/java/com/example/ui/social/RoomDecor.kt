@@ -158,7 +158,7 @@ fun RoomDecorEditor(chatId: String, initial: Decor?, token: String?, onClose: (s
         msg = "กำลังอัปโหลด…"
         scope.launch { val r = GiftRepo.uploadDecorImage(chatId, bytes, mime); if (r != null) { d = d.copy(imagePath = r.first, animated = r.second); msg = "" } else msg = "อัปโหลดไม่สำเร็จ (VIP เท่านั้น)" }
     }
-    Dialog(onDismissRequest = { onClose(false) }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = { onClose(false) }, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(Modifier.fillMaxSize().systemBarsPadding(), color = Slate950) {
             Column(Modifier.fillMaxSize()) {
                 Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {

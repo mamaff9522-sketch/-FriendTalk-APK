@@ -35,7 +35,7 @@ fun AiHubDialog(onClose: () -> Unit) {
     LaunchedEffect(Unit) {
         FirebaseAuth.getInstance().currentUser?.let { u -> bots = AiRepo.bots(u); isAdmin = AiRepo.adminBots(u) != null }
     }
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(Modifier.fillMaxSize().systemBarsPadding(), color = Slate950) {
             val c = chatWith
             if (c != null) {

@@ -159,7 +159,7 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
         }
     }
 
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(Modifier.fillMaxSize(), color = Slate950) {
             // Insets: the input row was drawn behind the navigation bar (edge-to-edge dialog window) → pad for system bars + keyboard.
             Column(Modifier.fillMaxSize().systemBarsPadding().imePadding()) {

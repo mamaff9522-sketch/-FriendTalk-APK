@@ -396,7 +396,7 @@ fun PlacePickerDialog(current: PostPlace?, onDismiss: () -> Unit, onPick: (PostP
 
     if (mode == "map") { MapPickDialog(start = point ?: current?.let { c -> if (c.lat != null && c.lng != null) c.lat to c.lng else null }, onDismiss = { mode = "menu" }, onPick = { la, lo -> usePoint(la, lo) }); return }
 
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(Modifier.fillMaxWidth(0.94f).heightIn(max = 640.dp), shape = RoundedCornerShape(22.dp), color = AppThemeMode.dialog, border = BorderStroke(1.dp, Color(0xFF4A3590))) {
             Column(Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

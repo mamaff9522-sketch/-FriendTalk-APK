@@ -51,7 +51,7 @@ fun GlobalSearchDialog(onClose: () -> Unit) {
             busy = false
         }
     }
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(Modifier.fillMaxSize(), color = Slate950) {
             Column(Modifier.fillMaxSize().systemBarsPadding().imePadding().padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

@@ -281,7 +281,7 @@ fun RealCommentsDialog(state: RealFeedState) {
     var msg by remember { mutableStateOf("") }
     suspend fun reload() { comments = FeedRepo.comments(post.id) ?: emptyList() }
     LaunchedEffect(post.id) { reload() }
-    Dialog(onDismissRequest = { state.commentsFor = null }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = { state.commentsFor = null }, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(Modifier.fillMaxWidth().fillMaxHeight(0.85f), shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp), color = Slate950) {
             Column(Modifier.padding(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -362,7 +362,7 @@ fun FilteredFeedDialog(title: String, tag: String?, author: String?, onClose: ()
     val scope = rememberCoroutineScope()
     val st = remember(tag, author) { RealFeedState(scope, tag, author) }
     LaunchedEffect(tag, author) { st.refresh() }
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(Modifier.fillMaxSize().systemBarsPadding().imePadding(), color = Slate950) {
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(12.dp)) {

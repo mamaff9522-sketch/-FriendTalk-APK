@@ -38,10 +38,10 @@ fun CompanionSessionActiveDialog(
 
     Dialog(
         onDismissRequest = { onEndSession(secondsElapsed) },
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
         Surface(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().systemBarsPadding().imePadding(),
             color = Slate950
         ) {
             Column(

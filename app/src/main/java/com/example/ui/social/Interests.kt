@@ -63,7 +63,7 @@ fun InterestsEditorDialog(onDismiss: () -> Unit, skippable: Boolean = false) {
         cats = InterestsRepo.config()
         FirebaseAuth.getInstance().currentUser?.uid?.let { InterestsRepo.profile(it)?.interests?.forEach { (k, v) -> sel[k] = v } }
     }
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(Modifier.fillMaxSize().systemBarsPadding().imePadding(), color = Slate950) {
             Column(Modifier.fillMaxSize().padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
