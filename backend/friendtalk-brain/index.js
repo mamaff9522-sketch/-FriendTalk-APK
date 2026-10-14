@@ -2479,4 +2479,38 @@ app.use((e, _q, r, _n) => {
   if (e.type === 'entity.parse.failed') return r.status(400).json({ error: 'invalid JSON' });
   r.status(e.code === 404 ? 404 : 500).json({ error: e.code === 404 ? 'user not found' : 'internal' });
 });
+// ===== First-run defaults so a fresh project works without any admin setup.
+// Each block only writes when that config has never been set — an admin's own settings (including turning a feature off) are never overwritten.
+const BRAIN_URL = 'https://friendtalk-brain-123224091480.asia-southeast1.run.app';
+app.get('/bot-assets/:f', (q, r) => {
+  if (!/^bot[1-9]\.webp$/.test(q.params.f)) return r.status(400).end();
+  r.set('Cache-Control', 'public, max-age=86400'); r.type('image/webp');
+  r.sendFile(new URL(`./assets/bots/${q.params.f}`, import.meta.url).pathname, e => { if (e && !r.headersSent) r.status(404).end(); });
+});
+const SEED_BOTS = {
+  mint: { name: 'มิ้นท์', avatarUrl: `${BRAIN_URL}/bot-assets/bot1.webp`, bio: 'ชอบคาเฟ่ ดูซีรีส์ เล่าเรื่องสนุก ๆ ให้ฟังได้ทั้งวัน', interests: ['คาเฟ่', 'ซีรีส์', 'ท่องเที่ยว'], enabled: true,
+    persona: 'ผู้หญิงร่าเริง เป็นกันเอง พูดสุภาพ ใช้คำลงท้าย ค่ะ/นะคะ ชวนคุยเรื่องชีวิตประจำวัน คาเฟ่ ซีรีส์ ถามกลับเสมอ' },
+  fah: { name: 'ฟ้า', avatarUrl: `${BRAIN_URL}/bot-assets/bot2.webp`, bio: 'สายเพลงและหนัง ชอบฟังเรื่องของคุณ', interests: ['ดนตรี', 'หนัง', 'ถ่ายรูป'], enabled: true,
+    persona: 'ผู้หญิงอ่อนโยน ใจเย็น เป็นผู้ฟังที่ดี ชอบแนะนำเพลงและหนัง ใช้ ค่ะ/นะคะ ให้กำลังใจเมื่ออีกฝ่ายเครียด' },
+  ploy: { name: 'พลอย', avatarUrl: `${BRAIN_URL}/bot-assets/bot3.webp`, bio: 'ชอบเที่ยวทะเล ทำอาหาร และคุยเรื่องฮา ๆ', interests: ['ทะเล', 'ทำอาหาร', 'สัตว์เลี้ยง'], enabled: true,
+    persona: 'ผู้หญิงสดใส ตลก ขี้เล่นแบบสุภาพ ชอบเล่าเรื่องเที่ยวและสูตรอาหาร ใช้ ค่ะ/นะคะ' },
+  nam: { name: 'น้ำ', avatarUrl: `${BRAIN_URL}/bot-assets/bot4.webp`, bio: 'สายเกมและอนิเมะ ชวนคุยได้ทุกเรื่อง', interests: ['เกม', 'อนิเมะ', 'เทคโนโลยี'], enabled: true,
+    persona: 'ผู้หญิงชอบเกมและอนิเมะ คุยสนุก เป็นกันเอง ใช้ ค่ะ/นะคะ แนะนำเกมหรืออนิเมะตามที่อีกฝ่ายชอบ' }
+};
+const SEED_CHAT_GIFTS = [['rose', 'กุหลาบ', '🌹', 10], ['coffee', 'กาแฟ', '☕', 20], ['heart', 'หัวใจ', '💖', 30], ['bear', 'ตุ๊กตาหมี', '🧸', 50],
+  ['cake', 'เค้ก', '🎂', 80], ['bouquet', 'ช่อดอกไม้', '💐', 100], ['crown', 'มงกุฎ', '👑', 300], ['ring', 'แหวนเพชร', '💍', 500]];
+const SEED_CHAT_STICKERS = [['hi', 'สวัสดี', '👋'], ['love', 'รักนะ', '🥰'], ['lol', 'ขำ', '🤣'], ['ok', 'โอเค', '👌'], ['thanks', 'ขอบคุณ', '🙏'],
+  ['sad', 'เศร้า', '🥺'], ['wow', 'ว้าว', '😮'], ['party', 'เย่', '🥳'], ['sleep', 'ฝันดี', '😴'], ['hug', 'กอด', '🤗']];
+async function seedDefaults() {
+  const once = async (path, value) => { await db.ref(path).transaction(c => (c === null ? value : undefined)); };
+  try {
+    await once('aiBots', SEED_BOTS);
+    await once('appConfig/aiBotsEnabled', true);
+    const gifts = {}; SEED_CHAT_GIFTS.forEach(([id, name, icon, price], i) => { gifts[id] = { name, icon, price, imageUrl: '', category: 'ทั่วไป', enabled: true, order: i, animationEffect: 'POP' }; });
+    await once('catalog/chat', gifts);
+    const st = {}; SEED_CHAT_STICKERS.forEach(([id, name, icon], i) => { st[id] = { name, icon, price: 0, imageUrl: '', category: 'อีโมจิ', enabled: true, order: i, animationEffect: 'POP' }; });
+    await once('catalog/chatStickers', st);
+  } catch (e) { console.error('seedDefaults', e?.message); }
+}
+seedDefaults();
 app.listen(process.env.PORT || 8080);
