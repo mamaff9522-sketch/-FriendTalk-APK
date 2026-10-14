@@ -182,7 +182,11 @@ fun FriendTalkApp(
     var activeCompanionWalletId by remember { mutableStateOf<String?>(null) }
 
     val unreadNotificationsCount = uiState.notifications.count { !it.isRead }
-    val totalUnreadMessages = uiState.conversations.sumOf { it.unreadCounts[uiState.currentUser.id] ?: 0 }
+    // Real unread chats (RTDB userChats + readReceipts), refreshed every minute
+    val totalUnreadMessages by com.example.ui.feed.HomeRepo.unreadChats.collectAsState()
+    LaunchedEffect(uiState.currentUser.id) { while (true) { com.example.ui.feed.HomeRepo.refreshCounts(); kotlinx.coroutines.delay(60_000) } }
+    var isHomeNotifsOpen by remember { mutableStateOf(false) }
+    if (isHomeNotifsOpen) com.example.ui.feed.HomeNotificationsDialog { isHomeNotifsOpen = false }
     val activeLiveCount = 0 // live rooms are not real yet (no badge from mock data)
 
     val appBgColor = parseHexColor(uiState.uiConfig.theme.backgroundColorHex, Slate950)
@@ -223,7 +227,16 @@ fun FriendTalkApp(
                 Column {
                 com.example.ui.social.VerifyEmailBanner()
                 if (globalSearch) com.example.ui.social.GlobalSearchDialog { globalSearch = false }
-                if (uiState.uiConfig.feed.showHeader) {
+                if (uiState.uiConfig.feed.showHeader && uiState.activeTab == "home") {
+                    com.example.ui.feed.HomeHeader(
+                        currentUser = uiState.currentUser,
+                        onAvatar = { if (com.google.firebase.auth.FirebaseAuth.getInstance().currentUser != null) viewModel.setActiveTab("profile") else isAuthOpen = true },
+                        onCoins = { if (com.google.firebase.auth.FirebaseAuth.getInstance().currentUser != null) com.example.ui.shop.Shop.open.value = "coins" else isAuthOpen = true },
+                        onDiamonds = { if (com.google.firebase.auth.FirebaseAuth.getInstance().currentUser != null) com.example.ui.shop.Shop.open.value = "diamonds" else isAuthOpen = true },
+                        onBell = { isHomeNotifsOpen = true },
+                        onAdmin = { isAdminDashboardOpen = true }
+                    )
+                } else if (uiState.uiConfig.feed.showHeader) {
                     AppHeader(
                         currentUser = uiState.currentUser,
                         appName = uiState.uiConfig.appName,

@@ -40,105 +40,58 @@ fun BottomNavBar(
     currentUserAge: Int,
     uiConfig: AppUiConfig
 ) = UiPage("nav") {
+    // Mockup nav: หน้าหลัก · หาเพื่อน · ข้อความ · วิดีโอ · โปรไฟล์ (admin toggles still hide a tab)
     val items = mutableListOf<NavItem>()
+    if (uiConfig.bottomNav.showHomeTab) items.add(NavItem("home", tr("หน้าหลัก"), Icons.Filled.Home, Icons.Outlined.Home))
+    if (uiConfig.bottomNav.showDiscoverTab) items.add(NavItem("discover", tr("หาเพื่อน"), Icons.Filled.Place, Icons.Outlined.Place))
+    if (uiConfig.bottomNav.showChatTab) items.add(NavItem("chat", tr("ข้อความ"), Icons.Filled.Sms, Icons.Outlined.Sms, badgeCount = totalUnreadMessages))
+    if (uiConfig.bottomNav.showMovieTab && uiConfig.isMovieFeatureEnabled) items.add(NavItem("movie", tr("วิดีโอ"), Icons.Filled.SmartDisplay, Icons.Outlined.SmartDisplay))
+    items.add(NavItem("profile", tr("โปรไฟล์"), Icons.Filled.Person, Icons.Outlined.Person))
 
-    if (uiConfig.bottomNav.showHomeTab) {
-        items.add(NavItem("home", tr("หน้าแรก"), Icons.Filled.Home, Icons.Outlined.Home))
-    }
-    if (uiConfig.bottomNav.showDiscoverTab) {
-        items.add(NavItem("discover", tr("หาเพื่อน"), Icons.Filled.People, Icons.Outlined.People))
-    }
-    if (uiConfig.bottomNav.showLiveTab && uiConfig.isLiveStreamingEnabled) {
-        items.add(NavItem("live", tr("ไลฟ์สด"), Icons.Filled.LiveTv, Icons.Outlined.LiveTv, badgeCount = activeLiveCount))
-    }
-    if (uiConfig.bottomNav.showMovieTab && uiConfig.isMovieFeatureEnabled) {
-        items.add(NavItem("movie", tr("วิดีโอ"), Icons.Filled.PlayCircle, Icons.Outlined.PlayCircleOutline))
-    }
-    if (uiConfig.bottomNav.showChatTab) {
-        items.add(NavItem("chat", tr("แชท"), Icons.Filled.ChatBubble, Icons.Outlined.ChatBubbleOutline, badgeCount = totalUnreadMessages))
-    }
-    // 'เพื่อนคุย' (companion, 18+) moved to a tile on the 'หาเพื่อน' page.
-    // Profile moved to the header avatar; this slot is the standalone ads page.
-    items.add(NavItem("ads", tr("โฆษณา"), Icons.Filled.Star, Icons.Outlined.StarBorder))
-
+    val active = Color(0xFFC77DFF)
+    val idle = Color(0xFFCFC9EE)
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .navigationBarsPadding(),
-        color = Slate950,
-        border = androidx.compose.foundation.BorderStroke(0.5.dp, Slate700.copy(alpha = 0.5f)),
+        modifier = Modifier.fillMaxWidth(),
+        color = Color(0xFF0C0A24),
+        border = androidx.compose.foundation.BorderStroke(0.8.dp, Color(0xB32A2357)),
         tonalElevation = 0.dp
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 6.dp, horizontal = 4.dp),
-            horizontalArrangement = Arrangement.SpaceAround,
+            modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(top = 6.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             items.forEach { item ->
                 val isSelected = activeTab == item.id
-
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable { onTabSelected(item.id) }
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                    modifier = Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).clickable { onTabSelected(item.id) }.padding(vertical = 2.dp)
                 ) {
-                    Box(
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (isSelected) {
-                            Box(
-                                modifier = Modifier
-                                    .size(width = 60.dp, height = 34.dp)
-                                    .clip(RoundedCornerShape(17.dp))
-                                    .background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Pink500.copy(alpha = 0.35f), Purple500.copy(alpha = 0.30f))))
-                            )
-                        }
-
+                    Box(contentAlignment = Alignment.Center) {
+                        // soft violet glow behind the selected icon
+                        if (isSelected) Box(Modifier.size(34.dp).background(androidx.compose.ui.graphics.Brush.radialGradient(listOf(Color(0x80B04DFF), Color.Transparent)), CircleShape))
                         Icon(
                             imageVector = if (isSelected) item.activeIcon else item.inactiveIcon,
                             contentDescription = item.label,
-                            tint = when {
-                                item.isSpecial && isSelected -> Rose500
-                                isSelected -> Pink500
-                                item.isSpecial -> Rose500.copy(alpha = 0.7f)
-                                else -> Slate400
-                            },
-                            modifier = Modifier.size(25.dp)
+                            tint = if (isSelected) active else idle,
+                            modifier = Modifier.size(26.dp)
                         )
-
                         if (item.badgeCount > 0) {
-                            Badge(
-                                containerColor = if (item.id == "live") Rose500 else Pink500,
-                                contentColor = PureWhite,
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .offset(x = 6.dp, y = (-4).dp)
+                            Box(
+                                Modifier.align(Alignment.TopEnd).offset(x = 10.dp, y = (-6).dp).defaultMinSize(minWidth = 18.dp, minHeight = 18.dp)
+                                    .clip(CircleShape).background(Color(0xFFFF2D6F)).padding(horizontal = 4.dp),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    text = if (item.badgeCount > 9) "9+" else "${item.badgeCount}",
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                Text(if (item.badgeCount > 99) "99+" else "${item.badgeCount}", color = PureWhite, fontSize = 10.sp, fontWeight = FontWeight.Bold, lineHeight = 10.sp)
                             }
                         }
                     }
-
                     Spacer(modifier = Modifier.height(2.dp))
-
                     Text(
                         text = item.label + if (com.example.ui.components.AppGates.partLocked(if (item.id == "movie") "video" else item.id)) " 🔒" else "",
-                        fontSize = 12.sp,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                        color = when {
-                            item.isSpecial && isSelected -> Rose500
-                            isSelected -> Pink400
-                            else -> Slate400
-                        }
+                        fontSize = 11.5.sp,
+                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (isSelected) active else idle,
+                        maxLines = 1
                     )
                 }
             }

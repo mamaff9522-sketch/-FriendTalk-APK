@@ -95,13 +95,18 @@ fun FeedTab(
     var refreshing by remember { mutableStateOf(false) }
     val realFeed = com.example.ui.social.rememberRealFeedState()
     com.example.ui.social.RealCommentsDialog(realFeed)
+    // Mockup Home: tabs ทั้งหมด / ใกล้คุณ / กำลังติดตาม over real posts
+    var homeTab by remember { mutableStateOf("all") }
+    val tabFeed = rememberHomeTabFeed()
+    val nearbyList by com.example.social.NearbyRepo.lastNearby.collectAsState()
+    LaunchedEffect(homeTab, nearbyList) { if (homeTab != "all") tabFeed.load(homeTab) }
     realFeed.openTag?.let { com.example.ui.social.TagFeedDialog(it) { realFeed.openTag = null } }
 
     PullToRefreshBox(
         isRefreshing = refreshing,
         onRefresh = {
             refreshing = true
-            refreshScope.launch { com.example.service.UiLayoutRepository.refreshHome(); realFeed.refresh(); refreshing = false }
+            refreshScope.launch { com.example.service.UiLayoutRepository.refreshHome(); HomeRepo.reloadTick++; realFeed.refresh(); if (homeTab != "all") tabFeed.load(homeTab); refreshing = false }
         },
         modifier = Modifier.fillMaxSize()
     ) {
@@ -161,8 +166,8 @@ fun FeedTab(
 
             val secStories: LazyListScope.() -> Unit = {
             if (feedConfig.showStoryRow) {
-                item { com.example.ui.components.ComingSoonGate("home_live", Modifier.fillMaxWidth()) { LiveNowSection(onSeeAll = onOpenLive) } }
-                item { com.example.ui.components.ComingSoonGate("home_nearby", Modifier.fillMaxWidth()) { NearbyStoriesSection(onSeeAll = onOpenFindFriends) } }
+                item { com.example.ui.components.ComingSoonGate("home_live", Modifier.fillMaxWidth()) { HomeLiveSection(onSeeAll = onOpenLive) } }
+                item { com.example.ui.components.ComingSoonGate("home_nearby", Modifier.fillMaxWidth()) { HomeNearbySection(onSeeAll = onOpenFindFriends) } }
             }
             }
 
@@ -213,7 +218,7 @@ fun FeedTab(
             }
 
             // Real posts from friendtalk-brain (mock posts are no longer shown as real)
-            val secFeed: LazyListScope.() -> Unit = { realFeedItems(realFeed) }
+            val secFeed: LazyListScope.() -> Unit = { homeFeedItems(realFeed, tabFeed, homeTab, { homeTab = it }, nearbyList) }
             @Suppress("UNUSED_VARIABLE") val secFeedLegacyMock: LazyListScope.() -> Unit = {
             // 4. Post Feed List
             if (filteredPosts.isEmpty()) {
