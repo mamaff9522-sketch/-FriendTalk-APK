@@ -153,28 +153,28 @@ private fun GlassPanel(content: @Composable ColumnScope.() -> Unit) {
 private fun PanelTitle(icon: @Composable () -> Unit, title: String, onSeeAll: () -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         icon(); Spacer(Modifier.width(8.dp))
-        Text(title, color = FInk, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, modifier = Modifier.weight(1f))
-        Text(tr("ดูทั้งหมด ›"), color = FViolet, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onSeeAll).padding(4.dp))
+        Text(title, color = FInk, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.weight(1f))
+        Text(tr("ดูทั้งหมด ›"), color = FViolet, fontSize = 12.5.sp, fontWeight = FontWeight.Medium, modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onSeeAll).padding(4.dp))
     }
 }
 
 /** Circle avatars: green ring + green dot (online) or pink ring + distance pill (nearby). */
 @Composable
 private fun CircleRow(people: List<Pair<RealProfile, String>>, online: Boolean, onOpen: (String) -> Unit) {
-    val w = ((LocalConfiguration.current.screenWidthDp - 48) / 6f).dp
+    val w = ((LocalConfiguration.current.screenWidthDp - 48) / 6f).dp.coerceAtLeast(60.dp)
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 8.dp)) {
         people.forEach { (p, dist) ->
             Column(Modifier.width(w).clip(RoundedCornerShape(10.dp)).clickable { onOpen(p.uid) }, horizontalAlignment = Alignment.CenterHorizontally) {
                 val ring = if (online) Brush.linearGradient(listOf(Color(0xFF34D399), FOnline)) else Brush.linearGradient(listOf(Color(0xFFFF7AD0), Color(0xFFB45CFF)))
-                Box(Modifier.size(w - 4.dp)) {
+                Box(Modifier.size(56.dp)) {
                     Box(Modifier.fillMaxSize().clip(CircleShape).background(ring).padding(2.5.dp).clip(CircleShape).background(AppThemeMode.bg).padding(1.5.dp)) {
-                        Avatar(p.avatar, p.displayName, (w - 12.dp).value.toInt())
+                        Avatar(p.avatar, p.displayName, 48)
                     }
-                    if (online) Box(Modifier.align(Alignment.BottomEnd).padding(end = 2.dp, bottom = 2.dp).size(13.dp).clip(CircleShape).background(Color.White).padding(2.dp).clip(CircleShape).background(FOnline))
+                    if (online) Box(Modifier.align(Alignment.BottomEnd).padding(end = 1.dp, bottom = 1.dp).size(12.dp).clip(CircleShape).background(Color.White).padding(2.dp).clip(CircleShape).background(FOnline))
                     else if (dist.isNotBlank()) Row(Modifier.align(Alignment.BottomCenter).offset(y = 4.dp).clip(RoundedCornerShape(10.dp)).background(AppThemeMode.pill).padding(horizontal = 5.dp, vertical = 1.dp),
                         verticalAlignment = Alignment.CenterVertically) {
                         Icon(androidx.compose.material.icons.Icons.Filled.LocationOn, null, tint = FPink, modifier = Modifier.size(11.dp))
-                        Text(com.example.ui.feed.thaiDistance(dist), color = FInk, fontSize = 10.sp, maxLines = 1)
+                        Text(com.example.ui.feed.thaiDistance(dist), color = FInk, fontSize = 9.5.sp, maxLines = 1)
                     }
                 }
                 if (online) Text(p.displayName, color = FInk, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
@@ -246,19 +246,19 @@ private fun FindFriendsHome(onTile: (String) -> Unit, showCompanion: Boolean) {
     Box(Modifier.fillMaxSize().background(FPageBg)) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 10.dp, bottom = 16.dp)) {
             // search pill: 🔍 ค้นหาเพื่อน … [filters]
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp).clip(RoundedCornerShape(28.dp)).background(AppThemeMode.field)
-                .border(1.5.dp, if (AppThemeMode.dark) Color(0xBFBE5AFF) else Color(0xE6FFFFFF), RoundedCornerShape(28.dp)).padding(start = 16.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+            Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp).clip(RoundedCornerShape(16.dp)).background(AppThemeMode.field)
+                .border(1.5.dp, if (AppThemeMode.dark) Color(0xBFBE5AFF) else Color(0xE6FFFFFF), RoundedCornerShape(16.dp)).padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                Icon(androidx.compose.material.icons.Icons.Filled.Search, null, tint = if (AppThemeMode.dark) Color(0xFFC48CFF) else Color(0xFF6B2FB0), modifier = Modifier.size(24.dp))
+                Icon(androidx.compose.material.icons.Icons.Filled.Search, null, tint = if (AppThemeMode.dark) Color(0xFFC48CFF) else Color(0xFF6B2FB0), modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(10.dp))
                 androidx.compose.foundation.text.BasicTextField(value = query, onValueChange = { query = it.take(50); if (it.isBlank()) { results = null; searchMsg = "" } },
-                    singleLine = true, textStyle = androidx.compose.ui.text.TextStyle(color = FInk, fontSize = 16.sp),
+                    singleLine = true, textStyle = androidx.compose.ui.text.TextStyle(color = FInk, fontSize = 15.sp),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = { search() }),
-                    modifier = Modifier.weight(1f).padding(vertical = 10.dp),
-                    decorationBox = { inner -> Box { if (query.isEmpty()) Text(tr("ค้นหาเพื่อน"), color = AppThemeMode.fieldHint, fontSize = 16.sp); inner() } })
+                    modifier = Modifier.weight(1f).padding(vertical = 5.dp),
+                    decorationBox = { inner -> Box { if (query.isEmpty()) Text(tr("ค้นหาเพื่อน"), color = AppThemeMode.fieldHint, fontSize = 15.sp); inner() } })
                 if (query.isNotBlank()) TextButton(onClick = { query = ""; results = null; searchMsg = "" }) { Text(tr("ล้าง"), color = FInkSoft, fontSize = 13.sp) }
-                Box(Modifier.size(44.dp).clip(CircleShape).background(AppThemeMode.pill).border(1.dp, AppThemeMode.divider, CircleShape).clickable { filters = true }, contentAlignment = Alignment.Center) {
-                    Icon(androidx.compose.material.icons.Icons.Filled.Tune, tr("ตัวกรอง"), tint = if (AppThemeMode.dark) Color(0xFFC48CFF) else Color(0xFF6B2FB0), modifier = Modifier.size(22.dp))
+                Box(Modifier.size(30.dp).clip(CircleShape).background(AppThemeMode.pill).border(1.dp, AppThemeMode.divider, CircleShape).clickable { filters = true }, contentAlignment = Alignment.Center) {
+                    Icon(androidx.compose.material.icons.Icons.Filled.Tune, tr("ตัวกรอง"), tint = if (AppThemeMode.dark) Color(0xFFC48CFF) else Color(0xFF6B2FB0), modifier = Modifier.size(18.dp))
                 }
             }
             if (searchMsg.isNotBlank()) Text(searchMsg, color = Color(0xFFB45309), fontSize = 12.sp, modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp))
@@ -270,7 +270,7 @@ private fun FindFriendsHome(onTile: (String) -> Unit, showCompanion: Boolean) {
                 res.forEach { n -> PersonRow(n.profile, n.distance, dark = false) { open = n.profile.uid } }
             } else {
                 GlassPanel {
-                    PanelTitle({ Box(Modifier.size(18.dp).clip(CircleShape).background(FOnline)) }, tr("เพื่อนที่ออนไลน์"), onSeeAll = { onTile("requests") })
+                    PanelTitle({ Box(Modifier.size(22.dp), contentAlignment = Alignment.Center) { Box(Modifier.size(14.dp).clip(CircleShape).background(FOnline)) } }, tr("เพื่อนที่ออนไลน์"), onSeeAll = { onTile("requests") })
                     val on = online
                     when {
                         on == null -> Text(tr("กำลังโหลด…"), color = FInkSoft, fontSize = 13.sp, modifier = Modifier.padding(top = 10.dp))
@@ -280,7 +280,7 @@ private fun FindFriendsHome(onTile: (String) -> Unit, showCompanion: Boolean) {
                     if (hidden) Text(tr("คุณซ่อนสถานะออนไลน์อยู่ (เปลี่ยนได้ที่ปุ่มตัวกรอง)"), color = FInkSoft, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
                 }
                 GlassPanel {
-                    PanelTitle({ Icon(androidx.compose.material.icons.Icons.Filled.LocationOn, null, tint = FPink, modifier = Modifier.size(24.dp)) }, tr("คนใกล้คุณ"), onSeeAll = { onTile("radar") })
+                    PanelTitle({ Icon(androidx.compose.material.icons.Icons.Filled.LocationOn, null, tint = FPink, modifier = Modifier.size(22.dp)) }, tr("คนใกล้คุณ"), onSeeAll = { onTile("radar") })
                     if (!granted) Box(Modifier.padding(top = 8.dp)) { LocationPermissionCard { granted = true } }
                     else {
                         val nb = nearby
