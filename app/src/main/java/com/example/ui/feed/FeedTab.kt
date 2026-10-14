@@ -100,6 +100,10 @@ fun FeedTab(
     val tabFeed = rememberHomeTabFeed()
     val nearbyList by com.example.social.NearbyRepo.lastNearby.collectAsState()
     LaunchedEffect(homeTab, nearbyList) { if (homeTab != "all") tabFeed.load(homeTab) }
+    val createdElsewhere by HomeRepo.newPost.collectAsState()
+    LaunchedEffect(createdElsewhere) {
+        createdElsewhere?.let { p -> homeTab = "all"; if (realFeed.posts.none { it.id == p.id }) realFeed.posts.add(0, p); HomeRepo.newPost.value = null }
+    }
     realFeed.openTag?.let { com.example.ui.social.TagFeedDialog(it) { realFeed.openTag = null } }
 
     PullToRefreshBox(

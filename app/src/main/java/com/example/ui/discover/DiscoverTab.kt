@@ -18,7 +18,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Sms
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.border
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
@@ -52,7 +60,7 @@ fun DiscoverTab(
     val f = fn
     androidx.activity.compose.BackHandler(enabled = f != null) { fn = null }
     if (f != null) {
-        Column(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().background(Color(0xFF0A0820))) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = { fn = null }) { Text(tr("← หาเพื่อน"), color = White, fontSize = 15.sp) }
                 Text(TILES.firstOrNull { it.first == f }?.second ?: "", color = Slate300, fontSize = 14.sp)
@@ -81,12 +89,128 @@ private val TILE_ART = mapOf("random" to com.example.R.drawable.art_dice, "shake
 private val TILE_TINT = mapOf("random" to Color(0xFFEC4899), "shake" to Color(0xFF6366F1), "radar" to Color(0xFF8B5CF6), "swipe" to Color(0xFFDB2777), "similar" to Color(0xFF10B981), "requests" to Color(0xFFF59E0B), "companion" to Color(0xFF7C3AED))
 private val TILE_ICONS = mapOf("random" to "🎲", "shake" to "📱", "radar" to "📡", "swipe" to "💘", "similar" to "🧩", "requests" to "🤝", "companion" to "💗")
 
+// ---- mockup palette (light lavender page, glassy cards, colourful tiles) ----
+private val FPageBg = Brush.verticalGradient(listOf(Color(0xFFE9D9FF), Color(0xFFF3DDF5), Color(0xFFE6CFF4), Color(0xFFD9B8EE)))
+private val FInk = Color(0xFF3B1C5A)
+private val FInkSoft = Color(0xFF7A5B98)
+private val FViolet = Color(0xFF8B3DFF)
+private val FPink = Color(0xFFE6399B)
+private val FOnline = Color(0xFF22C55E)
+private val FCard = Color(0x8CFFFFFF)
+private val FCardBorder = Color(0xCCFFFFFF)
+
+private val TILE_SUB = mapOf(
+    "random" to "เจอเพื่อนใหม่\nแบบสุ่ม", "shake" to "เขย่าเพื่อเจอ\nเพื่อนรอบตัว", "radar" to "ค้นหาเพื่อน\nรอบตัวคุณ", "swipe" to "ปัดซ้ายขวา\nหาเพื่อนที่ใช่",
+    "similar" to "หาเพื่อนจากความสนใจ\nที่เหมือนกัน", "requests" to "จัดการคำขอ\nและแนะนำเพื่อน", "companion" to "หาเพื่อนคุย\nเริ่มบทสนทนา"
+)
+private val TILE_GRAD = mapOf(
+    "random" to listOf(Color(0xFFFF63B8), Color(0xFFB63BD8)), "shake" to listOf(Color(0xFF4F86FF), Color(0xFF7A4DFF)),
+    "radar" to listOf(Color(0xFF8C6BFF), Color(0xFF5530D0)), "swipe" to listOf(Color(0xFFFF8A8A), Color(0xFFE0409F)),
+    "similar" to listOf(Color(0xFFEC4FAE), Color(0xFF8E3BD9)), "requests" to listOf(Color(0xFF5B6CF5), Color(0xFF7A3FE0)),
+    "companion" to listOf(Color(0xFF9550FF), Color(0xFFC94BE0))
+)
+
+/** Header of the 'หาเพื่อน' page (mockup): FriendTalk♡ 🦋, bell and chat with real counts. */
+@OptIn(androidx.compose.ui.text.ExperimentalTextApi::class)
+@Composable
+fun FriendsHeader(onBell: () -> Unit, onChat: () -> Unit) {
+    val notif by com.example.ui.feed.HomeRepo.notifCount.collectAsState()
+    val unread by com.example.ui.feed.HomeRepo.unreadChats.collectAsState()
+    Box(Modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color(0xFF6B2FB0), Color(0xFF9B4FD0), Color(0xFFD9A8EE))))) {
+        Row(Modifier.fillMaxWidth().statusBarsPadding().padding(start = 16.dp, end = 12.dp, top = 4.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            androidx.compose.material3.Text("FriendTalk", fontSize = 34.sp, fontWeight = FontWeight.ExtraBold, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                style = androidx.compose.ui.text.TextStyle(brush = Brush.horizontalGradient(listOf(Color.White, Color(0xFFFFD6F2), Color(0xFFFF8FD0))),
+                    shadow = androidx.compose.ui.graphics.Shadow(Color(0x99FF4FC0), blurRadius = 16f)))
+            Text("💗", fontSize = 16.sp, modifier = Modifier.padding(start = 2.dp, bottom = 18.dp))
+            Text("🦋", fontSize = 40.sp, modifier = Modifier.padding(start = 10.dp))
+            Spacer(Modifier.weight(1f))
+            HeaderIconBadge(androidx.compose.material.icons.Icons.Filled.Notifications, tr("การแจ้งเตือน"), notif, onBell)
+            Spacer(Modifier.width(10.dp))
+            HeaderIconBadge(androidx.compose.material.icons.Icons.Filled.Sms, tr("แชท"), unread, onChat)
+        }
+    }
+}
+
+@Composable
+private fun HeaderIconBadge(icon: androidx.compose.ui.graphics.vector.ImageVector, desc: String, count: Int, onClick: () -> Unit) {
+    Box(Modifier.size(46.dp).clip(CircleShape).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
+        Icon(icon, desc, tint = Color(0xFFFFE3F6), modifier = Modifier.size(32.dp))
+        if (count > 0) Box(Modifier.align(Alignment.TopEnd).defaultMinSize(minWidth = 20.dp, minHeight = 20.dp).clip(CircleShape).background(Color(0xFFFF2D55))
+            .border(1.5.dp, Color.White, CircleShape).padding(horizontal = 4.dp), contentAlignment = Alignment.Center) {
+            Text(if (count > 99) "99+" else "$count", color = PureWhite, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun GlassPanel(content: @Composable ColumnScope.() -> Unit) {
+    Surface(shape = RoundedCornerShape(20.dp), color = FCard, border = androidx.compose.foundation.BorderStroke(1.dp, FCardBorder),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 5.dp)) { Column(Modifier.padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 12.dp), content = content) }
+}
+
+@Composable
+private fun PanelTitle(icon: @Composable () -> Unit, title: String, onSeeAll: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        icon(); Spacer(Modifier.width(8.dp))
+        Text(title, color = FInk, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, modifier = Modifier.weight(1f))
+        Text(tr("ดูทั้งหมด ›"), color = FViolet, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onSeeAll).padding(4.dp))
+    }
+}
+
+/** Circle avatars: green ring + green dot (online) or pink ring + distance pill (nearby). */
+@Composable
+private fun CircleRow(people: List<Pair<RealProfile, String>>, online: Boolean, onOpen: (String) -> Unit) {
+    val w = ((LocalConfiguration.current.screenWidthDp - 48) / 6f).dp
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 8.dp)) {
+        people.forEach { (p, dist) ->
+            Column(Modifier.width(w).clip(RoundedCornerShape(10.dp)).clickable { onOpen(p.uid) }, horizontalAlignment = Alignment.CenterHorizontally) {
+                val ring = if (online) Brush.linearGradient(listOf(Color(0xFF34D399), FOnline)) else Brush.linearGradient(listOf(Color(0xFFFF7AD0), Color(0xFFB45CFF)))
+                Box(Modifier.size(w - 4.dp)) {
+                    Box(Modifier.fillMaxSize().clip(CircleShape).background(ring).padding(2.5.dp).clip(CircleShape).background(Color.White).padding(1.5.dp)) {
+                        Avatar(p.avatar, p.displayName, (w - 12.dp).value.toInt())
+                    }
+                    if (online) Box(Modifier.align(Alignment.BottomEnd).padding(end = 2.dp, bottom = 2.dp).size(13.dp).clip(CircleShape).background(Color.White).padding(2.dp).clip(CircleShape).background(FOnline))
+                    else if (dist.isNotBlank()) Row(Modifier.align(Alignment.BottomCenter).offset(y = 4.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xE6FFFFFF)).padding(horizontal = 5.dp, vertical = 1.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Icon(androidx.compose.material.icons.Icons.Filled.LocationOn, null, tint = FPink, modifier = Modifier.size(11.dp))
+                        Text(com.example.ui.feed.thaiDistance(dist), color = FInk, fontSize = 10.sp, maxLines = 1)
+                    }
+                }
+                if (online) Text(p.displayName, color = FInk, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+                else Spacer(Modifier.height(8.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun FeatureTile(k: String, label: String, height: androidx.compose.ui.unit.Dp, modifier: Modifier, onTile: (String) -> Unit) {
+    val grad = TILE_GRAD[k] ?: listOf(Color(0xFF8B5CF6), Color(0xFF6D28D9))
+    com.example.ui.components.ComingSoonGate("tile_$k", modifier.height(height).clip(RoundedCornerShape(22.dp)), compact = true) { com.example.ui.components.FeatureLockGate(k, Modifier.fillMaxSize(), compact = true) {
+        Box(Modifier.fillMaxSize().clip(RoundedCornerShape(22.dp)).background(Brush.linearGradient(grad))
+            .border(1.5.dp, Brush.verticalGradient(listOf(Color(0xCCFFFFFF), Color(0x33FFFFFF))), RoundedCornerShape(22.dp)).clickable { onTile(k) }) {
+            // glossy top light
+            Box(Modifier.fillMaxWidth().fillMaxHeight(0.45f).background(Brush.verticalGradient(listOf(Color(0x40FFFFFF), Color.Transparent))))
+            Column(Modifier.fillMaxSize().padding(horizontal = 4.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                val art = TILE_ART[k]
+                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    if (art != null) androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(art), null, modifier = Modifier.fillMaxHeight(0.92f).aspectRatio(1f))
+                    else Text(TILE_ICONS[k] ?: "", fontSize = 44.sp)
+                }
+                Text(label, color = PureWhite, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis, letterSpacing = (-0.3).sp,
+                    style = androidx.compose.ui.text.TextStyle(shadow = androidx.compose.ui.graphics.Shadow(Color(0x66000000), blurRadius = 6f)))
+                Text(tr(TILE_SUB[k] ?: ""), color = Color(0xE6FFFFFF), fontSize = 10.5.sp, lineHeight = 13.sp, textAlign = TextAlign.Center, maxLines = 2, modifier = Modifier.padding(top = 2.dp))
+            }
+        }
+    } }
+}
+
 @Composable
 private fun FindFriendsHome(onTile: (String) -> Unit, showCompanion: Boolean) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val focus = LocalFocusManager.current
-    val radius by rememberRadius()
+    var radius by rememberRadius()
     var query by rememberSaveable { mutableStateOf("") }
     var results by remember { mutableStateOf<List<NearbyUser>?>(null) }
     var searchMsg by remember { mutableStateOf("") }
@@ -96,6 +220,7 @@ private fun FindFriendsHome(onTile: (String) -> Unit, showCompanion: Boolean) {
     var online by remember { mutableStateOf<List<RealProfile>?>(null) }
     var hidden by remember { mutableStateOf(SocialRepo.isOnlineHidden(ctx)) }
     var open by remember { mutableStateOf<String?>(null) }
+    var filters by remember { mutableStateOf(false) }
 
     suspend fun loadNearby() {
         if (!granted) { nearby = emptyList(); nearbyMsg = ""; return }
@@ -117,81 +242,79 @@ private fun FindFriendsHome(onTile: (String) -> Unit, showCompanion: Boolean) {
     LaunchedEffect(Unit) { online = NearbyRepo.friendsWithOnline().filter { it.second }.map { it.first } }
     LaunchedEffect(granted, radius) { loadNearby() }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
-        OutlinedTextField(value = query, onValueChange = { query = it.take(50); if (it.isBlank()) { results = null; searchMsg = "" } },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), singleLine = true, shape = RoundedCornerShape(18.dp),
-            leadingIcon = { Text("🔍", fontSize = 18.sp) },
-            placeholder = { Text(tr("ค้นหาเพื่อนจากชื่อ"), color = Slate400) },
-            trailingIcon = { if (query.isNotBlank()) TextButton(onClick = { query = ""; results = null; searchMsg = "" }) { Text(tr("ล้าง"), color = Slate300) } },
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = { search() }),
-            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White, focusedBorderColor = Pink500, unfocusedBorderColor = Pink500.copy(alpha = 0.7f), focusedContainerColor = Slate900, unfocusedContainerColor = Slate900))
-        if (searchMsg.isNotBlank()) Text(searchMsg, color = Amber400, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
-        val res = results
-        if (res != null) {
-            if (res.isEmpty() && searchMsg.isBlank()) Text(tr("ไม่พบผู้ใช้ชื่อนี้"), color = Slate400, fontSize = 13.sp, modifier = Modifier.padding(16.dp))
-            res.forEach { n -> PersonRow(n.profile, n.distance) { open = n.profile.uid } }
-        } else {
-            com.example.ui.feed.GlassCard {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(22.dp).clip(CircleShape).background(Emerald400)); Spacer(Modifier.width(10.dp))
-                    Text(tr("เพื่อนที่ออนไลน์"), color = White, fontWeight = FontWeight.ExtraBold, fontSize = 19.sp, modifier = Modifier.weight(1f))
-                    Text(tr("ซ่อนสถานะของฉัน"), color = Slate300, fontSize = 12.sp)
-                    Switch(checked = hidden, onCheckedChange = { hidden = it; SocialRepo.setOnlineHidden(ctx, it) }, modifier = Modifier.padding(start = 6.dp))
-                }
-                val on = online
-                Spacer(Modifier.height(6.dp))
-                when {
-                    on == null -> Text(tr("กำลังโหลด…"), color = Slate400, fontSize = 13.sp)
-                    on.isEmpty() -> Text(tr("ยังไม่มีเพื่อนออนไลน์ตอนนี้"), color = Slate300, fontSize = 14.sp)
-                    else -> AvatarRow(on.map { it to "" }) { open = it }
+    Box(Modifier.fillMaxSize().background(FPageBg)) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 10.dp, bottom = 16.dp)) {
+            // search pill: 🔍 ค้นหาเพื่อน … [filters]
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp).clip(RoundedCornerShape(28.dp)).background(Color(0xB3FFFFFF))
+                .border(1.5.dp, Color(0xE6FFFFFF), RoundedCornerShape(28.dp)).padding(start = 16.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Icon(androidx.compose.material.icons.Icons.Filled.Search, null, tint = Color(0xFF6B2FB0), modifier = Modifier.size(24.dp))
+                Spacer(Modifier.width(10.dp))
+                androidx.compose.foundation.text.BasicTextField(value = query, onValueChange = { query = it.take(50); if (it.isBlank()) { results = null; searchMsg = "" } },
+                    singleLine = true, textStyle = androidx.compose.ui.text.TextStyle(color = FInk, fontSize = 16.sp),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = { search() }),
+                    modifier = Modifier.weight(1f).padding(vertical = 10.dp),
+                    decorationBox = { inner -> Box { if (query.isEmpty()) Text(tr("ค้นหาเพื่อน"), color = Color(0xFF9B83B5), fontSize = 16.sp); inner() } })
+                if (query.isNotBlank()) TextButton(onClick = { query = ""; results = null; searchMsg = "" }) { Text(tr("ล้าง"), color = FInkSoft, fontSize = 13.sp) }
+                Box(Modifier.size(44.dp).clip(CircleShape).background(Color(0x99FFFFFF)).border(1.dp, Color(0xFFE2CFF5), CircleShape).clickable { filters = true }, contentAlignment = Alignment.Center) {
+                    Icon(androidx.compose.material.icons.Icons.Filled.Tune, tr("ตัวกรอง"), tint = Color(0xFF6B2FB0), modifier = Modifier.size(22.dp))
                 }
             }
-            com.example.ui.feed.GlassCard {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("📍", fontSize = 22.sp); Spacer(Modifier.width(8.dp))
-                    Text("คนใกล้คุณ (${NearbyRepo.radiusLabel(radius)})", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 19.sp)
-                }
-                Spacer(Modifier.height(6.dp))
-                if (!granted) LocationPermissionCard { granted = true }
-                else {
-                    val nb = nearby
-                    if (nb == null) Text(tr("กำลังหา…"), color = Slate400, fontSize = 13.sp)
-                    else if (nb.isNotEmpty()) AvatarRow(nb.map { it.profile to it.distance }) { open = it }
-                    if (nearbyMsg.isNotBlank()) Text(nearbyMsg, color = Slate300, fontSize = 13.sp, modifier = Modifier.padding(vertical = 4.dp))
-                    Text(tr("ปรับระยะได้ในเรดาร์"), color = Slate400, fontSize = 11.sp)
-                }
-            }
-            Row(Modifier.padding(start = 16.dp, top = 12.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("✨", fontSize = 22.sp); Spacer(Modifier.width(8.dp)); Text(tr("ฟังก์ชันหาเพื่อน"), color = White, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
-            }
-            val tiles = TILES.filter { it.first != "companion" || showCompanion }
-            Column(Modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                tiles.chunked(3).forEach { row ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        row.forEach { (k, label) ->
-                            val tint = TILE_TINT[k] ?: Color(0xFF8B5CF6)
-                            com.example.ui.components.ComingSoonGate("tile_$k", Modifier.weight(1f).height(150.dp).clip(RoundedCornerShape(16.dp)), compact = true) { com.example.ui.components.FeatureLockGate(k, Modifier.fillMaxSize(), compact = true) {
-                            Surface(shape = RoundedCornerShape(16.dp), color = Slate900, onClick = { onTile(k) },
-                                border = androidx.compose.foundation.BorderStroke(1.dp, tint.copy(alpha = 0.55f)), modifier = Modifier.fillMaxSize()) {
-                                Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.radialGradient(listOf(tint.copy(alpha = 0.35f), Color.Transparent)))) {
-                                    val art = TILE_ART[k]
-                                    if (art != null) androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(art), null, modifier = Modifier.align(Alignment.Center).padding(bottom = 30.dp).size(88.dp))
-                                    else Text(TILE_ICONS[k] ?: "", fontSize = 54.sp, modifier = Modifier.align(Alignment.Center).padding(bottom = 26.dp))
-                                    Row(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        Text(label, color = White, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, letterSpacing = (-0.2).sp, modifier = Modifier.weight(1f))
-                                        Text("›", color = Slate300, fontSize = 15.sp)
-                                    }
-                                }
-                            }
-                            } }
-                        }
-                        repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+            if (searchMsg.isNotBlank()) Text(searchMsg, color = Color(0xFFB45309), fontSize = 12.sp, modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp))
+            Spacer(Modifier.height(8.dp))
+            val res = results
+            if (res != null) GlassPanel {
+                Text(tr("ผลการค้นหา"), color = FInk, fontWeight = FontWeight.ExtraBold, fontSize = 17.sp)
+                if (res.isEmpty() && searchMsg.isBlank()) Text(tr("ไม่พบผู้ใช้ชื่อนี้"), color = FInkSoft, fontSize = 13.sp, modifier = Modifier.padding(vertical = 10.dp))
+                res.forEach { n -> PersonRow(n.profile, n.distance, dark = false) { open = n.profile.uid } }
+            } else {
+                GlassPanel {
+                    PanelTitle({ Box(Modifier.size(18.dp).clip(CircleShape).background(FOnline)) }, tr("เพื่อนที่ออนไลน์"), onSeeAll = { onTile("requests") })
+                    val on = online
+                    when {
+                        on == null -> Text(tr("กำลังโหลด…"), color = FInkSoft, fontSize = 13.sp, modifier = Modifier.padding(top = 10.dp))
+                        on.isEmpty() -> Text(tr("ยังไม่มีเพื่อนออนไลน์ตอนนี้"), color = FInkSoft, fontSize = 14.sp, modifier = Modifier.padding(top = 10.dp))
+                        else -> CircleRow(on.map { it to "" }, online = true) { open = it }
                     }
+                    if (hidden) Text(tr("คุณซ่อนสถานะออนไลน์อยู่ (เปลี่ยนได้ที่ปุ่มตัวกรอง)"), color = FInkSoft, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
+                }
+                GlassPanel {
+                    PanelTitle({ Icon(androidx.compose.material.icons.Icons.Filled.LocationOn, null, tint = FPink, modifier = Modifier.size(24.dp)) }, tr("คนใกล้คุณ"), onSeeAll = { onTile("radar") })
+                    if (!granted) Box(Modifier.padding(top = 8.dp)) { LocationPermissionCard { granted = true } }
+                    else {
+                        val nb = nearby
+                        if (nb == null) Text(tr("กำลังหา…"), color = FInkSoft, fontSize = 13.sp, modifier = Modifier.padding(top = 10.dp))
+                        else if (nb.isNotEmpty()) CircleRow(nb.map { it.profile to it.distance }, online = false) { open = it }
+                        if (nearbyMsg.isNotBlank()) Text(nearbyMsg, color = FInkSoft, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                val tiles = TILES.filter { it.first != "companion" || showCompanion }
+                val row1 = tiles.take(4); val row2 = tiles.drop(4)
+                Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    row1.forEach { (k, label) -> FeatureTile(k, label, 172.dp, Modifier.weight(1f), onTile) }
+                }
+                if (row2.isNotEmpty()) Row(Modifier.fillMaxWidth().padding(start = if (row2.size < 3) 10.dp else 22.dp, end = if (row2.size < 3) 10.dp else 22.dp, top = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    row2.forEach { (k, label) -> FeatureTile(k, label, 160.dp, Modifier.weight(1f), onTile) }
                 }
             }
         }
     }
     open?.let { UserProfileDialog(it) { open = null } }
+    if (filters) AlertDialog(onDismissRequest = { filters = false }, containerColor = Slate900,
+        title = { Text(tr("ตัวกรองการหาเพื่อน"), color = White, fontWeight = FontWeight.Bold) },
+        text = { Column {
+            RadiusPicker(radius) { radius = it; NearbyRepo.saveRadius(ctx, it) }
+            Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(tr("ซ่อนสถานะของฉัน"), color = White, fontSize = 14.sp)
+                    Text(tr("เพื่อนจะไม่เห็นว่าคุณออนไลน์"), color = Slate400, fontSize = 11.sp)
+                }
+                Switch(checked = hidden, onCheckedChange = { hidden = it; SocialRepo.setOnlineHidden(ctx, it) })
+            }
+        } },
+        confirmButton = { TextButton(onClick = { filters = false }) { Text(tr("เสร็จ"), color = Pink400) } })
 }
 
 @Composable
@@ -216,13 +339,13 @@ private fun AvatarRow(people: List<Pair<RealProfile, String>>, onOpen: (String) 
 }
 
 @Composable
-private fun PersonRow(p: RealProfile, distance: String, onClick: () -> Unit) {
+private fun PersonRow(p: RealProfile, distance: String, dark: Boolean = true, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Avatar(p.avatar, p.displayName, 40)
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
-            Text(p.displayName, color = White, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (p.bio.isNotBlank()) Text(p.bio, color = Slate400, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(p.displayName, color = if (dark) White else FInk, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (p.bio.isNotBlank()) Text(p.bio, color = if (dark) Slate400 else FInkSoft, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (distance.isNotBlank()) Surface(shape = RoundedCornerShape(10.dp), color = Color(0x3310B981)) {
             Text(distance.replace(" m", tr(" ม.")).replace(" km", tr(" กม.")), color = Emerald400, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))

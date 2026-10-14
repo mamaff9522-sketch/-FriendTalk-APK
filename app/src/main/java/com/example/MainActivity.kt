@@ -236,6 +236,8 @@ fun FriendTalkApp(
                         onBell = { isHomeNotifsOpen = true },
                         onAdmin = { isAdminDashboardOpen = true }
                     )
+                } else if (uiState.uiConfig.feed.showHeader && uiState.activeTab == "discover") {
+                    com.example.ui.discover.FriendsHeader(onBell = { isHomeNotifsOpen = true }, onChat = { viewModel.setActiveTab("chat") })
                 } else if (uiState.uiConfig.feed.showHeader) {
                     AppHeader(
                         currentUser = uiState.currentUser,

@@ -112,6 +112,8 @@ object HomeRepo {
     private val users = java.util.concurrent.ConcurrentHashMap<String, UserInfo>()
     val unreadChats = MutableStateFlow(0)
     val notifCount = MutableStateFlow(0)
+    /** Post created from the bottom-bar ＋ button; Home puts it at the top of the feed. */
+    val newPost = MutableStateFlow<FeedPost?>(null)
     var reloadTick by mutableIntStateOf(0)
     private var nearbyTried = false
 
