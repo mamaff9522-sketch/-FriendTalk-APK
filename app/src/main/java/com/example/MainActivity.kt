@@ -560,11 +560,8 @@ fun FriendTalkApp(
             currentUser = uiState.currentUser,
             onDismiss = { isEditProfileOpen = false },
             onSave = { dName, bio, age, gen, prov, interests ->
+                // The dialog already saved to the server (PUT /me/profile); this only refreshes the local screen state.
                 viewModel.updateProfile(dName, bio, age, gen, prov, interests)
-                profileScope.launch {
-                    val ok = com.example.social.SocialRepo.saveProfile(dName, bio, age, gen.name.lowercase(), prov, interests)
-                    android.widget.Toast.makeText(profileContext, if (ok) "บันทึกโปรไฟล์แล้ว" else "บันทึกโปรไฟล์ไม่สำเร็จ (ยืนยันอีเมลแล้วหรือยัง?)", android.widget.Toast.LENGTH_SHORT).show()
-                }
             }
         )
     }

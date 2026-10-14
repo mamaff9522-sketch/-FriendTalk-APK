@@ -1483,7 +1483,8 @@ app.get('/chats/:chatId/image', w(async (q, r) => {
   r.set('Content-Type', meta.contentType); r.set('Cache-Control', 'private, max-age=3600');
   file.createReadStream().on('error', () => r.end()).pipe(r);
 }));
-const publicProfile = (uid, u) => ({ uid, displayName: u.displayName || '', username: u.username || '', avatar: u.avatar || '', bio: u.bio || '', age: u.age || null, gender: u.gender || '', interests: u.interests || [] });
+const publicProfile = (uid, u) => ({ uid, displayName: u.displayName || '', username: u.username || '', avatar: u.avatar || '', bio: u.bio || '', age: u.age || null, gender: u.gender || '', interests: u.interests || [],
+  cover: u.cover || '', province: u.province || '', occupation: u.occupation || '', lookingFor: Array.isArray(u.lookingFor) ? u.lookingFor : [] });
 app.get('/swipe/candidates', w(notBanned), w(async (q, r) => {
   const limit = Math.min(20, Math.max(1, parseInt(q.query.limit || '10', 10)));
   const [users, swiped, bans] = await Promise.all([db.ref('users').get(), db.ref(`swipes/${q.uid}`).get(), db.ref('bans').get()]);
@@ -1569,6 +1570,31 @@ async function authorInfo(uid) {
   const u = (await db.ref(`users/${uid}`).get()).val() || {};
   return { authorName: String(u.displayName || 'ผู้ใช้').slice(0, 50), authorAvatar: String(u.avatar || '').slice(0, 500) };
 }
+// ===== My profile: details + avatar / cover photo (images uploaded by the app under posts/{uid}/, checked and moderated here) =====
+const LOOKING_FOR = ['friends', 'chat', 'dating', 'travel', 'gaming', 'study', 'work'];
+app.put('/me/profile', w(notBanned), w(async (q, r) => {
+  const b = q.body || {}, upd = {};
+  if (b.displayName !== undefined) { const n = cleanText(b.displayName, 50).replace(/[\u0000-\u001f]/g, ''); if (!n) return r.status(400).json({ error: 'กรุณาใส่ชื่อที่แสดง' }); upd.displayName = n; }
+  if (b.bio !== undefined) upd.bio = cleanText(b.bio, 300);
+  if (b.gender !== undefined) { if (!['', 'male', 'female', 'other'].includes(b.gender)) return r.status(400).json({ error: 'bad gender' }); upd.gender = b.gender; }
+  if (b.province !== undefined) upd.province = cleanText(b.province, 60);
+  if (b.occupation !== undefined) upd.occupation = cleanText(b.occupation, 60);
+  if (b.lookingFor !== undefined) upd.lookingFor = (Array.isArray(b.lookingFor) ? b.lookingFor : []).filter(x => LOOKING_FOR.includes(x)).slice(0, LOOKING_FOR.length);
+  if (!Object.keys(upd).length) return r.status(400).json({ error: 'nothing to update' });
+  { const m = await moderateText(q.uid, [upd.displayName, upd.bio, upd.occupation].filter(Boolean).join(' '), { kind: 'profile' }); if (!m.ok) return r.status(422).json({ code: 'moderated', error: m.message }); }
+  upd.lastActive = Date.now();
+  await db.ref(`users/${q.uid}`).update(upd);
+  r.json(publicProfile(q.uid, (await db.ref(`users/${q.uid}`).get()).val() || {}));
+}));
+app.put('/me/photo', w(notBanned), w(async (q, r) => {
+  const kind = q.body?.kind, ref = q.body?.ref;
+  if (!['avatar', 'cover'].includes(kind)) return r.status(400).json({ error: 'kind must be avatar or cover' });
+  if (ref === null || ref === '') { await db.ref(`users/${q.uid}/${kind}`).set(''); return r.json({ kind, url: '' }); }
+  const url = await postImageUrl(q.uid, ref); if (!url) return r.status(400).json({ error: 'invalid image' });
+  const mi = await moderateImage(q.uid, ref, { kind: `profile_${kind}` }); if (!mi.ok) return r.status(422).json({ code: 'moderated', error: 'รูปภาพนี้ขัดกติกาความปลอดภัย' });
+  await db.ref(`users/${q.uid}/${kind}`).set(url);
+  r.json({ kind, url });
+}));
 app.post('/posts', w(notBanned), w(async (q, r) => {
   { const pf = await postingFor(q.uid, (await tierOf(q.uid)).tier, await getLimits()); if (!pf.canPost) return r.status(403).json({ code: 'posting_disabled', error: pf.reason }); }
   const text = cleanText(q.body?.text, 2000);

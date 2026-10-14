@@ -64,7 +64,7 @@ object FeedRepo {
     }
 
     /** Downscale to max 1600px JPEG ~85% before upload. */
-    private suspend fun compress(ctx: Context, uri: Uri): ByteArray? = withContext(Dispatchers.IO) {
+    internal suspend fun compress(ctx: Context, uri: Uri): ByteArray? = withContext(Dispatchers.IO) {
         runCatching {
             val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             ctx.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, o) }

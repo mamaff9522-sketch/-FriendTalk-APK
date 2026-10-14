@@ -14,6 +14,7 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import com.example.ui.components.ft.Text
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,10 +39,24 @@ fun ProfileTab(
     onOpenCompanionApply: () -> Unit,
     onLogout: () -> Unit = {}
 ) {
-    var editInterests by remember { mutableStateOf(false) }
     var myPosts by remember { mutableStateOf(false) }
     if (myPosts) com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.let { u -> com.example.ui.social.AuthorFeedDialog(u.uid, tr("ฉัน")) { myPosts = false } }
-    if (editInterests) com.example.ui.social.InterestsEditorDialog(onDismiss = { editInterests = false })
+    // Real profile from users/{uid}; tapping the cover / avatar uploads a new photo right here.
+    LaunchedEffect(Unit) { com.example.social.MyProfile.start() }
+    val me = com.example.social.MyProfile.me
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    var photoKind by remember { mutableStateOf("avatar") }
+    var photoBusy by remember { mutableStateOf<String?>(null) }
+    var photoMsg by remember { mutableStateOf("") }
+    val photoPicker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) { photoBusy = photoKind; photoMsg = ""; scope.launch { photoMsg = com.example.social.MyProfile.setPhoto(ctx, uri, photoKind) ?: ""; photoBusy = null } }
+    }
+    fun pickPhoto(kind: String) { if (photoBusy != null) return; photoKind = kind
+        photoPicker.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+    val shownName = me?.displayName?.ifBlank { null } ?: currentUser.displayName
+    val shownAvatar = me?.avatar?.ifBlank { null } ?: currentUser.avatar
+    val shownBio = me?.bio ?: currentUser.bio.takeUnless { it.startsWith("สมาชิก FriendTalk (UID") }.orEmpty()
     var confirmLogout by remember { mutableStateOf(false) }
     if (confirmLogout) AlertDialog(onDismissRequest = { confirmLogout = false }, title = { Text(tr("ออกจากระบบ?")) },
         text = { Text(tr("คุณต้องการออกจากบัญชีนี้ใช่ไหม")) },
@@ -52,42 +67,29 @@ fun ProfileTab(
             .fillMaxSize(),
         contentPadding = PaddingValues(bottom = 80.dp)
     ) {
-        item(key = "logout_row") {
-            Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.End) {
-                OutlinedButton(onClick = { myPosts = true }) { Text(tr("📝 โพสต์ของฉัน"), color = White, fontSize = 13.sp) }
-                Spacer(Modifier.width(8.dp))
-                OutlinedButton(onClick = { editInterests = true }) { Text(tr("🧩 ความสนใจ"), color = Pink400, fontSize = 13.sp) }
-                Spacer(Modifier.width(8.dp))
-                OutlinedButton(onClick = { confirmLogout = true }) { Text(tr("🚪 ออกจากระบบ"), color = Rose500, fontSize = 13.sp) }
-            }
-        }
         // Cover Photo & Avatar
         item {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(200.dp)
-            ) {
-                AsyncImage(
-                    model = currentUser.coverPhoto,
-                    contentDescription = "Cover",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(150.dp)
-                )
-                AsyncImage(
-                    model = currentUser.avatar,
-                    contentDescription = "Avatar",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(88.dp)
-                        .align(Alignment.BottomStart)
-                        .padding(start = 16.dp)
-                        .clip(CircleShape)
-                        .background(Slate950)
-                )
+            Box(Modifier.fillMaxWidth().height(210.dp)) {
+                Box(Modifier.fillMaxWidth().height(160.dp).background(Brush.linearGradient(listOf(androidx.compose.ui.graphics.Color(0xFF5B23A0), Pink500))).clickable { pickPhoto("cover") }) {
+                    val cover = me?.cover.orEmpty()
+                    if (cover.isNotBlank()) AsyncImage(model = cover, contentDescription = tr("รูปปก"), contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                    Row(Modifier.align(Alignment.BottomEnd).padding(10.dp).clip(RoundedCornerShape(16.dp)).background(androidx.compose.ui.graphics.Color(0x99000000)).padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        if (photoBusy == "cover") CircularProgressIndicator(color = PureWhite, strokeWidth = 2.dp, modifier = Modifier.size(14.dp))
+                        else Icon(Icons.Filled.CameraAlt, null, tint = PureWhite, modifier = Modifier.size(15.dp))
+                        Spacer(Modifier.width(6.dp)); Text(tr("แก้ไขรูปปก"), color = PureWhite, fontSize = 12.sp)
+                    }
+                }
+                Box(Modifier.align(Alignment.BottomStart).padding(start = 16.dp).size(104.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Amber400, Pink500, Purple500))).padding(3.dp)
+                    .clip(CircleShape).background(Slate950).clickable { pickPhoto("avatar") }) {
+                    com.example.ui.social.Avatar(shownAvatar, shownName, 98)
+                    Box(Modifier.align(Alignment.BottomEnd).padding(4.dp).size(28.dp).clip(CircleShape).background(Pink500), contentAlignment = Alignment.Center) {
+                        if (photoBusy == "avatar") CircularProgressIndicator(color = PureWhite, strokeWidth = 2.dp, modifier = Modifier.size(14.dp))
+                        else Icon(Icons.Filled.CameraAlt, tr("เปลี่ยนรูปโปรไฟล์"), tint = PureWhite, modifier = Modifier.size(15.dp))
+                    }
+                }
             }
+            if (photoMsg.isNotBlank()) Text(photoMsg, color = Amber400, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp))
         }
 
         // Profile Info
@@ -105,7 +107,7 @@ fun ProfileTab(
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = currentUser.displayName,
+                                text = shownName,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 18.sp,
                                 color = White
@@ -127,7 +129,13 @@ fun ProfileTab(
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
-                Text(text = currentUser.bio, fontSize = 13.sp, color = Slate200)
+                Text(text = shownBio.ifBlank { tr("ยังไม่มีคำแนะนำตัว — แตะ 'แก้ไขโปรไฟล์' เพื่อเพิ่ม") }, fontSize = 13.sp, color = if (shownBio.isBlank()) Slate400 else Slate200)
+                // 📍 province · 💼 occupation · looking for
+                val chips = listOfNotNull(me?.province?.ifBlank { null }?.let { "📍 $it" }, me?.occupation?.ifBlank { null }?.let { "💼 $it" }) +
+                    (me?.lookingFor ?: emptyList()).mapNotNull { com.example.social.MyProfile.LOOKING_FOR[it] }
+                if (chips.isNotEmpty()) Row(Modifier.padding(top = 8.dp).horizontalScroll(androidx.compose.foundation.rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    chips.forEach { c -> Text(tr(c), color = Slate200, fontSize = 12.sp, modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(Slate800).padding(horizontal = 10.dp, vertical = 4.dp)) }
+                }
 
                 Spacer(modifier = Modifier.height(14.dp))
 
@@ -297,6 +305,19 @@ fun ProfileTab(
                             }
                             Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Slate400)
                         }
+                    }
+                    Surface(shape = RoundedCornerShape(14.dp), color = Slate800, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable { myPosts = true }) {
+                        Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("📝", fontSize = 22.sp); Spacer(Modifier.width(12.dp))
+                            Text(tr("โพสต์ของฉัน"), fontWeight = FontWeight.Bold, fontSize = 14.sp, color = White, modifier = Modifier.weight(1f))
+                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Slate400)
+                        }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    // ออกจากระบบ — always the last item on the page
+                    OutlinedButton(onClick = { confirmLogout = true }, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(14.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Rose500)) {
+                        Text(tr("🚪 ออกจากระบบ"), color = Rose500, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
