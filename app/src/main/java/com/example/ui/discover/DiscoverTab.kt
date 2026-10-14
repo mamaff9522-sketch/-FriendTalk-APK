@@ -185,22 +185,25 @@ private fun CircleRow(people: List<Pair<RealProfile, String>>, online: Boolean, 
 }
 
 @Composable
-private fun FeatureTile(k: String, label: String, height: androidx.compose.ui.unit.Dp, modifier: Modifier, onTile: (String) -> Unit) {
+private fun FeatureTile(k: String, label: String, height: androidx.compose.ui.unit.Dp, modifier: Modifier, titleSize: androidx.compose.ui.unit.TextUnit, onTile: (String) -> Unit) {
     val grad = TILE_GRAD[k] ?: listOf(Color(0xFF8B5CF6), Color(0xFF6D28D9))
-    com.example.ui.components.ComingSoonGate("tile_$k", modifier.height(height).clip(RoundedCornerShape(22.dp)), compact = true) { com.example.ui.components.FeatureLockGate(k, Modifier.fillMaxSize(), compact = true) {
-        Box(Modifier.fillMaxSize().clip(RoundedCornerShape(22.dp)).background(Brush.linearGradient(grad))
-            .border(1.5.dp, Brush.verticalGradient(listOf(Color(0xCCFFFFFF), Color(0x33FFFFFF))), RoundedCornerShape(22.dp)).clickable { onTile(k) }) {
+    com.example.ui.components.ComingSoonGate("tile_$k", modifier.height(height).clip(RoundedCornerShape(20.dp)), compact = true) { com.example.ui.components.FeatureLockGate(k, Modifier.fillMaxSize(), compact = true) {
+        Box(Modifier.fillMaxSize().clip(RoundedCornerShape(20.dp)).background(Brush.linearGradient(grad))
+            .border(1.5.dp, Brush.verticalGradient(listOf(Color(0xCCFFFFFF), Color(0x33FFFFFF))), RoundedCornerShape(20.dp)).clickable { onTile(k) }) {
             // glossy top light
             Box(Modifier.fillMaxWidth().fillMaxHeight(0.45f).background(Brush.verticalGradient(listOf(Color(0x40FFFFFF), Color.Transparent))))
-            Column(Modifier.fillMaxSize().padding(horizontal = 4.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                val art = TILE_ART[k]
-                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    if (art != null) androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(art), null, modifier = Modifier.fillMaxHeight(0.92f).aspectRatio(1f))
-                    else Text(TILE_ICONS[k] ?: "", fontSize = 44.sp)
+            // same art size, title line and 2-line subtitle in every tile, so both rows line up
+            Column(Modifier.fillMaxSize().padding(horizontal = 4.dp, vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                Box(Modifier.size(64.dp), contentAlignment = Alignment.Center) {
+                    val art = TILE_ART[k]
+                    if (art != null) androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(art), null, modifier = Modifier.fillMaxSize())
+                    else Text(TILE_ICONS[k] ?: "", fontSize = 40.sp)
                 }
-                Text(label, color = PureWhite, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis, letterSpacing = (-0.3).sp,
+                Spacer(Modifier.height(8.dp))
+                Text(label, color = PureWhite, fontSize = titleSize, fontWeight = FontWeight.ExtraBold, maxLines = 1, softWrap = false, letterSpacing = (-0.3).sp, textAlign = TextAlign.Center,
                     style = androidx.compose.ui.text.TextStyle(shadow = androidx.compose.ui.graphics.Shadow(Color(0x66000000), blurRadius = 6f)))
-                Text(tr(TILE_SUB[k] ?: ""), color = Color(0xE6FFFFFF), fontSize = 10.5.sp, lineHeight = 13.sp, textAlign = TextAlign.Center, maxLines = 2, modifier = Modifier.padding(top = 2.dp))
+                Text(tr(TILE_SUB[k] ?: ""), color = Color(0xE6FFFFFF), fontSize = 9.5.sp, lineHeight = 12.sp, textAlign = TextAlign.Center, maxLines = 2, minLines = 2,
+                    modifier = Modifier.padding(top = 3.dp))
             }
         }
     } }
@@ -292,12 +295,13 @@ private fun FindFriendsHome(onTile: (String) -> Unit, showCompanion: Boolean) {
                 Spacer(Modifier.height(8.dp))
                 val tiles = TILES.filter { it.first != "companion" || showCompanion }
                 val row1 = tiles.take(4); val row2 = tiles.drop(4)
+                // one grid: equal spacing and side margins, every tile the same height
                 Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    row1.forEach { (k, label) -> FeatureTile(k, label, 172.dp, Modifier.weight(1f), onTile) }
+                    row1.forEach { (k, label) -> FeatureTile(k, label, 150.dp, Modifier.weight(1f), 12.sp, onTile) }
+                    repeat(4 - row1.size) { Spacer(Modifier.weight(1f)) }
                 }
-                if (row2.isNotEmpty()) Row(Modifier.fillMaxWidth().padding(start = if (row2.size < 3) 10.dp else 22.dp, end = if (row2.size < 3) 10.dp else 22.dp, top = 10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    row2.forEach { (k, label) -> FeatureTile(k, label, 160.dp, Modifier.weight(1f), onTile) }
+                if (row2.isNotEmpty()) Row(Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    row2.forEach { (k, label) -> FeatureTile(k, label, 150.dp, Modifier.weight(1f), 13.sp, onTile) }
                 }
             }
         }
