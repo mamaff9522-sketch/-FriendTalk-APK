@@ -58,6 +58,7 @@ fun RealSwipeView() {
             cards == null -> CircularProgressIndicator(color = Pink500)
             top == null -> {
                 Text(tr("ยังไม่มีผู้ใช้ใหม่ให้ปัด"), color = Slate300, fontSize = 14.sp)
+                Text(tr("คนที่คุณกดผ่านจะกลับมาให้ปัดอีกครั้งหลัง 24 ชั่วโมง"), color = Slate400, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(onClick = { cards = null; scope.launch { reload() } }) { Text(tr("โหลดใหม่"), color = White) }
             }
@@ -115,9 +116,13 @@ private fun SwipeCard(p: RealProfile, modifier: Modifier) {
     Box(modifier.clip(RoundedCornerShape(24.dp)).background(Slate800)) {
         if (p.avatar.isNotBlank()) AsyncImage(model = p.avatar, contentDescription = p.displayName, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Avatar("", p.displayName, 120) }
+        // 🎁 shortcut: send a gift to say "I'd like to talk with you" (opens/creates the chat; charged only when accepted)
+        Box(Modifier.align(Alignment.TopEnd).padding(12.dp)) { GiftToUserButton(p.uid) }
         Column(Modifier.align(Alignment.BottomStart).fillMaxWidth()
             .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f)))).padding(16.dp)) {
             Text(p.displayName + (p.age?.let { ", $it" } ?: ""), color = PureWhite, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Text(if (p.distance.isNotBlank()) "📍 " + p.distance + " " + tr("จากคุณ") else "📍 " + tr("ไม่ทราบระยะ (เปิดเรดาร์เพื่อดูระยะ)"),
+                color = PureWhite.copy(alpha = 0.9f), fontSize = 13.sp, modifier = Modifier.padding(vertical = 2.dp))
             if (p.bio.isNotBlank()) Text(p.bio, color = PureWhite.copy(alpha = 0.8f), fontSize = 13.sp, maxLines = 3)
             if (p.interests.isNotEmpty()) Text(p.interests.joinToString(" · "), color = Pink400, fontSize = 12.sp)
             p.similarity?.let { SharedInterests(it) }

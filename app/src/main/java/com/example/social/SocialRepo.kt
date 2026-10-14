@@ -23,7 +23,9 @@ data class RealProfile(
     val uid: String, val displayName: String, val username: String = "", val avatar: String = "",
     val bio: String = "", val age: Int? = null, val gender: String = "", val interests: List<String> = emptyList(),
     val lastActive: Long = 0,
-    val similarity: Similarity? = null
+    val similarity: Similarity? = null,
+    /** Rounded distance ("~2 km") when both people opened the radar recently; blank otherwise. */
+    val distance: String = ""
 )
 data class ChatSummary(val chatId: String, val otherUid: String, val lastMessage: String, val lastAt: Long)
 data class GiftMsg(val txId: String, val name: String, val price: Int, val imageUrl: String, val icon: String, val status: String)
@@ -259,7 +261,7 @@ object SocialRepo {
             RealProfile(o.optString("uid"), o.optString("displayName"), o.optString("username"), o.optString("avatar"),
                 o.optString("bio"), if (o.isNull("age")) null else o.optInt("age"), o.optString("gender"),
                 if (ints == null) emptyList() else (0 until ints.length()).map { ints.optString(it) },
-                similarity = InterestsRepo.parseSim(o.optJSONObject("similarity")))
+                similarity = InterestsRepo.parseSim(o.optJSONObject("similarity")), distance = o.optString("distance"))
         }
     }
 

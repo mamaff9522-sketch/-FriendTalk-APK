@@ -1489,14 +1489,23 @@ app.get('/swipe/candidates', w(notBanned), w(async (q, r) => {
   const [users, swiped, bans] = await Promise.all([db.ref('users').get(), db.ref(`swipes/${q.uid}`).get(), db.ref('bans').get()]);
   const s = swiped.val() || {}, b = bans.val() || {}, now = Date.now();
   const icfg = await getInterestCfg(), mineIp = (users.val() || {})[q.uid]?.interestProfile || {};
+  // Distance only between people who both opened the radar (their own consent) in the last 24 h, rounded like the radar.
+  const [meR, radarAll] = await Promise.all([db.ref(`radar/${q.uid}`).get(), db.ref('radar').get()]);
+  const me = meR.val(), rad = radarAll.val() || {}, LOC_MS = 24 * 3600 * 1000, RECYCLE_MS = 24 * 3600 * 1000;
   const out = [];
   for (const [uid, u] of Object.entries(users.val() || {})) {
-    if (uid === q.uid || s[uid] || !u || !u.displayName) continue;
+    if (uid === q.uid || !u || !u.displayName) continue;
+    // Likes stay out; people passed more than a day ago come back (small user base at launch).
+    const sw = s[uid]; if (sw && (sw.action !== 'pass' || now - num(sw.at) < RECYCLE_MS)) continue;
     const ban = b[uid]; if (ban && (!ban.until || ban.until > now)) continue;
-    out.push({ ...publicProfile(uid, u), interestProfile: u.interestProfile || {}, similarity: similarity(mineIp, u.interestProfile || {}, icfg) });
+    if (await blockedEither(q.uid, uid)) continue;
+    const rv = rad[uid], km = me && rv && now - num(rv.at) < LOC_MS && validLatLng(rv.lat, rv.lng) ? distKm(me.lat, me.lng, rv.lat, rv.lng) : null;
+    out.push({ ...publicProfile(uid, u), interestProfile: u.interestProfile || {}, similarity: similarity(mineIp, u.interestProfile || {}, icfg),
+      distance: km == null ? '' : roundDist(km), _km: km == null ? Infinity : km, _seen: !!sw });
   }
-  out.sort((x, y) => y.similarity.score - x.similarity.score);
-  r.json({ candidates: out.slice(0, limit) });
+  // New faces first, then nearest, then most similar.
+  out.sort((x, y) => (x._seen - y._seen) || (x._km - y._km) || (y.similarity.score - x.similarity.score));
+  r.json({ candidates: out.slice(0, limit).map(({ _km, _seen, ...x }) => x) });
 }));
 app.post('/swipe', w(notBanned), w(async (q, r) => {
   const { targetUid, action } = q.body || {};
