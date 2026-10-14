@@ -61,43 +61,57 @@ fun BottomNavBar(
     var creating by remember { mutableStateOf(false) }
     if (creating) com.example.ui.feed.CreatePostDialog(onDismiss = { creating = false }, onPosted = { com.example.ui.feed.HomeRepo.newPost.value = it; onTabSelected("home") })
 
-    // Same colours as the top header (dark navy in โหมดมืด, purple gradient in โหมดปกติ), flat with a thin line on top.
+    // Premium floating capsule: header colours, glossy top light, thin pink→gold→violet rim, soft neon glow.
     val active = PureWhite
     val idle = if (AppThemeMode.dark) Color(0xFFA79BC8) else Color(0xCCFFFFFF)
-    Box(Modifier.fillMaxWidth()) {
-        Column(Modifier.fillMaxWidth().background(AppThemeMode.headerBrush)) {
-            HorizontalDivider(color = AppThemeMode.divider.copy(alpha = 0.7f), thickness = 0.8.dp)
+    val gold = Color(0xFFFFD27A)
+    val shape = RoundedCornerShape(26.dp)
+    Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 12.dp, end = 12.dp, bottom = 8.dp)) {
+        Box(
+            Modifier.fillMaxWidth()
+                .shadow(18.dp, shape, ambientColor = Color(0xFFB04DFF), spotColor = Color(0xFFFF2FA8))
+                .clip(shape)
+                .background(AppThemeMode.headerBrush)
+                .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0x26FFFFFF), Color.Transparent, Color(0x14000000))))
+                .border(1.dp, androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Color(0xCCFF4FB8), Color(0xCCFFD27A), Color(0xCCB04DFF))), shape)
+        ) {
             Row(
-                modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 6.dp, end = 6.dp, top = 5.dp, bottom = 2.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // 5 equal columns: 2 tabs · ＋ · 2 tabs
-                left.forEach { NavTab(it, activeTab == it.id, active, idle) { onTabSelected(it.id) } }
+                left.forEach { NavTab(it, activeTab == it.id, active, idle, gold) { onTabSelected(it.id) } }
                 Spacer(Modifier.weight(1f)) // room for the raised ＋ button
-                right.forEach { NavTab(it, activeTab == it.id, active, idle) { onTabSelected(it.id) } }
+                right.forEach { NavTab(it, activeTab == it.id, active, idle, gold) { onTabSelected(it.id) } }
             }
         }
-        // raised ＋ : opens the real post composer
+        // raised ＋ with a gold ring: opens the real post composer
         Box(
-            Modifier.align(Alignment.TopCenter).offset(y = (-16).dp).size(50.dp)
-                .shadow(10.dp, CircleShape, ambientColor = Color(0xFFE040C8), spotColor = Color(0xFFE040C8))
-                .clip(CircleShape).background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(Color(0xFFFF4FB8), Color(0xFFB04DFF))))
-                .border(2.5.dp, Color(0x80FFFFFF), CircleShape).clickable { creating = true },
+            Modifier.align(Alignment.TopCenter).offset(y = (-18).dp).size(54.dp)
+                .shadow(14.dp, CircleShape, ambientColor = Color(0xFFFF2FA8), spotColor = Color(0xFFFF2FA8))
+                .clip(CircleShape)
+                .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(Color(0xFFFFE3A3), gold, Color(0xFFE0A23C))))
+                .padding(2.5.dp)
+                .clip(CircleShape)
+                .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(Color(0xFFFF4FB8), Color(0xFFB04DFF))))
+                .clickable { creating = true },
             contentAlignment = Alignment.Center
         ) {
+            Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0x40FFFFFF), Color.Transparent))))
             Icon(Icons.Filled.Add, tr("สร้างโพสต์"), tint = PureWhite, modifier = Modifier.size(28.dp))
         }
     }
 }
 
 @Composable
-private fun RowScope.NavTab(item: NavItem, isSelected: Boolean, active: Color, idle: Color, onClick: () -> Unit) {
+private fun RowScope.NavTab(item: NavItem, isSelected: Boolean, active: Color, idle: Color, gold: Color, onClick: () -> Unit) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick).padding(vertical = 1.dp)
+        modifier = Modifier.weight(1f).padding(horizontal = 2.dp).clip(RoundedCornerShape(18.dp))
+            .then(if (isSelected) Modifier.background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0x40FF4FB8), Color(0x26B04DFF)))) else Modifier)
+            .clickable(onClick = onClick).padding(top = 5.dp, bottom = 3.dp)
     ) {
         Box(contentAlignment = Alignment.Center) {
-            if (isSelected) Box(Modifier.size(28.dp).background(androidx.compose.ui.graphics.Brush.radialGradient(listOf(Color(0x99D05CFF), Color.Transparent)), CircleShape))
             Icon(
                 imageVector = if (isSelected) item.activeIcon else item.inactiveIcon,
                 contentDescription = item.label,
@@ -122,7 +136,7 @@ private fun RowScope.NavTab(item: NavItem, isSelected: Boolean, active: Color, i
             color = if (isSelected) active else idle,
             maxLines = 1
         )
-        Box(Modifier.padding(top = 2.dp).width(16.dp).height(2.5.dp).clip(RoundedCornerShape(2.dp))
-            .background(if (isSelected) Color(0xFFE040C8) else Color.Transparent))
+        // small gold dot under the active tab
+        Box(Modifier.padding(top = 2.dp).size(4.dp).clip(CircleShape).background(if (isSelected) gold else Color.Transparent))
     }
 }
