@@ -43,10 +43,11 @@ fun AdminUiBuilderDialog(
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
         Surface(
             modifier = Modifier
+                .systemBarsPadding()
                 .fillMaxWidth(0.95f)
                 .fillMaxHeight(0.95f),
             shape = RoundedCornerShape(24.dp),

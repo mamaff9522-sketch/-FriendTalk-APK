@@ -259,7 +259,7 @@ fun AdRoomHost() {
 /** Deep-link from a quota-exhausted dialog: same content; after a reward it closes and returns to the origin (draft kept). */
 @Composable
 fun AdRoomScreen(feature: String, onClose: () -> Unit) {
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(Modifier.fillMaxSize().systemBarsPadding(), color = Slate950) { AdsPageContent(feature, onClose = onClose, returnAfterReward = true) }
     }
 }

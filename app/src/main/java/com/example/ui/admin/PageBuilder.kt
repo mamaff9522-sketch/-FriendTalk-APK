@@ -51,7 +51,7 @@ fun PageBuilderDialog(onClose: () -> Unit) {
         val r = BrainApi.call(user, "PUT", "/admin/ui/pages/$page", JSONObject().put("page", spec.toJson()).put("publish", publish))
         msg = if (r.code == 200) { if (publish) { UiPages.refresh(); load(); "เผยแพร่แล้ว" } else "บันทึกร่างแล้ว" } else "ไม่สำเร็จ: ${r.json?.optString("error") ?: r.code}"
     }
-    Dialog(onClose, DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onClose, DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.systemBarsPadding().imePadding().padding(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

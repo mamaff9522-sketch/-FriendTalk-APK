@@ -78,7 +78,7 @@ fun AiHubDialog(onClose: () -> Unit) {
             }
         }
     }
-    if (manage) Dialog(onDismissRequest = { manage = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    if (manage) Dialog(onDismissRequest = { manage = false }, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(Modifier.fillMaxSize().systemBarsPadding(), color = Slate950) {
             Column(Modifier.padding(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
