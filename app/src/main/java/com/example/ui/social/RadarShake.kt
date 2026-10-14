@@ -1,6 +1,7 @@
 package com.example.ui.social
 
 import com.example.ui.components.tr
+import com.example.ui.components.dialogNavPadding
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
@@ -188,9 +189,51 @@ fun RealRadarView() {
                     }
                 }
             }
+            // Launch period: while few real people are nearby, offer AI characters to chat with (always labelled AI, never shown with a distance).
+            if (list.size < AI_FILL_BELOW) AiFillSection(seed = list.size)
         }
     }
     selected?.let { UserProfileDialog(it.profile.uid, it.distance) { selected = null } }
+}
+
+/** Show AI characters when the radar finds fewer real people than this. */
+private const val AI_FILL_BELOW = 3
+
+@Composable
+private fun AiFillSection(seed: Int) {
+    val bots by produceState<List<com.example.network.AiRepo.AiBot>?>(null, seed) {
+        value = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.let { com.example.network.AiRepo.bots(it).shuffled().take(3) } ?: emptyList()
+    }
+    var chat by remember { mutableStateOf<com.example.network.AiRepo.AiBot?>(null) }
+    val l = bots ?: return
+    if (l.isEmpty()) return
+    Text(tr("ระหว่างรอเพื่อนใหม่ — คุยกับตัวละคร AI ได้"), color = Slate300, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 14.dp))
+    l.forEach { b ->
+        Surface(shape = RoundedCornerShape(12.dp), color = Slate800, modifier = Modifier.fillMaxWidth().padding(top = 6.dp).clickable { chat = b }) {
+            Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Avatar(b.avatarUrl, b.name, 38); Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(b.name, color = White, maxLines = 1, modifier = Modifier.weight(1f, fill = false)); Spacer(Modifier.width(6.dp)); com.example.ui.ai.AiBadge()
+                    }
+                    if (b.bio.isNotBlank()) Text(b.bio, color = Slate400, fontSize = 11.sp, maxLines = 1)
+                }
+                Text(tr("คุยเลย ›"), color = Pink400, fontSize = 12.sp)
+            }
+        }
+    }
+    chat?.let { b ->
+        Dialog(onDismissRequest = { chat = null }, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+            Surface(Modifier.fillMaxSize(), color = Slate950) {
+                Box(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding().imePadding()) {
+                    com.example.ui.ai.BotChatScreen(bot = b, onEnd = {
+                        com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.let { fu -> kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch { com.example.network.AiRepo.endBotChat(fu, b.id) } }
+                        chat = null
+                    }, onSkip = { chat = null })
+                }
+            }
+        }
+    }
 }
 
 @Composable
