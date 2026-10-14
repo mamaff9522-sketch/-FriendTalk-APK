@@ -220,17 +220,17 @@ private fun RingAvatar(url: String, name: String, size: Dp, ring: Dp = 2.dp, glo
 
 @Composable
 private fun PlusDot() {
-    Box(Modifier.size(18.dp).clip(CircleShape).background(Brush.linearGradient(listOf(HNeon, HViolet))), contentAlignment = Alignment.Center) {
-        Text("+", color = PureWhite, fontSize = 14.sp, fontWeight = FontWeight.Bold, lineHeight = 14.sp)
+    Box(Modifier.size(15.dp).clip(CircleShape).background(Brush.linearGradient(listOf(HNeon, HViolet))), contentAlignment = Alignment.Center) {
+        Text("+", color = PureWhite, fontSize = 12.sp, fontWeight = FontWeight.Bold, lineHeight = 12.sp)
     }
 }
 
 @Composable
 private fun WalletChip(onClick: () -> Unit, icon: @Composable () -> Unit, value: Int, color: Color) {
     Surface(onClick = onClick, shape = RoundedCornerShape(20.dp), color = Color(0xFF1A1440), border = BorderStroke(1.dp, Color(0xFF5B3A8F))) {
-        Row(Modifier.padding(start = 4.dp, end = 3.dp, top = 3.dp, bottom = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(start = 3.dp, end = 3.dp, top = 2.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
             icon(); Spacer(Modifier.width(3.dp))
-            Text(String.format(java.util.Locale.US, "%,d", value), color = color, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+            Text(String.format(java.util.Locale.US, "%,d", value), color = color, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
             Spacer(Modifier.width(3.dp)); PlusDot()
         }
     }
@@ -248,32 +248,33 @@ fun HomeHeader(currentUser: User, onAvatar: () -> Unit, onCoins: () -> Unit, onD
     val headerName = me?.displayName?.ifBlank { null } ?: currentUser.displayName
     Box(Modifier.fillMaxWidth().background(AppThemeMode.headerBrush)) {
         Column(Modifier.statusBarsPadding()) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            // compact app bar: 34dp avatar, 18sp wordmark, small wallet chips, 22dp bell
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.clip(CircleShape).clickable(onClick = onAvatar)) {
-                    RingAvatar(headerAvatar, headerName.ifBlank { "F" }, 42.dp)
-                    Box(Modifier.align(Alignment.BottomEnd).size(12.dp).clip(CircleShape).background(HBg).padding(2.dp).clip(CircleShape).background(HOnline))
+                    RingAvatar(headerAvatar, headerName.ifBlank { "F" }, 34.dp)
+                    Box(Modifier.align(Alignment.BottomEnd).size(10.dp).clip(CircleShape).background(HBg).padding(2.dp).clip(CircleShape).background(HOnline))
                 }
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Friend", color = PureWhite, fontSize = 21.sp, fontWeight = FontWeight.ExtraBold, fontStyle = FontStyle.Italic, maxLines = 1,
+                        Text("Friend", color = PureWhite, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, fontStyle = FontStyle.Italic, maxLines = 1,
                             style = TextStyle(shadow = Shadow(Color(0xA0D6A0FF), blurRadius = 14f)))
-                        Text("Talk", color = HNeon, fontSize = 21.sp, fontWeight = FontWeight.ExtraBold, fontStyle = FontStyle.Italic, maxLines = 1, style = neonGlow)
-                        Icon(Icons.Outlined.FavoriteBorder, null, tint = Color(0xFFFF4FC0), modifier = Modifier.padding(start = 2.dp).size(17.dp))
+                        Text("Talk", color = HNeon, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, fontStyle = FontStyle.Italic, maxLines = 1, style = neonGlow)
+                        Icon(Icons.Outlined.FavoriteBorder, null, tint = Color(0xFFFF4FC0), modifier = Modifier.padding(start = 2.dp).size(14.dp))
                     }
-                    Text(if (signedIn) headerName else tr("เข้าสู่ระบบ"), color = Color(0xFFD9D3F7), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(if (signedIn) headerName else tr("เข้าสู่ระบบ"), color = Color(0xFFD9D3F7), fontSize = 10.sp, lineHeight = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
                     WalletChip(onCoins, {
-                        Box(Modifier.size(18.dp).clip(CircleShape).background(Brush.verticalGradient(listOf(Color(0xFFFFD84A), Color(0xFFF2A20C)))), contentAlignment = Alignment.Center) {
-                            Text("$", color = Color(0xFF8A5200), fontSize = 11.sp, fontWeight = FontWeight.Bold, lineHeight = 11.sp)
+                        Box(Modifier.size(15.dp).clip(CircleShape).background(Brush.verticalGradient(listOf(Color(0xFFFFD84A), Color(0xFFF2A20C)))), contentAlignment = Alignment.Center) {
+                            Text("$", color = Color(0xFF8A5200), fontSize = 9.sp, fontWeight = FontWeight.Bold, lineHeight = 9.sp)
                         }
                     }, com.example.social.Wallet.coins, Color(0xFFFFE08A))
-                    WalletChip(onDiamonds, { Text("💎", fontSize = 13.sp, lineHeight = 13.sp) }, com.example.social.Wallet.diamonds, Color(0xFFBFE8FF))
+                    WalletChip(onDiamonds, { Text("💎", fontSize = 11.sp, lineHeight = 11.sp) }, com.example.social.Wallet.diamonds, Color(0xFFBFE8FF))
                     if (currentUser.role == UserRole.SUPERADMIN || currentUser.role == UserRole.ADMIN || currentUser.role == UserRole.MODERATOR)
-                        Icon(Icons.Filled.AdminPanelSettings, tr("แอดมิน"), tint = Amber400, modifier = Modifier.size(22.dp).clip(CircleShape).clickable(onClick = onAdmin))
+                        Icon(Icons.Filled.AdminPanelSettings, tr("แอดมิน"), tint = Amber400, modifier = Modifier.size(20.dp).clip(CircleShape).clickable(onClick = onAdmin))
                     Box(Modifier.clip(CircleShape).clickable(onClick = onBell).padding(2.dp)) {
-                        Icon(Icons.Outlined.Notifications, tr("การแจ้งเตือน"), tint = Color(0xFFE9E4FF), modifier = Modifier.size(26.dp))
+                        Icon(Icons.Outlined.Notifications, tr("การแจ้งเตือน"), tint = Color(0xFFE9E4FF), modifier = Modifier.size(22.dp))
                         if (notif > 0) Box(Modifier.align(Alignment.TopEnd).size(8.dp).shadow(4.dp, CircleShape, ambientColor = HRed, spotColor = HRed).clip(CircleShape).background(HRed))
                     }
                 }

@@ -67,8 +67,8 @@ fun BottomNavBar(
     val barBg = if (dark) Color(0xF5161132) else Color(0xFAFFFFFF)
     val idle = if (dark) Color(0xFF9A90C2) else Color(0xFF8A7BA8)
     val activeLabel = if (dark) Color(0xFFFF6CC4) else Color(0xFFD12C8A)
-    val shape = RoundedCornerShape(24.dp)
-    Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 12.dp, end = 12.dp, bottom = 8.dp)) {
+    val shape = RoundedCornerShape(22.dp)
+    Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 16.dp, end = 16.dp, bottom = 6.dp)) {
         Box(
             Modifier.fillMaxWidth()
                 .shadow(16.dp, shape, ambientColor = Color(0x66B04DFF), spotColor = Color(0x66FF2FA8))
@@ -77,7 +77,7 @@ fun BottomNavBar(
                 .border(1.dp, if (dark) Color(0x26FFFFFF) else Color(0x1F6B2FB0), shape)
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp),
+                modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // 5 equal columns: 2 tabs · ＋ · 2 tabs
@@ -88,15 +88,15 @@ fun BottomNavBar(
         }
         // raised ＋ : opens the real post composer
         Box(
-            Modifier.align(Alignment.TopCenter).offset(y = (-22).dp).size(60.dp)
-                .clip(CircleShape).background(barBg).padding(4.dp)
+            Modifier.align(Alignment.TopCenter).offset(y = (-16).dp).size(52.dp)
+                .clip(CircleShape).background(barBg).padding(3.dp)
                 .shadow(10.dp, CircleShape, ambientColor = Color(0xFFFF2FA8), spotColor = Color(0xFFFF2FA8))
                 .clip(CircleShape)
                 .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(Color(0xFFFF4FB8), Color(0xFF9B3DFF))))
                 .clickable { creating = true },
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.Filled.Add, tr("สร้างโพสต์"), tint = PureWhite, modifier = Modifier.size(30.dp))
+            Icon(Icons.Filled.Add, tr("สร้างโพสต์"), tint = PureWhite, modifier = Modifier.size(26.dp))
         }
     }
 }
@@ -112,7 +112,7 @@ private fun RowScope.NavTab(item: NavItem, isSelected: Boolean, activeLabel: Col
         Box(contentAlignment = Alignment.Center) {
             // indicator pill behind the icon
             Box(
-                Modifier.size(width = 52.dp, height = 28.dp).clip(RoundedCornerShape(14.dp))
+                Modifier.size(width = 46.dp, height = 26.dp).clip(RoundedCornerShape(13.dp))
                     .then(if (isSelected) Modifier.background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Color(0xFFFF4FB8), Color(0xFF9B3DFF)))) else Modifier),
                 contentAlignment = Alignment.Center
             ) {
@@ -120,7 +120,7 @@ private fun RowScope.NavTab(item: NavItem, isSelected: Boolean, activeLabel: Col
                     imageVector = if (isSelected) item.activeIcon else item.inactiveIcon,
                     contentDescription = item.label,
                     tint = if (isSelected) PureWhite else idle,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(19.dp)
                 )
             }
             if (item.badgeCount > 0) {
@@ -133,11 +133,11 @@ private fun RowScope.NavTab(item: NavItem, isSelected: Boolean, activeLabel: Col
                 }
             }
         }
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(3.dp))
         androidx.compose.material3.Text(
             text = item.label + if (com.example.ui.components.AppGates.partLocked(if (item.id == "movie") "video" else item.id)) " 🔒" else "",
-            fontSize = 11.sp,
-            lineHeight = 13.sp,
+            fontSize = 10.sp,
+            lineHeight = 12.sp,
             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
             color = if (isSelected) activeLabel else idle,
             maxLines = 1
