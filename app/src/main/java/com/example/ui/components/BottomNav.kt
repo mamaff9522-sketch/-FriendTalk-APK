@@ -59,29 +59,29 @@ fun BottomNavBar(
     Box(Modifier.fillMaxWidth()) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
+            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
             color = Color(0xFF1B1530),
             border = androidx.compose.foundation.BorderStroke(0.8.dp, Color(0x55B04DFF)),
             tonalElevation = 0.dp
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(top = 8.dp, bottom = 4.dp),
+                modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 4.dp, end = 4.dp, top = 6.dp, bottom = 3.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 left.forEach { NavTab(it, activeTab == it.id, active, idle) { onTabSelected(it.id) } }
-                Spacer(Modifier.weight(1.1f)) // room for the raised ＋ button
+                Spacer(Modifier.weight(1f)) // room for the raised ＋ button
                 right.forEach { NavTab(it, activeTab == it.id, active, idle) { onTabSelected(it.id) } }
             }
         }
         // raised ＋ : opens the real post composer
         Box(
-            Modifier.align(Alignment.TopCenter).offset(y = (-26).dp).size(66.dp)
-                .shadow(14.dp, CircleShape, ambientColor = Color(0xFFE040C8), spotColor = Color(0xFFE040C8))
+            Modifier.align(Alignment.TopCenter).offset(y = (-18).dp).size(54.dp)
+                .shadow(10.dp, CircleShape, ambientColor = Color(0xFFE040C8), spotColor = Color(0xFFE040C8))
                 .clip(CircleShape).background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(Color(0xFFFF4FB8), Color(0xFFB04DFF))))
-                .border(3.dp, Color(0x66FFFFFF), CircleShape).clickable { creating = true },
+                .border(2.5.dp, Color(0x80FFFFFF), CircleShape).clickable { creating = true },
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.Filled.Add, tr("สร้างโพสต์"), tint = PureWhite, modifier = Modifier.size(36.dp))
+            Icon(Icons.Filled.Add, tr("สร้างโพสต์"), tint = PureWhite, modifier = Modifier.size(30.dp))
         }
     }
 }
@@ -90,35 +90,35 @@ fun BottomNavBar(
 private fun RowScope.NavTab(item: NavItem, isSelected: Boolean, active: Color, idle: Color, onClick: () -> Unit) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick).padding(vertical = 2.dp)
+        modifier = Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick).padding(vertical = 1.dp)
     ) {
         Box(contentAlignment = Alignment.Center) {
-            if (isSelected) Box(Modifier.size(38.dp).background(androidx.compose.ui.graphics.Brush.radialGradient(listOf(Color(0x99D05CFF), Color.Transparent)), CircleShape))
+            if (isSelected) Box(Modifier.size(32.dp).background(androidx.compose.ui.graphics.Brush.radialGradient(listOf(Color(0x99D05CFF), Color.Transparent)), CircleShape))
             Icon(
                 imageVector = if (isSelected) item.activeIcon else item.inactiveIcon,
                 contentDescription = item.label,
                 tint = if (isSelected) Color(0xFFE7B5FF) else idle,
-                modifier = Modifier.size(27.dp)
+                modifier = Modifier.size(23.dp)
             )
             if (item.badgeCount > 0) {
                 Box(
-                    Modifier.align(Alignment.TopEnd).offset(x = 10.dp, y = (-7).dp).defaultMinSize(minWidth = 19.dp, minHeight = 19.dp)
-                        .clip(CircleShape).background(Color(0xFFFF2D55)).border(1.5.dp, Color(0xFF1B1530), CircleShape).padding(horizontal = 4.dp),
+                    Modifier.align(Alignment.TopEnd).offset(x = 9.dp, y = (-5).dp).defaultMinSize(minWidth = 16.dp, minHeight = 16.dp)
+                        .clip(CircleShape).background(Color(0xFFFF2D55)).border(1.5.dp, Color(0xFF1B1530), CircleShape).padding(horizontal = 3.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(if (item.badgeCount > 99) "99+" else "${item.badgeCount}", color = PureWhite, fontSize = 10.sp, fontWeight = FontWeight.Bold, lineHeight = 10.sp)
+                    Text(if (item.badgeCount > 99) "99+" else "${item.badgeCount}", color = PureWhite, fontSize = 9.sp, fontWeight = FontWeight.Bold, lineHeight = 9.sp)
                 }
             }
         }
-        Spacer(modifier = Modifier.height(2.dp))
+        Spacer(modifier = Modifier.height(1.dp))
         Text(
             text = item.label + if (com.example.ui.components.AppGates.partLocked(if (item.id == "movie") "video" else item.id)) " 🔒" else "",
-            fontSize = 11.5.sp,
+            fontSize = 10.5.sp,
             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
             color = if (isSelected) active else idle,
             maxLines = 1
         )
-        Box(Modifier.padding(top = 3.dp).width(34.dp).height(3.dp).clip(RoundedCornerShape(2.dp))
+        Box(Modifier.padding(top = 2.dp).width(16.dp).height(2.5.dp).clip(RoundedCornerShape(2.dp))
             .background(if (isSelected) Color(0xFFE040C8) else Color.Transparent))
     }
 }
