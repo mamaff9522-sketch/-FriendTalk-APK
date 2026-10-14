@@ -20,6 +20,16 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.CardGiftcard
+import androidx.compose.material.icons.filled.EmojiEmotions
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.ui.graphics.Brush
 import com.example.ui.components.ft.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -171,19 +181,28 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
         Surface(Modifier.fillMaxSize(), color = Slate950) {
             // Insets: the input row was drawn behind the navigation bar (edge-to-edge dialog window) → pad for system bars + keyboard.
             Column(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding().imePadding()) {
-                Surface(color = Slate900) {
-                    Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(onClick = onClose) { Text("←", color = White, fontSize = 18.sp) }
+                var callInfo by remember { mutableStateOf<String?>(null) }
+                Box(Modifier.fillMaxWidth().background(chatHeaderBrush())) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, tr("กลับ"), tint = PureWhite) }
                         var showOther by remember { mutableStateOf(false) }
                         if (showOther && otherUid.isNotBlank()) UserProfileDialog(otherUid) { showOther = false }
-                        Box(Modifier.clip(CircleShape).clickable { showOther = true }) { Avatar(other?.avatar.orEmpty(), other?.displayName ?: "?", 36) }
-                        Spacer(Modifier.width(8.dp))
-                        Text(other?.displayName ?: "…", color = White, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                        if (isFriend == false) TextButton(onClick = { scope.launch { status = if (com.example.social.NearbyRepo.requestFriend(otherUid) != null) tr("ส่งคำขอเป็นเพื่อนแล้ว") else tr("ส่งคำขอไม่สำเร็จ"); csTick++ } }, contentPadding = PaddingValues(horizontal = 6.dp)) { Text(tr("➕เพื่อน"), color = White, fontSize = 12.sp) }
-                        TextButton(onClick = { giftSheet = true }, contentPadding = PaddingValues(horizontal = 6.dp)) { Text("🎁", fontSize = 20.sp) }
+                        Box(Modifier.clip(CircleShape).border(2.dp, Brush.linearGradient(listOf(Amber400, Color(0xFFFF2FA8), Color(0xFFB04DFF))), CircleShape).padding(3.dp).clip(CircleShape).clickable { showOther = true }) { Avatar(other?.avatar.orEmpty(), other?.displayName ?: "?", 38) }
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(other?.displayName ?: "…", color = PureWhite, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            when (isFriend) {
+                                true -> Text(tr("เพื่อน"), color = Color(0xFFFFD98A), fontSize = 11.sp, maxLines = 1)
+                                false -> Text(tr("ยังไม่ได้เป็นเพื่อน"), color = PureWhite.copy(alpha = 0.7f), fontSize = 11.sp, maxLines = 1)
+                                null -> {}
+                            }
+                        }
+                        IconButton(onClick = { callInfo = "voice" }, modifier = Modifier.size(40.dp)) { Icon(Icons.Filled.Call, tr("โทรเสียง"), tint = PureWhite) }
+                        IconButton(onClick = { callInfo = "video" }, modifier = Modifier.size(40.dp)) { Icon(Icons.Filled.Videocam, tr("วิดีโอคอล"), tint = PureWhite) }
+                        IconButton(onClick = { giftSheet = true }, modifier = Modifier.size(40.dp)) { Icon(Icons.Filled.CardGiftcard, tr("ส่งของขวัญ"), tint = Color(0xFFFFC94D)) }
                         var menu by remember { mutableStateOf(false) }
                         Box {
-                            TextButton(onClick = { menu = true }) { Text("⋮", color = White, fontSize = 18.sp) }
+                            IconButton(onClick = { menu = true }, modifier = Modifier.size(40.dp)) { Icon(Icons.Filled.MoreVert, tr("เมนู"), tint = PureWhite) }
                             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                                 val c = cs
                                 DropdownMenuItem(text = { Text(tr("🚩 รายงานผู้ใช้")) }, onClick = { menu = false; reportU = true })
@@ -204,15 +223,28 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                         }
                     }
                 }
-                val shared by produceState<com.example.social.Similarity?>(null, otherUid) { if (otherUid.isNotBlank()) value = com.example.social.InterestsRepo.profile(otherUid)?.similarity }
-                shared?.takeIf { it.shared.isNotEmpty() }?.let { Surface(color = Slate800, modifier = Modifier.fillMaxWidth()) { Box(Modifier.padding(10.dp)) { SharedInterests(it) } } }
+                Box(Modifier.fillMaxWidth().height(1.dp).background(Brush.horizontalGradient(listOf(Color.Transparent, Color(0xCCFFC94D), Color.Transparent))))
+                if (isFriend == false) Row(Modifier.fillMaxWidth().background(AppThemeMode.card).padding(horizontal = 14.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(tr("คุณยังไม่ได้เป็นเพื่อนกัน"), color = AppThemeMode.muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                    Box(Modifier.clip(RoundedCornerShape(14.dp)).background(Brush.linearGradient(listOf(Color(0xFFFF2FA8), Color(0xFF9B3DFF))))
+                        .clickable { scope.launch { status = if (com.example.social.NearbyRepo.requestFriend(otherUid) != null) tr("ส่งคำขอเป็นเพื่อนแล้ว") else tr("ส่งคำขอไม่สำเร็จ"); csTick++ } }
+                        .padding(horizontal = 12.dp, vertical = 5.dp)) { Text(tr("➕ เพิ่มเพื่อน"), color = PureWhite, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                }
+                callInfo?.let { kind ->
+                    // No call service is connected yet (needs WebRTC/TURN or a provider) — say so instead of showing a fake call screen.
+                    AlertDialog(onDismissRequest = { callInfo = null }, confirmButton = { TextButton(onClick = { callInfo = null }) { Text(tr("ตกลง")) } },
+                        title = { Text(if (kind == "video") tr("🎥 วิดีโอคอล") else tr("📞 โทรเสียง")) },
+                        text = { Text(tr("ระบบโทรผ่านแอปกำลังพัฒนา ยังใช้งานไม่ได้ — ตอนนี้คุยกันผ่านข้อความ รูป สติกเกอร์ และของขวัญได้")) })
+                }
                 decorState?.hiddenReason?.takeIf { it.isNotBlank() }?.let { Text("✨ $it", color = Slate400, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 12.dp)) }
                 com.example.ads.PlacementBanner("chatRoom")
-                Box(Modifier.weight(1f)) {
+                Box(Modifier.weight(1f).background(chatPageBrush())) {
                 if (decor != null) DecorBackground(chatId, decor, token, stickerList.associateBy { it.id }, lite)
+                val dayStarts = remember(messages) { messages.filterIndexed { i, m -> i == 0 || dayKey(m.at) != dayKey(messages[i - 1].at) }.map { it.id }.toSet() }
                 LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
                     items(messages, key = { it.id }) { m ->
+                        if (m.id in dayStarts) DayChip(m.at)
                         val mine = m.senderUid == me
                         var showSender by remember { mutableStateOf(false) }
                         if (showSender) UserProfileDialog(m.senderUid) { showSender = false }
@@ -228,7 +260,8 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                                 else Text(com.example.social.ChatSticker.PREVIEW, color = Slate400, fontSize = 13.sp, modifier = Modifier.padding(6.dp))
                             }
                             else if (decor != null && m.imagePath == null) DecorBubble(decor, m.text.orEmpty(), mine)
-                            else Surface(shape = RoundedCornerShape(14.dp), color = if (mine) Pink600 else Slate800) {
+                            else Box(Modifier.clip(bubbleShape(mine)).then(if (mine) Modifier.background(Brush.linearGradient(listOf(Color(0xFFFF2FA8), Color(0xFF9B3DFF))))
+                                else Modifier.background(AppThemeMode.cardSolid).border(1.dp, AppThemeMode.divider, bubbleShape(mine)))) {
                                 if (m.imagePath != null) {
                                     AsyncImage(
                                         model = ImageRequest.Builder(context).data(SocialRepo.imageUrl(chatId, m.imagePath))
@@ -236,9 +269,10 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                                         contentDescription = tr("รูปภาพ"), contentScale = ContentScale.Crop,
                                         modifier = Modifier.widthIn(max = 220.dp).heightIn(max = 280.dp).clip(RoundedCornerShape(14.dp))
                                     )
-                                } else Text(m.text.orEmpty(), color = if (mine) PureWhite else White, fontSize = 14.sp, modifier = Modifier.padding(10.dp))
+                                } else Text(m.text.orEmpty(), color = if (mine) PureWhite else AppThemeMode.text, fontSize = 15.sp, modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp))
                             }
-                            if (mine && m == messages.lastOrNull { it.senderUid == me } && otherRead >= m.at) Text(tr("อ่านแล้ว"), color = Slate400, fontSize = 9.sp)
+                            Text(hhmm.format(Date(m.at)) + if (mine && m == messages.lastOrNull { it.senderUid == me } && otherRead >= m.at) " · " + tr("อ่านแล้ว") else "",
+                                color = AppThemeMode.muted, fontSize = 10.sp, modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp))
                         }
                         }
                     }
@@ -256,20 +290,34 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                 }
                 if (status.isNotBlank()) Text(status, color = Amber400, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 12.dp))
                 cs?.takeIf { !it.canSend }?.let { Surface(color = Slate800, modifier = Modifier.fillMaxWidth()) { Text("🚫 " + it.reason, color = Amber400, fontSize = 13.sp, modifier = Modifier.padding(12.dp)) } }
-                if (cs?.canSend != false) Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("📷", fontSize = 20.sp) }
-                    TextButton(onClick = { stickerSheet = true }, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("😊", fontSize = 20.sp) }
-                    OutlinedTextField(value = input, onValueChange = { if (it.length <= 2000) input = it }, modifier = Modifier.weight(1f),
-                        placeholder = { Text(tr("พิมพ์ข้อความ…"), color = Slate400) }, maxLines = 4,
-                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White))
+                fun sendNow() {
+                    val t = input; if (t.isBlank()) return; input = ""
+                    scope.launch {
+                        val pc = paid
+                        if (pc != null && pc.first && pc.second != me) { PaidChat.send(chatId, t)?.let { e -> input = t; status = e }; return@launch }
+                        if (!SocialRepo.sendText(chatId, t)) { input = t; cs = SocialRepo.chatStatus(chatId); status = if (cs?.canSend == false) "" else tr("ส่งไม่สำเร็จ (ยืนยันอีเมลแล้วหรือยัง?)") } else status = "" }
+                }
+                if (cs?.canSend != false) Row(Modifier.fillMaxWidth().background(AppThemeMode.dialog).padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.Bottom) {
+                    val fieldShape = RoundedCornerShape(26.dp)
+                    Row(Modifier.weight(1f).heightIn(min = 52.dp).clip(fieldShape).background(AppThemeMode.field)
+                        .border(1.2.dp, Brush.linearGradient(listOf(Color(0xFFFF2FA8), Color(0xFF9B3DFF), Color(0xFFFFC94D))), fieldShape).padding(horizontal = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { stickerSheet = true }, modifier = Modifier.size(42.dp)) { Icon(Icons.Filled.EmojiEmotions, tr("สติกเกอร์"), tint = Color(0xFFC48CFF)) }
+                        TextField(value = input, onValueChange = { if (it.length <= 2000) input = it }, modifier = Modifier.weight(1f),
+                            placeholder = { Text(tr("พิมพ์ข้อความ…"), color = AppThemeMode.fieldHint, fontSize = 15.sp) }, maxLines = 5,
+                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 15.sp),
+                            colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent, disabledContainerColor = Color.Transparent,
+                                focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, disabledIndicatorColor = Color.Transparent,
+                                focusedTextColor = AppThemeMode.text, unfocusedTextColor = AppThemeMode.text, cursorColor = Color(0xFFFF2FA8)))
+                        IconButton(onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, modifier = Modifier.size(42.dp)) { Icon(Icons.Filled.PhotoCamera, tr("ส่งรูป"), tint = Color(0xFFC48CFF)) }
+                    }
                     Spacer(Modifier.width(6.dp))
-                    Button(enabled = input.isNotBlank(), colors = ButtonDefaults.buttonColors(containerColor = Pink500), onClick = {
-                        val t = input; input = ""
-                        scope.launch {
-                            val pc = paid
-                            if (pc != null && pc.first && pc.second != me) { PaidChat.send(chatId, t)?.let { e -> input = t; status = e }; return@launch }
-                            if (!SocialRepo.sendText(chatId, t)) { input = t; cs = SocialRepo.chatStatus(chatId); status = if (cs?.canSend == false) "" else tr("ส่งไม่สำเร็จ (ยืนยันอีเมลแล้วหรือยัง?)") } else status = "" }
-                    }) { Text(tr("ส่ง")) }
+                    val canSend = input.isNotBlank()
+                    Box(Modifier.size(52.dp).clip(CircleShape)
+                        .background(if (canSend) Brush.linearGradient(listOf(Color(0xFFFF2FA8), Color(0xFF9B3DFF))) else Brush.linearGradient(listOf(AppThemeMode.skeleton, AppThemeMode.skeleton)))
+                        .clickable(enabled = canSend) { sendNow() }, contentAlignment = Alignment.Center) {
+                        Icon(Icons.AutoMirrored.Filled.Send, tr("ส่ง"), tint = if (canSend) PureWhite else AppThemeMode.muted, modifier = Modifier.size(22.dp))
+                    }
                 }
             }
         }
@@ -380,5 +428,28 @@ internal fun ChatGiftSheet(onDismiss: () -> Unit, onPick: (com.example.social.Ca
                 }
             }
         }
+    }
+}
+
+/** Luxury header: deep violet → plum (dark) / royal purple → magenta (light), white text in both. */
+private fun chatHeaderBrush(): Brush = if (AppThemeMode.dark) Brush.horizontalGradient(listOf(Color(0xFF140F35), Color(0xFF2B1660), Color(0xFF3A1A5E)))
+    else Brush.horizontalGradient(listOf(Color(0xFF5B23A0), Color(0xFF8E45C8), Color(0xFFB0459F)))
+
+private fun chatPageBrush(): Brush = if (AppThemeMode.dark) Brush.verticalGradient(listOf(Color(0xFF0B0824), Color(0xFF130C33), Color(0xFF0B0824)))
+    else Brush.verticalGradient(listOf(Color(0xFFF6EEFF), Color(0xFFF1E2FA), Color(0xFFEBD8F7)))
+
+/** Chat bubble with a small "tail" corner on the sender's side. */
+private fun bubbleShape(mine: Boolean) = if (mine) RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp) else RoundedCornerShape(20.dp, 20.dp, 20.dp, 6.dp)
+
+private val hhmm = SimpleDateFormat("HH:mm", Locale.getDefault())
+private fun dayKey(at: Long) = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date(at))
+
+/** Centered date pill between days: วันนี้ / เมื่อวาน / d MMM yyyy. */
+@Composable
+private fun DayChip(at: Long) {
+    val now = System.currentTimeMillis()
+    val label = when (dayKey(at)) { dayKey(now) -> tr("วันนี้"); dayKey(now - 86_400_000L) -> tr("เมื่อวาน"); else -> SimpleDateFormat("d MMM yyyy", Locale("th", "TH")).format(Date(at)) }
+    Box(Modifier.fillMaxWidth().padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
+        Text(label, color = AppThemeMode.muted, fontSize = 11.sp, modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(AppThemeMode.pill).padding(horizontal = 12.dp, vertical = 3.dp))
     }
 }
