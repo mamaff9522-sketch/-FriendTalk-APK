@@ -106,7 +106,7 @@ fun PostDetailDialog(post: FeedPost, onDismiss: () -> Unit, onLike: () -> Unit, 
         }
     }
 
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(Modifier.fillMaxSize(), color = DBg) {
             Column(Modifier.fillMaxSize().systemBarsPadding().imePadding()) {
                 // top bar
@@ -254,7 +254,7 @@ private fun CommentItem(c: FeedComment, isReply: Boolean, canDelete: Boolean, on
 /** Full-screen photo. */
 @Composable
 fun ImageZoomDialog(url: String, onDismiss: () -> Unit) {
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Box(Modifier.fillMaxSize().background(Color.Black).clickable(onClick = onDismiss)) {
             AsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
             IconButton(onClick = onDismiss, modifier = Modifier.align(Alignment.TopEnd).systemBarsPadding().padding(8.dp)) { Icon(Icons.Filled.Close, tr("ปิด"), tint = PureWhite) }

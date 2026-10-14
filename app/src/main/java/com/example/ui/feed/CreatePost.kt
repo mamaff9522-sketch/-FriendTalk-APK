@@ -179,14 +179,15 @@ fun CreatePostDialog(startWith: String? = null, onDismiss: () -> Unit, onPosted:
         }
     }
 
-    Dialog(onDismissRequest = { close() }, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false)) {
+    Dialog(onDismissRequest = { close() }, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnClickOutside = false)) {
         Surface(Modifier.fillMaxSize(), color = CBg) {
             Column(Modifier.fillMaxSize().systemBarsPadding().imePadding()) {
+                // Edge-to-edge dialog (decorFitsSystemWindows = false) so systemBarsPadding keeps the bottom bar above the phone's navigation buttons.
                 // top bar: ✕  สร้างโพสต์  [โพสต์]
                 Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { close() }) { Icon(Icons.Filled.Close, tr("ปิด"), tint = CSoft) }
                     Text(tr("สร้างโพสต์"), color = CText, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    Box(Modifier.clip(RoundedCornerShape(20.dp)).background(if (canPost) Brush.horizontalGradient(listOf(CNeon, CViolet)) else SolidColor(Color(0xFF2A2357)))
+                    Box(Modifier.clip(RoundedCornerShape(20.dp)).background(if (canPost) Brush.horizontalGradient(listOf(CNeon, CViolet)) else SolidColor(if (AppThemeMode.dark) Color(0xFF2A2357) else Color(0xFFE2CFF5)))
                         .clickable(enabled = canPost) { publish() }.padding(horizontal = 18.dp, vertical = 8.dp)) {
                         Text(if (busy) tr("กำลังโพสต์…") else tr("โพสต์"), color = if (canPost || busy) PureWhite else CMuted, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                     }
@@ -534,7 +535,7 @@ fun MapPickDialog(start: Pair<Double, Double>?, onDismiss: () -> Unit, onPick: (
         }
     }
     DisposableEffect(Unit) { mapView.onResume(); onDispose { mapView.onPause(); mapView.onDetach() } }
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(Modifier.fillMaxSize(), color = CBg) {
             Column(Modifier.fillMaxSize().systemBarsPadding()) {
                 Row(Modifier.fillMaxWidth().padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -571,7 +572,7 @@ fun PostVideoThumb(p: FeedPost, modifier: Modifier) {
 
 @Composable
 fun VideoPlayerDialog(url: String, onDismiss: () -> Unit) {
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             var view by remember { mutableStateOf<VideoView?>(null) }
             AndroidView(factory = { c ->
