@@ -313,7 +313,8 @@ fun HomeLiveSection(onSeeAll: () -> Unit) {
     val tick = HomeRepo.reloadTick
     var lives by remember { mutableStateOf<List<HomeRepo.LiveItem>?>(null) }
     var failed by remember { mutableStateOf(false) }
-    LaunchedEffect(tick) { val r = HomeRepo.lives(); failed = r == null; lives = r ?: emptyList() }
+    // A database read can wait forever when the connection is slow; give up after 6 s so the section never stays on placeholders.
+    LaunchedEffect(tick) { val r = kotlinx.coroutines.withTimeoutOrNull(6000) { HomeRepo.lives() }; failed = r == null; lives = r ?: emptyList() }
     val cardW = ((LocalConfiguration.current.screenWidthDp - 44) / 4.75f).dp
     Column(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 12.dp)) {
         HomeSectionTitle({ Icon(Icons.Filled.Videocam, null, tint = HNeon, modifier = Modifier.size(22.dp)) }, tr("ไลฟ์สดตอนนี้"), onSeeAll)
@@ -323,7 +324,7 @@ fun HomeLiveSection(onSeeAll: () -> Unit) {
             l == null -> Row(Modifier.padding(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 repeat(5) { Box(Modifier.width(cardW).aspectRatio(0.75f).clip(RoundedCornerShape(12.dp)).background(AppThemeMode.skeleton)) }
             }
-            l.isEmpty() -> if (failed || !ShowcaseLiveRow(cardW, onSeeAll)) EmptyRow(if (failed) tr("โหลดไลฟ์ไม่สำเร็จ") else tr("ยังไม่มีใครไลฟ์ตอนนี้"))
+            l.isEmpty() -> if (!ShowcaseLiveRow(cardW, onSeeAll)) EmptyRow(if (failed) tr("โหลดไลฟ์ไม่สำเร็จ แตะเพื่อลองใหม่") else tr("ยังไม่มีใครไลฟ์ตอนนี้"), if (failed) ({ HomeRepo.reloadTick++ }) else null)
             else -> LazyRow(contentPadding = PaddingValues(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(l.take(10), key = { it.id }) { LiveCard(it, cardW, onSeeAll) }
             }
