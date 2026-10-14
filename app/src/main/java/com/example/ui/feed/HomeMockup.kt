@@ -557,8 +557,6 @@ fun HomePostCard(p: FeedPost, distance: String, modifier: Modifier, onLike: () -
                     Icon(Icons.AutoMirrored.Outlined.Reply, tr("แชร์"), tint = HSoft, modifier = Modifier.size(17.dp).graphicsLayer(scaleX = -1f))
                     Spacer(Modifier.width(3.dp)); Text("0", color = HSoft, fontSize = 11.5.sp)
                 }
-                Spacer(Modifier.weight(1f))
-                more()
             }
         }
     }
