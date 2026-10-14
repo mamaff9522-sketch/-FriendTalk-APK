@@ -176,6 +176,7 @@ fun ProfileTab(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(14.dp))
+                            .clickable { onOpenCoins() } // opens the shop / top-up (it had no click handler)
                     ) {
                         Row(
                             modifier = Modifier.padding(14.dp),
