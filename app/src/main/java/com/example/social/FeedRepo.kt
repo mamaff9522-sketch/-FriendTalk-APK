@@ -64,6 +64,17 @@ object FeedRepo {
     }
 
     /** Downscale to max 1600px JPEG ~85% before upload. */
+    /** Compress + upload one picture under posts/{uid}/ ; returns its storage path (for the server to check), or null. */
+    suspend fun uploadImage(ctx: Context, uri: Uri, prefix: String): String? {
+        val u = user() ?: return null
+        val bytes = compress(ctx, uri) ?: return null
+        val path = "posts/${u.uid}/${prefix}_${System.currentTimeMillis()}.jpg"
+        val ok = suspendCancellableCoroutine { c ->
+            storage.reference.child(path).putBytes(bytes, StorageMetadata.Builder().setContentType("image/jpeg").build()).addOnCompleteListener { if (c.isActive) c.resume(it.isSuccessful) }
+        }
+        return if (ok) path else null
+    }
+
     internal suspend fun compress(ctx: Context, uri: Uri): ByteArray? = withContext(Dispatchers.IO) {
         runCatching {
             val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }

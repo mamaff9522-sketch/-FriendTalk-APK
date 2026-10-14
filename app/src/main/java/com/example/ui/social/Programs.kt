@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -163,7 +164,7 @@ fun ChatRulesDialog(onClose: () -> Unit) { Dialog(onDismissRequest = onClose, pr
 
 // ===================== เพื่อนคุย =====================
 data class Partner(val uid: String, val name: String, val occupation: String, val age: Int, val slots: List<String>, val hours: Map<String, String>,
-                   val talkStyle: String, val personality: String, val modes: List<String>, val avg: Double, val count: Int)
+                   val talkStyle: String, val personality: String, val modes: List<String>, val avg: Double, val count: Int, val photo: String = "")
 private val SLOT_TH = linkedMapOf("morning" to "เช้า", "afternoon" to "บ่าย", "evening" to "เย็น", "night" to "ดึก")
 private val DAY_TH = linkedMapOf("mon" to "จ.", "tue" to "อ.", "wed" to "พ.", "thu" to "พฤ.", "fri" to "ศ.", "sat" to "ส.", "sun" to "อา.")
 private val MODE_TH = linkedMapOf("text" to "💬 ข้อความ", "voice" to "📞 โทรเสียง", "video" to "🎥 วิดีโอคอล")
@@ -208,7 +209,8 @@ internal suspend fun loadPartners(): List<Partner> {
         c.child("hours").children.associate { (it.key ?: "") to (it.getValue(String::class.java) ?: "") },
         c.child("talkStyle").getValue(String::class.java).orEmpty(), c.child("personality").getValue(String::class.java).orEmpty(),
         c.child("modes").children.mapNotNull { it.getValue(String::class.java) }.ifEmpty { listOf("text") },
-        c.child("rating/avg").getValue(Double::class.java) ?: 0.0, (c.child("rating/count").getValue(Long::class.java) ?: 0L).toInt()) }
+        c.child("rating/avg").getValue(Double::class.java) ?: 0.0, (c.child("rating/count").getValue(Long::class.java) ?: 0L).toInt(),
+        c.child("photos").children.firstOrNull()?.getValue(String::class.java).orEmpty()) }
         ?.sortedWith(compareByDescending<Partner> { it.avg }.thenByDescending { it.count }) ?: emptyList()
 }
 
@@ -244,7 +246,7 @@ fun CompanionGridScreen() {
 @Composable
 private fun PartnerTile(p: Partner, onClick: () -> Unit) {
     val prof = rememberProfile(p.uid)
-    val photo = prof?.avatar.orEmpty()
+    val photo = p.photo.ifBlank { prof?.avatar.orEmpty() }
     Box(Modifier.fillMaxWidth().aspectRatio(0.78f).clip(RoundedCornerShape(16.dp)).background(Slate800).clickable(onClick = onClick)) {
         if (photo.isNotBlank()) coil.compose.AsyncImage(model = photo, contentDescription = p.name, contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.fillMaxSize())
         else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(p.name.take(1), color = White, fontSize = 32.sp, fontWeight = FontWeight.Bold) }
@@ -393,6 +395,29 @@ fun CompanionSignupDialog(onClose: () -> Unit) {
         var talk by remember { mutableStateOf(app?.optString("talkStyle").orEmpty()) }
         var pers by remember { mutableStateOf(app?.optString("personality").orEmpty()) }
         var msg by remember { mutableStateOf("") }
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        val photos = remember { mutableStateListOf<android.net.Uri>() }
+        var busy by remember { mutableStateOf(false) }
+        val photoPicker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickMultipleVisualMedia(4)) { picked ->
+            picked.forEach { if (photos.size < 4 && it !in photos) photos.add(it) }
+        }
+        // photos of the applicant (required, 1–4): shown to admins for review and on the approved companion card
+        Text("รูปของคุณ (1–4 รูป) *", color = White, fontWeight = FontWeight.Bold)
+        Text("ใช้รูปตัวเองที่เห็นหน้าชัด ห้ามใช้รูปคนอื่น — แอดมินจะตรวจก่อนอนุมัติ", color = Slate400, fontSize = 12.sp)
+        Row(Modifier.horizontalScrollCompat(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            photos.forEach { u ->
+                Box(Modifier.size(84.dp).clip(RoundedCornerShape(14.dp))) {
+                    coil.compose.AsyncImage(model = u, contentDescription = null, contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                    Box(Modifier.align(Alignment.TopEnd).padding(4.dp).size(22.dp).clip(androidx.compose.foundation.shape.CircleShape).background(androidx.compose.ui.graphics.Color(0xCC000000))
+                        .clickable(enabled = !busy) { photos.remove(u) }, contentAlignment = Alignment.Center) { Text("✕", color = PureWhite, fontSize = 11.sp) }
+                }
+            }
+            if (photos.size < 4) Box(Modifier.size(84.dp).clip(RoundedCornerShape(14.dp)).background(Slate800).clickable(enabled = !busy) {
+                photoPicker.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) { Text("📷", fontSize = 22.sp); Text("เพิ่มรูป", color = Slate300, fontSize = 11.sp) }
+            }
+        }
         Text("🔒 ชื่อจริงและเบอร์โทรเป็นข้อมูลส่วนตัว เห็นได้เฉพาะคุณและแอดมินที่มีสิทธิ์ ไม่แสดงต่อผู้ใช้อื่น", color = Slate400, fontSize = 12.sp)
         OutlinedTextField(realName, { realName = it.take(80) }, label = { Text("ชื่อจริง (ส่วนตัว)") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = tfColors)
         OutlinedTextField(phone, { phone = it.filter { c -> c.isDigit() || c == '+' }.take(13) }, label = { Text("เบอร์โทร (ส่วนตัว) เช่น 0812345678") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = tfColors)
@@ -411,12 +436,18 @@ fun CompanionSignupDialog(onClose: () -> Unit) {
         val phoneOk = Regex("^(0[689]\\d{8}|0[2-7]\\d{7}|\\+66[689]\\d{8})$").matches(phone)
         if (phone.isNotBlank() && !phoneOk) Text("เบอร์โทรไม่ถูกต้อง", color = Rose500, fontSize = 12.sp)
         if ((age.toIntOrNull() ?: 99) < 18) Text("ต้องมีอายุ 18 ปีขึ้นไป", color = Rose500, fontSize = 12.sp)
-        Button(enabled = phoneOk && (age.toIntOrNull() ?: 0) >= 18 && slots.isNotEmpty() && modes.isNotEmpty(), onClick = { scope.launch {
+        if (photos.isEmpty()) Text("แนบรูปของคุณอย่างน้อย 1 รูป", color = Rose500, fontSize = 12.sp)
+        Button(enabled = !busy && photos.isNotEmpty() && phoneOk && (age.toIntOrNull() ?: 0) >= 18 && slots.isNotEmpty() && modes.isNotEmpty(), onClick = { scope.launch {
+            busy = true; msg = "กำลังอัปโหลดรูป…"
+            val refs = JSONArray()
+            for (u in photos) { val p = com.example.social.FeedRepo.uploadImage(ctx, u, "companion") ?: run { msg = "อัปโหลดรูปไม่สำเร็จ (ยืนยันอีเมลแล้วหรือยัง?)"; busy = false; return@launch }; refs.put(p) }
+            msg = "กำลังส่งใบสมัคร…"
             val h = JSONObject(); hours.forEach { (k, v) -> if (v.isNotBlank()) h.put(k, v.trim()) }
             val r = api("POST", "/companion-apply", JSONObject().put("realName", realName).put("phone", phone).put("displayName", dn).put("occupation", occ).put("age", age.toInt())
-                .put("slots", JSONArray(slots.toList())).put("modes", JSONArray(modes.toList())).put("hours", h).put("talkStyle", talk).put("personality", pers))
-            if (r.code == 200) tick++ else msg = errOf(r)
-        } }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Pink500)) { Text("ส่งใบสมัคร", color = PureWhite) }
+                .put("slots", JSONArray(slots.toList())).put("modes", JSONArray(modes.toList())).put("hours", h).put("talkStyle", talk).put("personality", pers).put("photoRefs", refs))
+            busy = false
+            if (r.code == 200) { msg = ""; tick++ } else msg = errOf(r)
+        } }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Pink500)) { Text(if (busy) "กำลังส่ง…" else "ส่งใบสมัคร", color = PureWhite) }
         if (msg.isNotBlank()) Text(msg, color = Amber400)
     }
 }
@@ -461,6 +492,10 @@ fun AdminApplicationsPane() {
                         a.optJSONArray("rulesAgreed").strings().forEachIndexed { i, r -> Text("✓ ${i + 1}. $r", color = Slate300, fontSize = 11.sp) }
                     } else {
                         val pv = a.optJSONObject("private")
+                        val ph = a.optJSONArray("photos").strings()
+                        if (ph.isNotEmpty()) Row(Modifier.horizontalScrollCompat(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            ph.forEach { url -> coil.compose.AsyncImage(model = url, contentDescription = null, contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.size(96.dp).clip(RoundedCornerShape(12.dp))) }
+                        } else Text("(ไม่มีรูปแนบ)", color = Slate400, fontSize = 12.sp)
                         Text("🔒 ชื่อจริง: ${pv?.optString("realName")} · โทร: ${pv?.optString("phone")}", color = Amber400, fontSize = 12.sp)
                         Text("อาชีพ ${a.optString("occupation")} · อายุ ${a.optInt("age")} · โหมด ${a.optJSONArray("modes").strings().joinToString { MODE_TH[it] ?: it }}", color = Slate300, fontSize = 12.sp)
                         Text("สะดวก: ${a.optJSONArray("slots").strings().joinToString(" ") { SLOT_TH[it] ?: it }}", color = Slate300, fontSize = 12.sp)
@@ -605,3 +640,7 @@ fun AdminShopPacksPane() {
         if (msg.isNotBlank()) Text(msg, color = Amber400)
     }
 }
+
+/** Horizontal scroll shortcut used by the companion photo rows. */
+@Composable
+private fun Modifier.horizontalScrollCompat(): Modifier = this.then(Modifier.horizontalScroll(rememberScrollState()))

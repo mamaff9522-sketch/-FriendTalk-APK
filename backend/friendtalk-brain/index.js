@@ -225,10 +225,19 @@ app.post('/companion-apply', w(notBanned), w(async (q, r) => {
   const slots = (Array.isArray(b.slots) ? b.slots : []).filter(x => SLOTS.includes(x)); if (!slots.length) return r.status(400).json({ error: 'เลือกช่วงเวลาที่สะดวกอย่างน้อย 1 ช่วง' });
   const hours = {}; for (const d of DAYS) { const v = String(b.hours?.[d] || '').trim(); if (v) { if (!HR.test(v)) return r.status(400).json({ error: `เวลา ${d} ต้องเป็นรูปแบบ 18:00-22:00` }); hours[d] = v; } }
   const modes = (Array.isArray(b.modes) ? b.modes : []).filter(x => ['text', 'voice', 'video'].includes(x)); if (!modes.length) return r.status(400).json({ error: 'เลือกรูปแบบการคุยอย่างน้อย 1 แบบ' });
+  // 1-4 photos of the applicant (uploaded by the app under posts/{uid}/), checked + moderated; shown to admins and on the approved card
+  const refs = (Array.isArray(b.photoRefs) ? b.photoRefs : []).slice(0, 4);
+  if (!refs.length) return r.status(400).json({ error: 'แนบรูปของคุณอย่างน้อย 1 รูป' });
+  const photos = [];
+  for (const p of refs) {
+    const u = await postImageUrl(q.uid, p); if (!u) return r.status(400).json({ error: 'รูปไม่ถูกต้อง ลองเลือกใหม่' });
+    const mi = await moderateImage(q.uid, p, { kind: 'companion_photo' }); if (!mi.ok) return r.status(422).json({ code: 'moderated', error: 'รูปภาพนี้ขัดกติกาความปลอดภัย' });
+    photos.push(u);
+  }
   { const m = await moderateText(q.uid, [dn, occ, b.talkStyle, b.personality].join(' '), { kind: 'companion_application' }); if (!m.ok) return r.status(422).json({ code: 'moderated', error: m.message }); }
   const t = Date.now(), talkStyle = String(b.talkStyle || '').trim().slice(0, 300), personality = String(b.personality || '').trim().slice(0, 300);
   await db.ref().update({
-    [`companionApplications/${q.uid}`]: { uid: q.uid, displayName: dn, occupation: occ, age, slots, hours, talkStyle, personality, modes: [...new Set(modes)], status: 'pending', submittedAt: t, reason: '' },
+    [`companionApplications/${q.uid}`]: { uid: q.uid, displayName: dn, occupation: occ, age, slots, hours, talkStyle, personality, modes: [...new Set(modes)], photos, status: 'pending', submittedAt: t, reason: '' },
     [`private/${q.uid}/companion`]: { realName, phone, updatedAt: t }
   });
   r.json({ status: 'pending' });
@@ -245,7 +254,7 @@ app.post('/admin/companion-applications/:uid/decide', perm('manage_content'), w(
   const a = (await db.ref(`companionApplications/${uid}`).get()).val(); if (!a) return r.status(404).json({ error: 'not found' });
   if (!approve && reason.length < 3) return r.status(400).json({ error: 'ต้องใส่เหตุผลที่ปฏิเสธ' });
   const t = Date.now(), upd = { [`companionApplications/${uid}/status`]: approve ? 'approved' : 'rejected', [`companionApplications/${uid}/reason`]: reason, [`companionApplications/${uid}/decidedAt`]: t, [`companionApplications/${uid}/decidedBy`]: q.uid };
-  upd[`companions/${uid}`] = approve ? { displayName: a.displayName, occupation: a.occupation, age: a.age, slots: a.slots, hours: a.hours || {}, talkStyle: a.talkStyle || '', personality: a.personality || '', modes: a.modes || ['text'], at: t } : null; // public card only
+  upd[`companions/${uid}`] = approve ? { displayName: a.displayName, occupation: a.occupation, age: a.age, slots: a.slots, hours: a.hours || {}, talkStyle: a.talkStyle || '', personality: a.personality || '', modes: a.modes || ['text'], photos: a.photos || [], at: t } : null; // public card only
   await db.ref().update(upd);
   await db.ref('adminLog').push({ action: approve ? 'companion_approve' : 'companion_reject', target: uid, by: q.uid, at: t, message: reason });
   r.json({ uid, status: approve ? 'approved' : 'rejected' });
