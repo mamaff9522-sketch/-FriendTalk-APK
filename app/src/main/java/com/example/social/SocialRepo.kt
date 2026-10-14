@@ -180,6 +180,10 @@ object SocialRepo {
 
     suspend fun sendText(chatId: String, text: String) = pushMessage(chatId, mapOf("text" to text.trim().take(2000)), text.trim())
 
+    /** Chat sticker (admin catalog/chatStickers): sent as a normal text message "🎨 สติกเกอร์ [id]" so no rule change is
+     *  needed and older app versions still show readable text; this version draws the sticker image instead. */
+    suspend fun sendSticker(chatId: String, stickerId: String) = pushMessage(chatId, mapOf("text" to ChatSticker.encode(stickerId)), ChatSticker.PREVIEW)
+
     suspend fun sendImage(chatId: String, uri: Uri, mime: String): Boolean {
         val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return false
         val path = "chatImages/$chatId/$uid/${System.currentTimeMillis()}.${if (mime.contains("png")) "png" else "jpg"}"
@@ -263,4 +267,13 @@ object SocialRepo {
         val j = r.json
         return SwipeResult(r.code == 200, j?.optBoolean("matched") == true, j?.optString("chatId")?.ifBlank { null })
     }
+}
+
+
+/** Chat sticker messages: text "🎨 สติกเกอร์ [id]" where id is a catalog/chatStickers item. */
+object ChatSticker {
+    const val PREVIEW = "🎨 สติกเกอร์"
+    private val RE = Regex("^🎨 สติกเกอร์ \\[([A-Za-z0-9_-]{1,40})\\]$")
+    fun encode(id: String) = "$PREVIEW [$id]"
+    fun decode(text: String?): String? = text?.let { RE.matchEntire(it.trim())?.groupValues?.get(1) }
 }

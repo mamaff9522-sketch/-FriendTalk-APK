@@ -63,3 +63,7 @@ Open:
 - Place: `place` (name, ≤ 80 chars) and optional `lat`/`lng`, rounded to ~1 km. `/feed` returns the point only to the author, or to everyone when the author sent `shareCoords: true` (stored as `place.share`).
 - Privacy: `visibility` = `public` / `friends` / `only_me`, checked on the server (`canView`) for `/feed`, likes, comments and now `/reports` too.
 - Needs deploying: `firebase/storage.rules` (allows `video/*` under `posts/{uid}/`) and friendtalk-brain. Until both are deployed, the app shows an error for video posts; text, photo and place posts keep working.
+
+## Chat stickers (2026-10-14)
+- Admins add free chat stickers in the app: Admin → ของขวัญ → **สติกเกอร์แชท** (`catalog/chatStickers`, image webp/png ≤ 512 KB via `PUT /admin/catalog/chatStickers/{id}/image`, price 0). `chatStickers` is a new catalog channel in friendtalk-brain — deploy brain before adding stickers.
+- Users send them from the 😊 button in a chat room. A sticker is a normal chat text `🎨 สติกเกอร์ [id]` (same RTDB rules and daily limits as text); the app draws the catalog image, older app versions show the text.

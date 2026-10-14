@@ -64,7 +64,7 @@ fun AdminGiftsTab() {
             else -> {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("ทั้งหมด $total รายการ", color = Slate300, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                    Button(onClick = { edit = CatalogItem("item_" + System.currentTimeMillis().toString(36), "", if (ch == "stickers") 0 else 10, "", "", ch, true, -1) },
+                    Button(onClick = { edit = CatalogItem("item_" + System.currentTimeMillis().toString(36), "", if (ch == "stickers" || ch == "chatStickers") 0 else 10, "", "", ch, true, -1) },
                         colors = ButtonDefaults.buttonColors(containerColor = Pink500)) { Text("+ เพิ่ม") }
                 }
                 items.forEachIndexed { i, it ->
@@ -138,7 +138,7 @@ private fun CatalogItemEditor(ch: String, init: CatalogItem, onClose: (Boolean) 
                     Text("เลื่อนขึ้น/ลง", color = Slate300, fontSize = 11.sp); Slider(oy, { oy = it }, valueRange = -0.5f..0.5f)
                 }
                 OutlinedTextField(name, { name = it.take(40) }, label = { Text("ชื่อ") }, singleLine = true)
-                OutlinedTextField(price, { price = it.filter(Char::isDigit).take(7) }, label = { Text(if (ch == "chat") "ราคา (💎 เพชร)" else "ราคา (เหรียญ)" + if (ch == "stickers") " 0 = ฟรี" else "") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                OutlinedTextField(price, { price = it.filter(Char::isDigit).take(7) }, label = { Text(if (ch == "chat") "ราคา (💎 เพชร)" else if (ch == "chatStickers") "ราคา (ใส่ 0 · สติกเกอร์แชทส่งฟรี)" else "ราคา (เหรียญ)" + if (ch == "stickers") " 0 = ฟรี" else "") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                 OutlinedTextField(category, { category = it.take(30) }, label = { Text("หมวดหมู่") }, singleLine = true)
                 OutlinedTextField(icon, { icon = it.take(4) }, label = { Text("อีโมจิ (ถ้าไม่มีรูป)") }, singleLine = true)
                 Row(verticalAlignment = Alignment.CenterVertically) { Text("เปิดใช้งาน", color = White, modifier = Modifier.weight(1f)); Switch(enabled, { enabled = it }) }

@@ -1861,7 +1861,9 @@ app.get('/shake/result', w(async (q, r) => {
   r.json({ status: 'timeout' });
 }));
 // ===== Gift catalog (live / vip / chat) + stickers; admin-managed, images in Storage giftAssets/{id}.webp =====
-const CHANNELS = ['live', 'vip', 'chat', 'stickers'];
+// chatStickers = free stickers users send as chat messages (admin uploads them); stickers = VIP room-decor stickers
+const CHANNELS = ['live', 'vip', 'chat', 'stickers', 'chatStickers'];
+const FREE_OK = ['stickers', 'chatStickers'];
 const ITEM_ID = /^[A-Za-z0-9_-]{1,40}$/;
 const SEED_LIVE = [
   ['gift_heart', 'หัวใจมินิ', '💖', 10, 'POP'], ['gift_flower', 'ดอกกุหลาบ', '🌹', 50, 'FLOAT'], ['gift_tea', 'ชานมไข่มุก', '🧋', 100, 'POP'],
@@ -1892,7 +1894,7 @@ app.put('/admin/catalog/:ch/:id', catPerm, w(notBanned), w(async (q, r) => {
   const b = q.body || {}, name = String(b.name || '').trim().slice(0, 40);
   const price = Number.isInteger(b.price) ? b.price : -1;
   if (!name) return r.status(400).json({ error: 'name required' });
-  if (price < 0 || price > 1000000 || (price === 0 && ch !== 'stickers')) return r.status(400).json({ error: ch === 'stickers' ? 'price 0..1000000' : 'price 1..1000000' });
+  if (price < 0 || price > 1000000 || (price === 0 && !FREE_OK.includes(ch))) return r.status(400).json({ error: FREE_OK.includes(ch) ? 'price 0..1000000' : 'price 1..1000000' });
   const ref = db.ref(`catalog/${ch}/${id}`), cur = (await ref.get()).val() || {};
   let order = Number.isInteger(b.order) ? b.order : cur.order;
   if (!Number.isInteger(order)) order = Object.keys((await db.ref(`catalog/${ch}`).get()).val() || {}).length;

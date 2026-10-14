@@ -9,6 +9,8 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -144,6 +146,10 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
     var lite by remember { mutableStateOf(prefs.getBoolean("decorLite", false)) }
     var editDecor by remember { mutableStateOf(false) }
     var giftSheet by remember { mutableStateOf(false) }
+    var stickerSheet by remember { mutableStateOf(false) }
+    // free chat stickers uploaded by admins (catalog/chatStickers), for drawing sticker messages
+    val chatStickers by remember { com.example.social.GiftRepo.catalog("chatStickers", enabledOnly = false) }.collectAsState(initial = emptyList())
+    val chatStickerMap = remember(chatStickers) { chatStickers.associateBy { it.id } }
     var isFriend by remember { mutableStateOf<Boolean?>(null) }
     LaunchedEffect(otherUid, csTick) { if (otherUid.isNotBlank()) isFriend = com.example.social.NearbyRepo.friendsWithOnline().any { it.first.uid == otherUid } }
     val listState = rememberLazyListState()
@@ -211,7 +217,14 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.Bottom) {
                         if (!mine) { Box(Modifier.clip(CircleShape).clickable { showSender = true }) { Avatar(other?.avatar.orEmpty(), other?.displayName ?: "?", 28) }; Spacer(Modifier.width(6.dp)) }
                         Column(Modifier.weight(1f, fill = false), horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
+                            val stickerId = if (m.imagePath == null && m.gift == null) com.example.social.ChatSticker.decode(m.text) else null
                             if (m.gift != null) GiftBubble(m.gift, mine) { scope.launch { status = com.example.social.GiftRepo.accept(m.gift.txId).msg; csTick++ } }
+                            else if (stickerId != null) {
+                                // sticker message: the picture itself, no bubble (falls back to text if the admin removed it)
+                                val st = chatStickerMap[stickerId]
+                                if (st != null) Box(Modifier.size(120.dp)) { StickerImage(st) }
+                                else Text(com.example.social.ChatSticker.PREVIEW, color = Slate400, fontSize = 13.sp, modifier = Modifier.padding(6.dp))
+                            }
                             else if (decor != null && m.imagePath == null) DecorBubble(decor, m.text.orEmpty(), mine)
                             else Surface(shape = RoundedCornerShape(14.dp), color = if (mine) Pink600 else Slate800) {
                                 if (m.imagePath != null) {
@@ -231,10 +244,19 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                 }
                 if (editDecor) RoomDecorEditor(chatId, decor, token) { saved -> editDecor = false; if (saved) decorTick++ }
                 if (giftSheet) ChatGiftSheet(onDismiss = { giftSheet = false }) { item -> giftSheet = false; scope.launch { status = com.example.social.GiftRepo.sendGift(chatId, item.id).msg } }
+                if (stickerSheet) ChatStickerSheet(onDismiss = { stickerSheet = false }) { item ->
+                    stickerSheet = false
+                    scope.launch {
+                        val pc = paid
+                        if (pc != null && pc.first && pc.second != me) { PaidChat.send(chatId, com.example.social.ChatSticker.encode(item.id))?.let { e -> status = e }; return@launch }
+                        if (!SocialRepo.sendSticker(chatId, item.id)) { cs = SocialRepo.chatStatus(chatId); status = if (cs?.canSend == false) "" else tr("ส่งสติกเกอร์ไม่สำเร็จ") } else status = ""
+                    }
+                }
                 if (status.isNotBlank()) Text(status, color = Amber400, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 12.dp))
                 cs?.takeIf { !it.canSend }?.let { Surface(color = Slate800, modifier = Modifier.fillMaxWidth()) { Text("🚫 " + it.reason, color = Amber400, fontSize = 13.sp, modifier = Modifier.padding(12.dp)) } }
                 if (cs?.canSend != false) Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) { Text("📷", fontSize = 20.sp) }
+                    TextButton(onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("📷", fontSize = 20.sp) }
+                    TextButton(onClick = { stickerSheet = true }, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("😊", fontSize = 20.sp) }
                     OutlinedTextField(value = input, onValueChange = { if (it.length <= 2000) input = it }, modifier = Modifier.weight(1f),
                         placeholder = { Text(tr("พิมพ์ข้อความ…"), color = Slate400) }, maxLines = 4,
                         colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White))
@@ -292,6 +314,41 @@ fun GiftToUserButton(otherUid: String, modifier: Modifier = Modifier, compact: B
 }
 
 /** Realtime list of enabled chat gifts (catalog/chat). */
+/** Sticker picker: free stickers the admins uploaded (catalog/chatStickers), grouped by category. Tap = send. */
+@Composable
+internal fun ChatStickerSheet(onDismiss: () -> Unit, onPick: (com.example.social.CatalogItem) -> Unit) {
+    val items by remember { com.example.social.GiftRepo.catalog("chatStickers") }.collectAsState(initial = null)
+    var cat by remember { mutableStateOf<String?>(null) }
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = RoundedCornerShape(18.dp), color = Slate900) {
+            Column(Modifier.padding(16.dp).heightIn(max = 520.dp)) {
+                Text(tr("😊 สติกเกอร์"), color = White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text(tr("แตะเพื่อส่ง · ส่งฟรี"), color = Slate400, fontSize = 11.sp)
+                Spacer(Modifier.height(8.dp))
+                val l = items
+                when {
+                    l == null -> CircularProgressIndicator(color = Pink500)
+                    l.isEmpty() -> Text(tr("ยังไม่มีสติกเกอร์ (แอดมินกำลังเพิ่ม)"), color = Slate400, modifier = Modifier.padding(vertical = 16.dp))
+                    else -> {
+                        val cats = l.map { it.category }.filter { it.isNotBlank() && it != "chatStickers" }.distinct()
+                        if (cats.size > 1) Row(Modifier.horizontalScroll(rememberScrollState()).padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            FilterChip(selected = cat == null, onClick = { cat = null }, label = { Text(tr("ทั้งหมด"), fontSize = 12.sp) })
+                            cats.forEach { c -> FilterChip(selected = cat == c, onClick = { cat = c }, label = { Text(c, fontSize = 12.sp) }) }
+                        }
+                        val shown = if (cat == null) l else l.filter { it.category == cat }
+                        androidx.compose.foundation.lazy.grid.LazyVerticalGrid(androidx.compose.foundation.lazy.grid.GridCells.Fixed(4), verticalArrangement = Arrangement.spacedBy(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(shown.size) { i -> val it = shown[i]
+                                Box(Modifier.aspectRatio(1f).clip(RoundedCornerShape(12.dp)).background(Slate800).clickable { onPick(it) }.padding(6.dp)) { StickerImage(it) }
+                            }
+                        }
+                    }
+                }
+                TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) { Text(tr("ปิด"), color = Slate300) }
+            }
+        }
+    }
+}
+
 @Composable
 internal fun ChatGiftSheet(onDismiss: () -> Unit, onPick: (com.example.social.CatalogItem) -> Unit) {
     val items by remember { com.example.social.GiftRepo.catalog("chat") }.collectAsState(initial = null)

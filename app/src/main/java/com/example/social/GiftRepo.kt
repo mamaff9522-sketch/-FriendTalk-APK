@@ -17,7 +17,7 @@ data class CatalogItem(val id: String, val name: String, val price: Int, val ima
 
 /** Gift catalog (live / vip / chat / stickers), chat gifts and VIP room decor — all via brain + RTDB catalog/. */
 object GiftRepo {
-    val CHANNELS = listOf("chat" to "แชท", "live" to "ไลฟ์", "vip" to "VIP", "stickers" to "สติกเกอร์ห้อง")
+    val CHANNELS = listOf("chat" to "แชท", "live" to "ไลฟ์", "vip" to "VIP", "stickers" to "สติกเกอร์ห้อง", "chatStickers" to "สติกเกอร์แชท")
     private val db by lazy { FirebaseDatabase.getInstance(SocialRepo.DB_URL) }
     private fun user() = FirebaseAuth.getInstance().currentUser
 
