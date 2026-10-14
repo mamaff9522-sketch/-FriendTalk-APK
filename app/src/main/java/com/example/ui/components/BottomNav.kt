@@ -61,20 +61,17 @@ fun BottomNavBar(
     var creating by remember { mutableStateOf(false) }
     if (creating) com.example.ui.feed.CreatePostDialog(onDismiss = { creating = false }, onPosted = { com.example.ui.feed.HomeRepo.newPost.value = it; onTabSelected("home") })
 
-    val active = Color(0xFFF2D4FF)
-    val idle = Color(0xFFA79BC8)
+    // Same colours as the top header (dark navy in โหมดมืด, purple gradient in โหมดปกติ), flat with a thin line on top.
+    val active = PureWhite
+    val idle = if (AppThemeMode.dark) Color(0xFFA79BC8) else Color(0xCCFFFFFF)
     Box(Modifier.fillMaxWidth()) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-            color = Color(0xFF1B1530),
-            border = androidx.compose.foundation.BorderStroke(0.8.dp, Color(0x55B04DFF)),
-            tonalElevation = 0.dp
-        ) {
+        Column(Modifier.fillMaxWidth().background(AppThemeMode.headerBrush)) {
+            HorizontalDivider(color = AppThemeMode.divider.copy(alpha = 0.7f), thickness = 0.8.dp)
             Row(
-                modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 4.dp, end = 4.dp, top = 6.dp, bottom = 3.dp),
+                modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 6.dp, end = 6.dp, top = 5.dp, bottom = 2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // 5 equal columns: 2 tabs · ＋ · 2 tabs
                 left.forEach { NavTab(it, activeTab == it.id, active, idle) { onTabSelected(it.id) } }
                 Spacer(Modifier.weight(1f)) // room for the raised ＋ button
                 right.forEach { NavTab(it, activeTab == it.id, active, idle) { onTabSelected(it.id) } }
@@ -82,13 +79,13 @@ fun BottomNavBar(
         }
         // raised ＋ : opens the real post composer
         Box(
-            Modifier.align(Alignment.TopCenter).offset(y = (-18).dp).size(54.dp)
+            Modifier.align(Alignment.TopCenter).offset(y = (-16).dp).size(50.dp)
                 .shadow(10.dp, CircleShape, ambientColor = Color(0xFFE040C8), spotColor = Color(0xFFE040C8))
                 .clip(CircleShape).background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(Color(0xFFFF4FB8), Color(0xFFB04DFF))))
                 .border(2.5.dp, Color(0x80FFFFFF), CircleShape).clickable { creating = true },
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.Filled.Add, tr("สร้างโพสต์"), tint = PureWhite, modifier = Modifier.size(30.dp))
+            Icon(Icons.Filled.Add, tr("สร้างโพสต์"), tint = PureWhite, modifier = Modifier.size(28.dp))
         }
     }
 }
@@ -100,17 +97,17 @@ private fun RowScope.NavTab(item: NavItem, isSelected: Boolean, active: Color, i
         modifier = Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick).padding(vertical = 1.dp)
     ) {
         Box(contentAlignment = Alignment.Center) {
-            if (isSelected) Box(Modifier.size(32.dp).background(androidx.compose.ui.graphics.Brush.radialGradient(listOf(Color(0x99D05CFF), Color.Transparent)), CircleShape))
+            if (isSelected) Box(Modifier.size(28.dp).background(androidx.compose.ui.graphics.Brush.radialGradient(listOf(Color(0x99D05CFF), Color.Transparent)), CircleShape))
             Icon(
                 imageVector = if (isSelected) item.activeIcon else item.inactiveIcon,
                 contentDescription = item.label,
-                tint = if (isSelected) Color(0xFFE7B5FF) else idle,
-                modifier = Modifier.size(23.dp)
+                tint = if (isSelected) active else idle,
+                modifier = Modifier.size(21.dp)
             )
             if (item.badgeCount > 0) {
                 Box(
                     Modifier.align(Alignment.TopEnd).offset(x = 9.dp, y = (-5).dp).defaultMinSize(minWidth = 16.dp, minHeight = 16.dp)
-                        .clip(CircleShape).background(Color(0xFFFF2D55)).border(1.5.dp, Color(0xFF1B1530), CircleShape).padding(horizontal = 3.dp),
+                        .clip(CircleShape).background(Color(0xFFFF2D55)).border(1.5.dp, Color.White, CircleShape).padding(horizontal = 3.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(if (item.badgeCount > 99) "99+" else "${item.badgeCount}", color = PureWhite, fontSize = 9.sp, fontWeight = FontWeight.Bold, lineHeight = 9.sp)
@@ -120,7 +117,7 @@ private fun RowScope.NavTab(item: NavItem, isSelected: Boolean, active: Color, i
         Spacer(modifier = Modifier.height(1.dp))
         Text(
             text = item.label + if (com.example.ui.components.AppGates.partLocked(if (item.id == "movie") "video" else item.id)) " 🔒" else "",
-            fontSize = 10.5.sp,
+            fontSize = 10.sp,
             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
             color = if (isSelected) active else idle,
             maxLines = 1
