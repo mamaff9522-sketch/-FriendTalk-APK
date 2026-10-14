@@ -1,5 +1,7 @@
 package com.example.ui.admin
 
+import com.example.ui.components.dialogNavPadding
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -70,7 +72,7 @@ fun AdminConsole(onDismiss: () -> Unit, onOpenUiBuilder: () -> Unit, onOpenApkDo
     }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(Modifier.fillMaxSize(), color = Slate950) {
-            Column(Modifier.fillMaxSize().systemBarsPadding()) {
+            Column(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding()) {
                 Row(Modifier.fillMaxWidth().padding(16.dp, 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("คอนโซลแอดมิน", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp)
@@ -233,7 +235,7 @@ private fun MemberDetail(uid: String, p: Perms, onClose: (Boolean) -> Unit) {
     } }
     Dialog(onDismissRequest = { onClose(changed) }, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(Modifier.fillMaxSize(), color = Slate950) {
-            Column(Modifier.fillMaxSize().systemBarsPadding().imePadding().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding().imePadding().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("‹ กลับ", color = Slate300, modifier = Modifier.clickable { onClose(changed) }.padding(end = 12.dp))
                     Text("จัดการสมาชิก", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)

@@ -1,5 +1,7 @@
 package com.example.ui.admin
 
+import com.example.ui.components.dialogNavPadding
+
 import android.content.Context
 import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -153,7 +155,7 @@ private fun PreviewCapture(content: @Composable () -> Unit, onCaptured: (ImageBi
     val layer = androidx.compose.ui.graphics.rememberGraphicsLayer()
     val scope = rememberCoroutineScope()
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        Column(Modifier.fillMaxSize().background(Color.Black).systemBarsPadding()) {
+        Column(Modifier.fillMaxSize().background(Color.Black).systemBarsPadding().dialogNavPadding()) {
             Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("กด 'จับภาพ' แล้วแตะจุดที่ต้องการดูดสี", color = PureWhite, modifier = Modifier.weight(1f))
                 Button(onClick = { scope.launch { onCaptured(layer.toImageBitmap()) } }) { Text("จับภาพ") }
@@ -179,7 +181,7 @@ private fun EyedropperDialog(bmp: ImageBitmap, onPick: (Color) -> Unit, onDismis
         if (x in 0 until pixels.width && y in 0 until pixels.height) picked = Color(pixels.getPixel(x, y))
     }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        Column(Modifier.fillMaxSize().background(Color.Black).systemBarsPadding()) {
+        Column(Modifier.fillMaxSize().background(Color.Black).systemBarsPadding().dialogNavPadding()) {
             Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(36.dp).clip(CircleShape).background(picked ?: Color.Transparent).border(2.dp, PureWhite, CircleShape))
                 Text(picked?.toHex() ?: "แตะหรือลากบนรูป", color = PureWhite, modifier = Modifier.padding(start = 10.dp).weight(1f))

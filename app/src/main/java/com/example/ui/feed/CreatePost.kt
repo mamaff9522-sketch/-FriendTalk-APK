@@ -1,5 +1,7 @@
 package com.example.ui.feed
 
+import com.example.ui.components.dialogNavPadding
+
 import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Context
@@ -181,7 +183,7 @@ fun CreatePostDialog(startWith: String? = null, onDismiss: () -> Unit, onPosted:
 
     Dialog(onDismissRequest = { close() }, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnClickOutside = false)) {
         Surface(Modifier.fillMaxSize(), color = CBg) {
-            Column(Modifier.fillMaxSize().systemBarsPadding().imePadding()) {
+            Column(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding().imePadding()) {
                 // Edge-to-edge dialog (decorFitsSystemWindows = false) so systemBarsPadding keeps the bottom bar above the phone's navigation buttons.
                 // top bar: ✕  สร้างโพสต์  [โพสต์]
                 Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -537,7 +539,7 @@ fun MapPickDialog(start: Pair<Double, Double>?, onDismiss: () -> Unit, onPick: (
     DisposableEffect(Unit) { mapView.onResume(); onDispose { mapView.onPause(); mapView.onDetach() } }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(Modifier.fillMaxSize(), color = CBg) {
-            Column(Modifier.fillMaxSize().systemBarsPadding()) {
+            Column(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding()) {
                 Row(Modifier.fillMaxWidth().padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, tr("ปิด"), tint = CSoft) }
                     Text(tr("เลือกตำแหน่งจากแผนที่"), color = CText, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))

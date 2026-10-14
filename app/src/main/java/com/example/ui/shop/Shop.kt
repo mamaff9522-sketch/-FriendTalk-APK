@@ -1,5 +1,7 @@
 package com.example.ui.shop
 
+import com.example.ui.components.dialogNavPadding
+
 import android.app.Activity
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -90,7 +92,7 @@ private fun ShopDialog(initial: String, onClose: () -> Unit) {
         loading = false
     }
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        Surface(Modifier.fillMaxSize().systemBarsPadding().imePadding(), color = Slate950) {
+        Surface(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding().imePadding(), color = Slate950) {
             Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("🛍 " + tr("ร้านค้า"), color = White, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp, modifier = Modifier.weight(1f))

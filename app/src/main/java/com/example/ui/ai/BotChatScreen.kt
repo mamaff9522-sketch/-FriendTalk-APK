@@ -1,5 +1,7 @@
 package com.example.ui.ai
 
+import com.example.ui.components.dialogNavPadding
+
 import androidx.compose.ui.text.style.TextOverflow
 
 import androidx.compose.foundation.layout.*
@@ -82,7 +84,7 @@ fun BotChatScreen(bot: AiRepo.AiBot, onEnd: () -> Unit, onSkip: () -> Unit) {
                 }
             }
         }
-        Row(Modifier.fillMaxWidth().navigationBarsPadding().imePadding().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().navigationBarsPadding().dialogNavPadding().imePadding().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(value = input, onValueChange = { if (it.length <= 500) input = it },
                 modifier = Modifier.weight(1f), placeholder = { Text("พิมพ์ข้อความ…", color = Slate400) }, maxLines = 4,
                 colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White))

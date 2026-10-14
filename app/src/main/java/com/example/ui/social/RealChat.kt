@@ -1,5 +1,7 @@
 package com.example.ui.social
 
+import com.example.ui.components.dialogNavPadding
+
 import com.example.ui.components.tr
 import androidx.compose.foundation.border
 import androidx.compose.ui.graphics.Color
@@ -168,7 +170,7 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(Modifier.fillMaxSize(), color = Slate950) {
             // Insets: the input row was drawn behind the navigation bar (edge-to-edge dialog window) → pad for system bars + keyboard.
-            Column(Modifier.fillMaxSize().systemBarsPadding().imePadding()) {
+            Column(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding().imePadding()) {
                 Surface(color = Slate900) {
                     Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                         TextButton(onClick = onClose) { Text("←", color = White, fontSize = 18.sp) }

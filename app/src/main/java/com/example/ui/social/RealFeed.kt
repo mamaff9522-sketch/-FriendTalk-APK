@@ -1,5 +1,7 @@
 package com.example.ui.social
 
+import com.example.ui.components.dialogNavPadding
+
 import androidx.compose.foundation.lazy.itemsIndexed
 import com.example.ui.components.tr
 import androidx.compose.ui.draw.alpha
@@ -363,7 +365,7 @@ fun FilteredFeedDialog(title: String, tag: String?, author: String?, onClose: ()
     val st = remember(tag, author) { RealFeedState(scope, tag, author) }
     LaunchedEffect(tag, author) { st.refresh() }
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        Surface(Modifier.fillMaxSize().systemBarsPadding().imePadding(), color = Slate950) {
+        Surface(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding().imePadding(), color = Slate950) {
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(12.dp)) {
                     Text(title, color = White, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.weight(1f))

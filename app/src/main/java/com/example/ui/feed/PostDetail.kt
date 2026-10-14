@@ -1,5 +1,7 @@
 package com.example.ui.feed
 
+import com.example.ui.components.dialogNavPadding
+
 import android.content.Intent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -108,7 +110,7 @@ fun PostDetailDialog(post: FeedPost, onDismiss: () -> Unit, onLike: () -> Unit, 
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(Modifier.fillMaxSize(), color = DBg) {
-            Column(Modifier.fillMaxSize().systemBarsPadding().imePadding()) {
+            Column(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding().imePadding()) {
                 // top bar
                 Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onDismiss) { Icon(Icons.AutoMirrored.Filled.ArrowBack, tr("กลับ"), tint = DSoft) }

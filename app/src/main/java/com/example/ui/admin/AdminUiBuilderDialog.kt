@@ -1,5 +1,7 @@
 package com.example.ui.admin
 
+import com.example.ui.components.dialogNavPadding
+
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -47,7 +49,7 @@ fun AdminUiBuilderDialog(
     ) {
         Surface(
             modifier = Modifier
-                .systemBarsPadding()
+                .systemBarsPadding().dialogNavPadding()
                 .fillMaxWidth(0.95f)
                 .fillMaxHeight(0.95f),
             shape = RoundedCornerShape(24.dp),

@@ -1,5 +1,7 @@
 package com.example.ui.admin
 
+import com.example.ui.components.dialogNavPadding
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -53,7 +55,7 @@ fun PageBuilderDialog(onClose: () -> Unit) {
     }
     Dialog(onClose, DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(Modifier.fillMaxSize()) {
-            Column(Modifier.systemBarsPadding().imePadding().padding(12.dp)) {
+            Column(Modifier.systemBarsPadding().dialogNavPadding().imePadding().padding(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("📄 จัดหน้าแต่ละหน้า", fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.weight(1f)); TextButton(onClose) { Text("ปิด") }
                 }

@@ -1,5 +1,7 @@
 package com.example.ui.ai
 
+import com.example.ui.components.dialogNavPadding
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -36,7 +38,7 @@ fun AiHubDialog(onClose: () -> Unit) {
         FirebaseAuth.getInstance().currentUser?.let { u -> bots = AiRepo.bots(u); isAdmin = AiRepo.adminBots(u) != null }
     }
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        Surface(Modifier.fillMaxSize().systemBarsPadding(), color = Slate950) {
+        Surface(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding(), color = Slate950) {
             val c = chatWith
             if (c != null) {
                 BotChatScreen(bot = c, onEnd = {
@@ -79,7 +81,7 @@ fun AiHubDialog(onClose: () -> Unit) {
         }
     }
     if (manage) Dialog(onDismissRequest = { manage = false }, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        Surface(Modifier.fillMaxSize().systemBarsPadding(), color = Slate950) {
+        Surface(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding(), color = Slate950) {
             Column(Modifier.padding(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("🤖 จัดการบอท AI", color = White, fontWeight = FontWeight.Bold, fontSize = 17.sp, modifier = Modifier.weight(1f))

@@ -1,5 +1,7 @@
 package com.example.ui.social
 
+import com.example.ui.components.dialogNavPadding
+
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -64,7 +66,7 @@ fun InterestsEditorDialog(onDismiss: () -> Unit, skippable: Boolean = false) {
         FirebaseAuth.getInstance().currentUser?.uid?.let { InterestsRepo.profile(it)?.interests?.forEach { (k, v) -> sel[k] = v } }
     }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        Surface(Modifier.fillMaxSize().systemBarsPadding().imePadding(), color = Slate950) {
+        Surface(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding().imePadding(), color = Slate950) {
             Column(Modifier.fillMaxSize().padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("ความสนใจของฉัน", color = White, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.weight(1f))

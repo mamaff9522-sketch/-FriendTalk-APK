@@ -1,5 +1,7 @@
 package com.example.ads
 
+import com.example.ui.components.dialogNavPadding
+
 import com.example.ui.components.tr
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
@@ -260,7 +262,7 @@ fun AdRoomHost() {
 @Composable
 fun AdRoomScreen(feature: String, onClose: () -> Unit) {
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        Surface(Modifier.fillMaxSize().systemBarsPadding(), color = Slate950) { AdsPageContent(feature, onClose = onClose, returnAfterReward = true) }
+        Surface(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding(), color = Slate950) { AdsPageContent(feature, onClose = onClose, returnAfterReward = true) }
     }
 }
 
