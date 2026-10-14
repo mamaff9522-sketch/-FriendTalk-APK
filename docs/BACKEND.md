@@ -67,3 +67,11 @@ Open:
 ## Chat stickers (2026-10-14)
 - Admins add free chat stickers in the app: Admin → ของขวัญ → **สติกเกอร์แชท** (`catalog/chatStickers`, image webp/png ≤ 512 KB via `PUT /admin/catalog/chatStickers/{id}/image`, price 0). `chatStickers` is a new catalog channel in friendtalk-brain — deploy brain before adding stickers.
 - Users send them from the 😊 button in a chat room. A sticker is a normal chat text `🎨 สติกเกอร์ [id]` (same RTDB rules and daily limits as text); the app draws the catalog image, older app versions show the text.
+
+## Push notifications (2026-10-14)
+- App registers its FCM token with `POST /push/token` after sign-in (removed with `DELETE /push/token` on sign-out). Tokens: `pushTokens/{uid}/{hash}` (server-only, max 10 devices).
+- Server sends pushes for: new chat message (app calls `POST /push/chat/{chatId}` after writing it; only the sender of the newest message, throttled 4 s), friend request / accepted, new match, chat gift, top-up confirmed / rejected. `users/{uid}/settings/push === false` turns them off.
+- Needs: Firebase Cloud Messaging API enabled in project friendtalk-4e623, and `ft-brain-sa` allowed to send (role **Firebase Cloud Messaging API Admin**, `roles/firebasecloudmessaging.admin`).
+
+## Coin / diamond top-up by bank transfer (2026-10-14)
+- Works without Google Play: Admin → เศรษฐกิจ → เติมเงิน (โอน) sets bank / PromptPay info and packages (`appConfig/topup`), users send a request with the transfer reference (`POST /coins/topup`), admins confirm (`/admin/coins/confirm`, now also credits diamonds) or reject (`/admin/coins/reject`). Users see their requests (`GET /coins/topup/mine`) and get a push when done.

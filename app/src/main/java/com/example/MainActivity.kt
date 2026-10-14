@@ -49,6 +49,15 @@ import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseUser
 
 class MainActivity : ComponentActivity() {
+    /** A tapped push carries chatId → open that chat room. */
+    private fun openFromNotification(i: android.content.Intent?) {
+        i?.getStringExtra("chatId")?.takeIf { it.isNotBlank() }?.let { com.example.social.SocialRepo.openChat.value = it }
+    }
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        openFromNotification(intent)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         com.example.ui.components.I18n.load(this)
@@ -57,6 +66,8 @@ class MainActivity : ComponentActivity() {
         } catch (e: Exception) {
             Log.w("MainActivity", "Firebase initialization on startup: ${e.message}")
         }
+        com.example.push.PushRepo.ensureChannel(this)
+        openFromNotification(intent)
         enableEdgeToEdge()
         setContent {
             FriendTalkRoot()
@@ -95,6 +106,7 @@ fun FriendTalkRoot(
             viewModel.syncFirebaseUser(user)
             if (com.example.social.SocialRepo.upsertOnSignIn(user)) com.example.ui.social.InterestsPrompt.show.value = true
             com.example.social.SocialRepo.startPresence(context)
+            com.example.push.PushRepo.register() // this device gets chat / friend / gift notifications
             viewModel.refreshRemoteUiConfig() // published Remote UI config for everyone
             com.example.service.UiLayoutRepository.refreshHome()
             com.example.ui.components.UiPages.refresh()
@@ -123,12 +135,21 @@ fun FriendTalkRoot(
                 }
             )
         } else { com.example.ui.onboarding.OnboardingGate(firebaseUser) {
+            if (android.os.Build.VERSION.SDK_INT >= 33) {
+                val notifPerm = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { }
+                LaunchedEffect(Unit) {
+                    val prefs = context.getSharedPreferences("friendtalk", 0)
+                    val granted = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                    if (!granted && !prefs.getBoolean("askedNotif", false)) { prefs.edit().putBoolean("askedNotif", true).apply(); notifPerm.launch(android.Manifest.permission.POST_NOTIFICATIONS) }
+                }
+            }
             FriendTalkApp(
                 viewModel = viewModel,
                 currentUserFirebase = firebaseUser,
                 onSignOut = {
                     coroutineScope.launch {
                         // Mark inactive + hide from radar, then sign out (Firebase + Credential Manager)
+                        runCatching { com.example.push.PushRepo.unregister() }
                         runCatching { com.example.social.SocialRepo.stopPresence() }
                         runCatching {
                             com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.let { u ->
@@ -319,7 +340,7 @@ fun FriendTalkApp(
                         currentUser = uiState.currentUser,
                         onEditProfile = { isEditProfileOpen = true },
                         onOpenCreatorStudio = { isCreatorStudioOpen = true },
-                        onOpenCoins = { isCoinsOpen = true },
+                        onOpenCoins = { com.example.ui.shop.Shop.open.value = "coins" }, // real shop / top-up (old CoinWalletDialog only said "not open")
                         onOpenAccount = { isAuthOpen = true },
                         onOpenPermissions = { isPermissionsOpen = true },
                         onOpenCompanionApply = { isCompanionApplyOpen = true },
@@ -570,13 +591,8 @@ fun FriendTalkApp(
         )
     }
 
-    if (isCompanionApplyOpen) {
-        CompanionApplyDialog(
-            currentUser = uiState.currentUser,
-            onDismiss = { isCompanionApplyOpen = false },
-            onSubmitApplication = { viewModel.applyAsCompanion(it) }
-        )
-    }
+    // Real companion sign-up (friendtalk-brain /companion-apply); the old local-only CompanionApplyDialog is no longer opened.
+    if (isCompanionApplyOpen) com.example.ui.social.CompanionSignupDialog { isCompanionApplyOpen = false }
 
     if (isCompanionKycOpen) {
         CompanionKycDialog(

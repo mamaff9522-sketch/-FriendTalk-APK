@@ -200,7 +200,7 @@ fun ProfileTab(
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(tr("สมัครเป็นผู้ให้บริการเพื่อนคุย (18+)"), fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Rose500)
-                                    Text(tr("สร้างรายได้จากการคุยสายเสียง/วิดีโอคอล"), fontSize = 12.sp, color = Slate400)
+                                    Text(tr("สร้างรายได้จากการแชทกับผู้ใช้ (สมัครผ่านระบบจริง)"), fontSize = 12.sp, color = Slate400)
                                 }
                                 Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Slate400)
                             }

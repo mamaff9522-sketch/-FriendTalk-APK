@@ -57,7 +57,7 @@ async function isSuper(req, res, next) {
   req.role = r; next();
 }
 const w = fn => (q, r, n) => fn(q, r, n).catch(e => { console.error(e.message); r.status(e.code === 404 ? 404 : 500).json({ error: e.code === 404 ? 'user not found' : 'internal' }); });
-app.use(['/coins', '/age', '/config', '/admin', '/superadmin', '/me', '/match', '/bot', '/ui', '/chats', '/swipe', '/posts', '/feed', '/friends', '/radar', '/shake', '/limits', '/quota', '/search', '/users', '/interests', '/bots', '/gifts', '/rooms', '/reports', '/creator', '/blocks', '/chat-rules', '/companion-apply', '/companion', '/shop', '/follow', '/views', '/withdraw', '/onboarding', '/idv', '/chat-send'], w(auth));
+app.use(['/push', '/coins', '/age', '/config', '/admin', '/superadmin', '/me', '/match', '/bot', '/ui', '/chats', '/swipe', '/posts', '/feed', '/friends', '/radar', '/shake', '/limits', '/quota', '/search', '/users', '/interests', '/bots', '/gifts', '/rooms', '/reports', '/creator', '/blocks', '/chat-rules', '/companion-apply', '/companion', '/shop', '/follow', '/views', '/withdraw', '/onboarding', '/idv', '/chat-send'], w(auth));
 app.get('/me', w(async (q, r) => {
   const dh = String(q.get('X-Device-Hash') || ''); if (/^[a-f0-9]{16,64}$/.test(dh)) { db.ref(`deviceOf/${q.uid}`).set(dh).catch(() => {}); db.ref(`devices/${dh}/${q.uid}`).set(Date.now()).catch(() => {}); }
   // Safeguard: if /roles has no superadmin at all (data loss), re-seed it for the configured owner email (verified Google sign-in only; server-side).
@@ -745,9 +745,11 @@ app.post('/admin/coins/confirm', perm('coins_confirm'), w(notBanned), w(async (q
   const res = await txRef.transaction(t => { if (t === null) return null; if (t.status !== 'pending') return; return { ...t, status: 'paid', confirmedBy: q.uid, confirmedAt: stamp }; });
   const v = res.snapshot.val();
   if (!res.committed || !v || v.status !== 'paid' || v.confirmedAt !== stamp) return r.status(409).json({ error: 'tx not found or not pending' });
-  const coins = Number(v.coins) || 0;
-  await db.ref(`wallets/${uid}/coins`).transaction(c => (c || 0) + coins);
-  r.json({ status: 'paid', credited: coins });
+  const coins = Number(v.coins) || 0, diamonds = Number(v.diamonds) || 0;
+  if (coins) await db.ref(`wallets/${uid}/coins`).transaction(c => (c || 0) + coins);
+  if (diamonds) await db.ref(`wallets/${uid}/diamonds`).transaction(c => (c || 0) + diamonds);
+  sendPush(uid, 'เติมเงินสำเร็จ ✅', [coins ? `🪙 ${coins} เหรียญ` : '', diamonds ? `💎 ${diamonds} เพชร` : ''].filter(Boolean).join(' และ ') + ' เข้ากระเป๋าแล้ว', { type: 'wallet' });
+  r.json({ status: 'paid', credited: coins, creditedDiamonds: diamonds });
 }));
 app.post('/age/verify', w(notBanned), w(async (q, r) => {
   const { birthDate, documentRef } = q.body || {};
@@ -1513,6 +1515,7 @@ app.post('/swipe', w(notBanned), w(async (q, r) => {
     [`matchNotifications/${q.uid}/${pairId}`]: { otherUid: targetUid, chatId, at: t, seen: false },
     [`matchNotifications/${targetUid}/${pairId}`]: { otherUid: q.uid, chatId, at: t, seen: false }
   });
+  if (!already) { sendPush(targetUid, 'แมตช์ใหม่! 💞', `คุณกับ ${await nameOf(q.uid)} แมตช์กันแล้ว`, { type: 'chat', chatId }); sendPush(q.uid, 'แมตช์ใหม่! 💞', `คุณกับ ${await nameOf(targetUid)} แมตช์กันแล้ว`, { type: 'chat', chatId }); }
   r.json({ matched: true, pairId, chatId });
 }));
 // ===== Phase 2: social feed (text + images, likes, comments) =====
@@ -1755,10 +1758,12 @@ app.post('/friends/request', w(notBanned), w(async (q, r) => {
   if ((await db.ref(`friendRequests/${q.uid}/${to}`).get()).exists()) { // they already asked me -> accept
     const t = Date.now(); const { chatId } = await openDirectChat(q.uid, to);
     await db.ref().update({ [`friends/${q.uid}/${to}`]: t, [`friends/${to}/${q.uid}`]: t, [`friendRequests/${q.uid}/${to}`]: null });
+    sendPush(to, 'เป็นเพื่อนกันแล้ว 🎉', `คุณกับ ${await nameOf(q.uid)} เป็นเพื่อนกันแล้ว`, { type: 'chat', chatId });
     return r.json({ status: 'friends', chatId });
   }
   const sim = similarity(await ipOf(q.uid), await ipOf(to), await getInterestCfg());
   await db.ref(`friendRequests/${to}/${q.uid}`).set({ at: Date.now(), similarity: sim.percent, shared: sim.shared });
+  sendPush(to, 'คำขอเป็นเพื่อนใหม่', `${await nameOf(q.uid)} ขอเป็นเพื่อนกับคุณ`, { type: 'friend_request', uid: q.uid });
   r.json({ status: 'requested', similarity: sim });
 }));
 app.post('/friends/respond', w(notBanned), w(async (q, r) => {
@@ -1769,6 +1774,7 @@ app.post('/friends/respond', w(notBanned), w(async (q, r) => {
   if (await isBanned(from)) return r.status(403).json({ error: 'user unavailable' });
   const t = Date.now(); const { chatId } = await openDirectChat(q.uid, from);
   await db.ref().update({ [`friends/${q.uid}/${from}`]: t, [`friends/${from}/${q.uid}`]: t, [`friendRequests/${q.uid}/${from}`]: null });
+  sendPush(from, 'ตอบรับคำขอเป็นเพื่อนแล้ว 🎉', `${await nameOf(q.uid)} ตอบรับคำขอเป็นเพื่อนของคุณ`, { type: 'chat', chatId });
   r.json({ status: 'friends', chatId });
 }));
 app.get('/friends', w(async (q, r) => {
@@ -1976,6 +1982,7 @@ app.post('/chats/:chatId/gift', w(notBanned), w(async (q, r) => {
     [`messages/${chatId}/${txId}`]: { senderUid: q.uid, at: t, text: `🎁 ${item.name}`, gift },
     [`chats/${chatId}/lastMessage`]: `🎁 ส่งของขวัญ ${item.name}`, [`chats/${chatId}/lastAt`]: t, [`chats/${chatId}/lastSenderUid`]: q.uid
   });
+  sendPush(to, 'คุณได้รับของขวัญ 🎁', `${await nameOf(q.uid)} ส่ง ${item.name} ให้คุณ แตะเพื่อรับ`, { type: 'chat', chatId });
   r.json({ txId, status: 'pending', price: item.price, currency: 'diamonds' });
 }));
 app.post('/gifts/:txId/accept', w(notBanned), w(async (q, r) => {
@@ -2318,6 +2325,102 @@ app.delete('/superadmin/coming-soon/:id', w(async (q, r) => {
   await db.ref(`appConfig/comingSoon/${id}`).remove();
   await admin.storage().bucket(STORAGE_BUCKET).file(`comingSoon/${id}.webp`).delete().catch(() => {});
   r.json({ removed: id });
+}));
+
+// ===== Push notifications (FCM). Tokens: pushTokens/{uid}/{hash} (server-only). Opt-out: users/{uid}/settings/push === false =====
+const tokKey = t => crypto.createHash('sha256').update(t).digest('hex').slice(0, 32);
+async function nameOf(uid) { return String((await db.ref(`users/${uid}/displayName`).get()).val() || 'เพื่อน').slice(0, 40); }
+async function sendPush(uid, title, body, data = {}) {
+  try {
+    if ((await db.ref(`users/${uid}/settings/push`).get()).val() === false) return 0;
+    const toks = Object.entries((await db.ref(`pushTokens/${uid}`).get()).val() || {}).filter(([, v]) => v && typeof v.token === 'string');
+    if (!toks.length) return 0;
+    const res = await admin.messaging().sendEachForMulticast({
+      tokens: toks.map(([, v]) => v.token),
+      notification: { title: String(title).slice(0, 80), body: String(body).slice(0, 180) },
+      data: Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])),
+      android: { priority: 'high', notification: { channelId: 'ft_default', sound: 'default' } },
+    });
+    const dead = {};
+    res.responses.forEach((x, i) => { const c = String(x.error?.code || ''); if (/registration-token-not-registered|invalid-registration-token|invalid-argument/.test(c)) dead[`pushTokens/${uid}/${toks[i][0]}`] = null; });
+    if (Object.keys(dead).length) await db.ref().update(dead);
+    return res.successCount;
+  } catch (e) { console.error('push', e.message); return 0; }
+}
+app.post('/push/token', w(async (q, r) => {
+  const t = q.body?.token; if (typeof t !== 'string' || t.length < 20 || t.length > 4096) return r.status(400).json({ error: 'token required' });
+  const k = tokKey(t), cur = (await db.ref(`pushTokens/${q.uid}`).get()).val() || {};
+  const upd = { [`pushTokens/${q.uid}/${k}`]: { token: t, at: Date.now() } };
+  Object.entries(cur).filter(([x]) => x !== k).sort((a, b) => (b[1]?.at || 0) - (a[1]?.at || 0)).slice(9).forEach(([x]) => { upd[`pushTokens/${q.uid}/${x}`] = null; }); // keep 10 devices
+  await db.ref().update(upd); r.json({ ok: true });
+}));
+app.delete('/push/token', w(async (q, r) => {
+  const t = q.body?.token; if (typeof t === 'string' && t.length >= 20) await db.ref(`pushTokens/${q.uid}/${tokKey(t)}`).remove();
+  r.json({ ok: true });
+}));
+// The app writes chat messages straight to RTDB, then calls this so the other member gets a push for the newest message.
+app.post('/push/chat/:chatId', w(async (q, r) => {
+  const { chatId } = q.params; if (!/^[A-Za-z0-9_-]{1,128}$/.test(chatId)) return r.status(400).json({ error: 'bad chat' });
+  if (!(await db.ref(`chatMembers/${chatId}/${q.uid}`).get()).exists()) return r.status(403).json({ error: 'not a member' });
+  const c = (await db.ref(`chats/${chatId}`).get()).val() || {};
+  if (c.lastSenderUid !== q.uid || Date.now() - (Number(c.lastAt) || 0) > 60000) return r.json({ sent: 0 });
+  const rate = db.ref(`pushRate/${chatId}/${q.uid}`), last = Number((await rate.get()).val()) || 0;
+  if (Date.now() - last < 4000) return r.json({ sent: 0, throttled: true });
+  await rate.set(Date.now());
+  const others = Object.keys((await db.ref(`chatMembers/${chatId}`).get()).val() || {}).filter(u => u !== q.uid);
+  const me = await nameOf(q.uid); let sent = 0;
+  for (const u of others) { if (await blockedEither(q.uid, u)) continue; sent += await sendPush(u, me, String(c.lastMessage || 'ส่งข้อความถึงคุณ'), { type: 'chat', chatId }); }
+  r.json({ sent });
+}));
+
+// ===== Coin / diamond top-up by bank transfer (works without Google Play). Admin sets pay info + packages, then confirms each request. =====
+const TOPUP_DEF = { enabled: false, bankName: '', accountName: '', accountNo: '', promptPay: '', note: '', packages: [] };
+async function topupCfg() { return { ...TOPUP_DEF, ...((await db.ref('appConfig/topup').get()).val() || {}) }; }
+const cleanPkg = (x, i) => ({ id: String(x?.id || `p${i}`).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 24) || `p${i}`, label: String(x?.label || '').slice(0, 40),
+  coins: Math.max(0, Math.min(1e7, parseInt(x?.coins) || 0)), diamonds: Math.max(0, Math.min(1e7, parseInt(x?.diamonds) || 0)),
+  priceThb: Math.max(0, Math.min(1e6, Number(x?.priceThb) || 0)), active: x?.active !== false });
+app.get('/coins/topup', w(async (q, r) => {
+  const c = await topupCfg();
+  r.json({ ...c, packages: (c.packages || []).filter(p => p.active && (p.coins || p.diamonds) && p.priceThb > 0) });
+}));
+app.put('/admin/coins/topup', perm('coins_confirm'), w(notBanned), w(async (q, r) => {
+  const b = q.body || {};
+  const v = { enabled: b.enabled === true, bankName: String(b.bankName || '').slice(0, 60), accountName: String(b.accountName || '').slice(0, 80),
+    accountNo: String(b.accountNo || '').slice(0, 40), promptPay: String(b.promptPay || '').slice(0, 40), note: String(b.note || '').slice(0, 300),
+    packages: (Array.isArray(b.packages) ? b.packages : []).slice(0, 30).map(cleanPkg), updatedBy: q.uid, updatedAt: Date.now() };
+  await db.ref('appConfig/topup').set(v); r.json(v);
+}));
+app.post('/coins/topup', w(notBanned), w(async (q, r) => {
+  const c = await topupCfg(); if (!c.enabled) return r.status(403).json({ error: 'ยังไม่เปิดเติมเงินแบบโอน' });
+  const pkg = (c.packages || []).find(p => p.id === q.body?.packageId && p.active);
+  const ref = String(q.body?.paymentRef || '').trim().slice(0, 100);
+  if (!pkg) return r.status(400).json({ error: 'ไม่พบแพ็กเกจ' });
+  if (ref.length < 3) return r.status(400).json({ error: 'กรุณากรอกเลขอ้างอิงการโอน' });
+  const mine = Object.values((await db.ref(`coinTransactions/${q.uid}`).get()).val() || {});
+  if (mine.filter(t => t?.status === 'pending').length >= 3) return r.status(429).json({ error: 'มีคำขอรอยืนยันอยู่แล้ว 3 รายการ' });
+  const tx = db.ref(`coinTransactions/${q.uid}`).push();
+  await tx.set({ type: 'topup', packageId: pkg.id, coins: pkg.coins, diamonds: pkg.diamonds, priceThb: pkg.priceThb, paymentRef: ref, status: 'pending', createdAt: Date.now() });
+  r.status(202).json({ txId: tx.key, status: 'pending' });
+}));
+app.get('/coins/topup/mine', w(async (q, r) => {
+  const v = (await db.ref(`coinTransactions/${q.uid}`).orderByKey().limitToLast(20).get()).val() || {};
+  r.json({ items: Object.entries(v).map(([id, x]) => ({ id, ...x })).filter(x => x.type === 'topup' || x.type === 'purchase').reverse() });
+}));
+app.get('/admin/coins/pending', perm('coins_confirm'), w(async (q, r) => {
+  const all = (await db.ref('coinTransactions').get()).val() || {}, out = [];
+  for (const [uid, txs] of Object.entries(all)) for (const [id, t] of Object.entries(txs || {})) if (t?.status === 'pending' && (t.type === 'topup' || t.type === 'purchase')) out.push({ uid, id, ...t });
+  out.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  const list = out.slice(0, 200);
+  await Promise.all(list.map(async x => { x.name = await nameOf(x.uid); }));
+  r.json({ items: list });
+}));
+app.post('/admin/coins/reject', perm('coins_confirm'), w(notBanned), w(async (q, r) => {
+  const { uid, txId } = q.body || {}; const reason = String(q.body?.reason || '').slice(0, 200);
+  if (typeof uid !== 'string' || typeof txId !== 'string') return r.status(400).json({ error: 'uid and txId required' });
+  const res = await db.ref(`coinTransactions/${uid}/${txId}`).transaction(t => { if (t === null) return null; if (t.status !== 'pending') return; return { ...t, status: 'rejected', reason, rejectedBy: q.uid, rejectedAt: Date.now() }; });
+  if (!res.committed || res.snapshot.val()?.status !== 'rejected') return r.status(409).json({ error: 'tx not found or not pending' });
+  sendPush(uid, 'คำขอเติมเงินไม่ผ่าน', reason || 'กรุณาตรวจสอบการโอนแล้วลองใหม่', { type: 'wallet' });
+  r.json({ status: 'rejected' });
 }));
 app.use((e, _q, r, _n) => {
   if (e.type === 'entity.too.large') return r.status(413).json({ error: 'request too large' });

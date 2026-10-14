@@ -84,7 +84,7 @@ fun AdminConsole(onDismiss: () -> Unit, onOpenUiBuilder: () -> Unit, onOpenApkDo
                     if (p.has("app_lock")) add("system" to "⚙️ ระบบ (ล็อกแอป)")
                     add("overview" to "📊 ภาพรวม"); add("members" to "👥 สมาชิก & สิทธิ์")
                     if (p.has("manage_content")) { add("reports" to "🚨 รายงาน"); add("applications" to "📝 ใบสมัคร") }
-                    if (p.has("config_edit") || p.has("manage_content")) add("economy" to "💰 เศรษฐกิจ")
+                    if (p.has("config_edit") || p.has("manage_content") || p.has("coins_confirm")) add("economy" to "💰 เศรษฐกิจ")
                     if (p.has("config_edit")) { add("content" to "🎨 เนื้อหา & UI"); add("bots" to "🤖 บอท AI") }
                 }
                 var tab by remember { mutableStateOf(if (p.has("app_lock")) "system" else "overview") }
@@ -378,12 +378,12 @@ private fun ReportsPane(p: Perms) {
 
 @Composable
 private fun EconomyPane(p: Perms) {
-    val subs = buildList { if (p.has("config_edit")) { add("limits" to "ลิมิต & โฆษณา"); add("placements" to "ตำแหน่งโฆษณา"); add("rates" to "อัตราค่าเพื่อนคุย"); add("packs" to "ราคาแพ็กเพชร/เหรียญ") }; if (p.has("manage_content")) add("gifts" to "ของขวัญ & สติกเกอร์") }
+    val subs = buildList { if (p.has("coins_confirm")) add("topup" to "เติมเงิน (โอน)"); if (p.has("config_edit")) { add("limits" to "ลิมิต & โฆษณา"); add("placements" to "ตำแหน่งโฆษณา"); add("rates" to "อัตราค่าเพื่อนคุย"); add("packs" to "ราคาแพ็กเพชร/เหรียญ") }; if (p.has("manage_content")) add("gifts" to "ของขวัญ & สติกเกอร์") }
     var sub by remember { mutableStateOf(subs.firstOrNull()?.first ?: "") }
     Column(Modifier.fillMaxSize()) {
         Text(com.example.ui.social.AD_REVENUE_NOTE, color = Slate400, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 12.dp))
         Row(Modifier.horizontalScroll(rememberScrollState()).padding(12.dp, 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) { subs.forEach { (k, l) -> FilterChip(selected = sub == k, onClick = { sub = k }, label = { Text(l) }) } }
-        Box(Modifier.fillMaxSize()) { when (sub) { "limits" -> AdminLimitsTab(); "placements" -> AdPlacementsCard(); "rates" -> com.example.ui.social.AdminCompanionRatesPane(); "packs" -> com.example.ui.social.AdminShopPacksPane(); "gifts" -> AdminGiftsTab() } }
+        Box(Modifier.fillMaxSize()) { when (sub) { "limits" -> AdminLimitsTab(); "placements" -> AdPlacementsCard(); "rates" -> com.example.ui.social.AdminCompanionRatesPane(); "packs" -> com.example.ui.social.AdminShopPacksPane(); "gifts" -> AdminGiftsTab(); "topup" -> com.example.ui.shop.AdminTopupPane() } }
     }
 }
 

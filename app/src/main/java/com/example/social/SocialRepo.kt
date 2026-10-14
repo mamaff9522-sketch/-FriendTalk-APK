@@ -174,7 +174,10 @@ object SocialRepo {
         val ok = db.reference.updateChildren(mapOf(
             "messages/$chatId/$key" to (fields + mapOf("senderUid" to uid, "at" to now)),
             "chatCount/$uid" to mapOf("day" to day, "n" to n, "last" to key))).awaitOk()
-        if (ok) db.getReference("chats/$chatId").updateChildren(mapOf("lastMessage" to preview.take(200), "lastAt" to now, "lastSenderUid" to uid))
+        if (ok) {
+            db.getReference("chats/$chatId").updateChildren(mapOf("lastMessage" to preview.take(200), "lastAt" to now, "lastSenderUid" to uid))
+                .addOnCompleteListener { com.example.push.PushRepo.notifyChat(chatId) } // server notifies the other member
+        }
         return ok
     }
 

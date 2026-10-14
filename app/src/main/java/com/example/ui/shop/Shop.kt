@@ -105,9 +105,8 @@ private fun ShopDialog(initial: String, onClose: () -> Unit) {
                 val list = packs[tab].orEmpty()
                 when {
                     loading -> CircularProgressIndicator(color = Pink500)
-                    !enabled || list.isEmpty() -> Surface(shape = RoundedCornerShape(14.dp), color = Slate900) {
-                        Text(tr("ยังไม่เปิดขาย — ระบบชำระเงินผ่าน Google Play กำลังจะเปิดเร็ว ๆ นี้"), color = White, modifier = Modifier.padding(16.dp))
-                    }
+                    // Google Play billing not available (app not on Play yet / no products) → bank-transfer top-up checked by admins
+                    !enabled || list.isEmpty() -> TopupSection(tab)
                     else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(list) { p ->
                             val d = details[p.productId]
