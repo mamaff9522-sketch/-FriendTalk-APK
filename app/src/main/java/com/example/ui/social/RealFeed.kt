@@ -214,6 +214,10 @@ fun RealPostCard(p: FeedPost, onLike: () -> Unit, onComments: () -> Unit, onDele
     val ctx = LocalContext.current
     var confirm by remember { mutableStateOf(false) }
     var showAuthor by remember { mutableStateOf(false) }
+    // tap the post → full post screen (shared with the Home feed)
+    var detail by remember { mutableStateOf(false) }
+    var localCount by remember(p.id, p.commentCount) { mutableStateOf(p.commentCount) }
+    if (detail) com.example.ui.feed.PostDetailDialog(p.copy(commentCount = localCount), onDismiss = { detail = false }, onLike = onLike, onDelete = onDelete, onCommentCount = { localCount = it })
     if (showAuthor) UserProfileDialog(p.authorId) { showAuthor = false }
     val fs = FeedStyle.cfg
     Surface(shape = RoundedCornerShape(fs.cardCornerRadiusDp.coerceIn(0, 40).dp), color = Slate900, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = (fs.postSpacingDp.coerceIn(0, 48) / 2).dp)) {
@@ -245,13 +249,13 @@ fun RealPostCard(p: FeedPost, onLike: () -> Unit, onComments: () -> Unit, onDele
                     if (rep) ReportDialog("post", p.id, p.authorId) { rep = false }
                 }
             }
-            if (p.text.isNotBlank()) Text(p.text, color = White, fontSize = (14 * fs.textSizeScale.coerceIn(0.7f, 1.6f)).sp, modifier = Modifier.padding(vertical = 6.dp))
+            if (p.text.isNotBlank()) Text(p.text, color = White, fontSize = (14 * fs.textSizeScale.coerceIn(0.7f, 1.6f)).sp, modifier = Modifier.clickable { detail = true }.padding(vertical = 6.dp))
             if (p.hashtags.isNotEmpty()) Row(Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState())) {
                 p.hashtags.forEach { t -> Text("#$t", color = Cyan400, fontSize = 13.sp, modifier = Modifier.clickable { onTag(t) }.padding(end = 8.dp, bottom = 4.dp)) }
             }
             p.imageUrls.forEach { url ->
                 AsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp).padding(vertical = 3.dp).clip(RoundedCornerShape(12.dp)))
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp).padding(vertical = 3.dp).clip(RoundedCornerShape(12.dp)).clickable { detail = true })
             }
             if (p.videoUrl.isNotBlank()) com.example.ui.feed.PostVideoThumb(p, Modifier.fillMaxWidth().height(260.dp).padding(vertical = 3.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {

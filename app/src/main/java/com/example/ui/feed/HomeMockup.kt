@@ -455,7 +455,8 @@ fun LazyListScope.homeFeedItems(all: RealFeedState, tabFeed: HomeTabFeed, tab: S
                 HomePostCard(p, distances[p.authorId] ?: "", Modifier.weight(1f),
                     onLike = { if (isAll) all.toggleLike(p) else tabFeed.toggleLike(p) },
                     onComments = { all.commentsFor = p },
-                    onDelete = { if (isAll) all.delete(p) else tabFeed.delete(p) })
+                    onDelete = { if (isAll) all.delete(p) else tabFeed.delete(p) },
+                    onCommentCount = { n -> if (isAll) all.update(p.id) { it.copy(commentCount = n) } else tabFeed.update(p.id) { it.copy(commentCount = n) } })
             }
             if (row.size == 1) Spacer(Modifier.weight(1f))
         }
@@ -482,7 +483,7 @@ fun HomeFeedTabs(selected: String, onSelect: (String) -> Unit) {
 }
 
 @Composable
-fun HomePostCard(p: FeedPost, distance: String, modifier: Modifier, onLike: () -> Unit, onComments: () -> Unit, onDelete: () -> Unit) {
+fun HomePostCard(p: FeedPost, distance: String, modifier: Modifier, onLike: () -> Unit, onComments: () -> Unit, onDelete: () -> Unit, onCommentCount: (Int) -> Unit = {}) {
     val ctx = LocalContext.current
     val me = FirebaseAuth.getInstance().currentUser?.uid
     val info = rememberUserInfo(p.authorId)
@@ -495,7 +496,10 @@ fun HomePostCard(p: FeedPost, distance: String, modifier: Modifier, onLike: () -
         confirmButton = { TextButton(onClick = { confirm = false; onDelete() }) { Text(tr("ลบ"), color = Rose500) } },
         dismissButton = { TextButton(onClick = { confirm = false }) { Text(tr("ยกเลิก")) } })
     val more: @Composable () -> Unit = { PostMoreButton(p.authorId == me, onDelete = { confirm = true }, onReport = { report = true }) }
-    Surface(shape = RoundedCornerShape(16.dp), color = HCard, border = BorderStroke(1.dp, HLine), modifier = modifier) {
+    // tap the card → full post (text, all photos, video, place, comments)
+    var detail by remember { mutableStateOf(false) }
+    if (detail) PostDetailDialog(p, onDismiss = { detail = false }, onLike = onLike, onDelete = onDelete, onCommentCount = onCommentCount)
+    Surface(onClick = { detail = true }, shape = RoundedCornerShape(16.dp), color = HCard, border = BorderStroke(1.dp, HLine), modifier = modifier) {
         Column {
             Row(Modifier.padding(start = 8.dp, end = 4.dp, top = 8.dp, bottom = 6.dp), verticalAlignment = Alignment.Top) {
                 Box(Modifier.clip(CircleShape).clickable { author = true }) { RingAvatar(p.authorAvatar, p.authorName, 34.dp, ring = 1.5.dp, glow = false) }
