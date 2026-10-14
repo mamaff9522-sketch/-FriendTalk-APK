@@ -154,6 +154,7 @@ fun FriendTalkRoot(
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class) // HorizontalPager (tab swiping)
 @Composable
 fun FriendTalkApp(
     viewModel: FriendTalkViewModel,
@@ -260,7 +261,9 @@ fun FriendTalkApp(
                     .fillMaxSize()
                     .padding(innerPadding)
             ) {
-                com.example.ui.components.UiPage(uiState.activeTab) { com.example.ui.components.UiSection("page", "ทั้งหน้า") { com.example.ui.components.ComingSoonGate("tab_" + uiState.activeTab, Modifier.fillMaxSize()) { com.example.ui.components.FeatureLockGate(when (uiState.activeTab) { "movie" -> "video"; else -> uiState.activeTab }, Modifier.fillMaxSize()) { when (uiState.activeTab) {
+                // Content of one tab (used directly, or as a page of the swipe pager below)
+                val tabContent: @Composable (String) -> Unit = { tab ->
+                com.example.ui.components.UiPage(tab) { com.example.ui.components.UiSection("page", "ทั้งหน้า") { com.example.ui.components.ComingSoonGate("tab_" + tab, Modifier.fillMaxSize()) { com.example.ui.components.FeatureLockGate(when (tab) { "movie" -> "video"; else -> tab }, Modifier.fillMaxSize()) { when (tab) {
                     "home" -> FeedTab(
                         onOpenSearch = { globalSearch = true },
                         onOpenFindFriends = { viewModel.setActiveTab("discover") },
@@ -323,6 +326,38 @@ fun FriendTalkApp(
                         onLogout = onSignOut
                     )
                 } } } } }
+                }
+                // Swipe left / right between the bottom-bar tabs (same order and admin toggles as BottomNavBar).
+                val navTabs = remember(uiState.uiConfig.bottomNav, uiState.uiConfig.isMovieFeatureEnabled) {
+                    buildList {
+                        if (uiState.uiConfig.bottomNav.showHomeTab) add("home")
+                        if (uiState.uiConfig.bottomNav.showDiscoverTab) add("discover")
+                        if (uiState.uiConfig.bottomNav.showMovieTab && uiState.uiConfig.isMovieFeatureEnabled) add("movie")
+                        if (uiState.uiConfig.bottomNav.showChatTab) add("chat")
+                        add("profile")
+                    }
+                }
+                if (uiState.activeTab in navTabs) {
+                    val pagerState = androidx.compose.foundation.pager.rememberPagerState(initialPage = navTabs.indexOf(uiState.activeTab).coerceAtLeast(0)) { navTabs.size }
+                    val currentTab by rememberUpdatedState(uiState.activeTab)
+                    // bottom bar / code changed the tab → scroll the pager there
+                    LaunchedEffect(uiState.activeTab, navTabs) {
+                        val i = navTabs.indexOf(uiState.activeTab)
+                        if (i >= 0 && i != pagerState.currentPage) pagerState.animateScrollToPage(i)
+                    }
+                    // user swiped → select that tab
+                    LaunchedEffect(pagerState, navTabs) {
+                        androidx.compose.runtime.snapshotFlow { pagerState.settledPage }.collect { p ->
+                            navTabs.getOrNull(p)?.let { if (it != currentTab) viewModel.setActiveTab(it) }
+                        }
+                    }
+                    androidx.compose.foundation.pager.HorizontalPager(
+                        state = pagerState,
+                        userScrollEnabled = !com.example.ui.components.TabSwipe.locked,
+                        key = { navTabs[it] },
+                        modifier = Modifier.fillMaxSize()
+                    ) { page -> Box(Modifier.fillMaxSize()) { tabContent(navTabs[page]) } }
+                } else tabContent(uiState.activeTab) // live / companion / ads pages: no swiping
                 if (uiState.activeTab == "discover") com.example.ads.PlacementBanner("discover", Modifier.align(androidx.compose.ui.Alignment.BottomCenter))
 
                 com.example.ui.components.UiPage("shop") { com.example.ui.shop.ShopHost() }

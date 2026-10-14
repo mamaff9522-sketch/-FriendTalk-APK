@@ -24,6 +24,9 @@ import androidx.compose.ui.unit.sp
 import com.example.model.AppUiConfig
 import com.example.ui.theme.*
 
+/** Turns off swiping between tabs while a screen needs horizontal drags itself (e.g. ปัดหาเพื่อน cards). */
+object TabSwipe { var locked by mutableStateOf(false) }
+
 data class NavItem(
     val id: String,
     val label: String,

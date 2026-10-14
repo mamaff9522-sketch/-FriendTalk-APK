@@ -59,6 +59,8 @@ fun DiscoverTab(
     var fn by rememberSaveable { mutableStateOf<String?>(null) }
     val f = fn
     androidx.activity.compose.BackHandler(enabled = f != null) { fn = null }
+    // a function screen (swipe cards, radar, shake…) is open → don't let horizontal drags change the tab
+    DisposableEffect(f) { com.example.ui.components.TabSwipe.locked = f != null; onDispose { com.example.ui.components.TabSwipe.locked = false } }
     if (f != null) {
         Column(Modifier.fillMaxSize().background(AppThemeMode.pageBrush)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
