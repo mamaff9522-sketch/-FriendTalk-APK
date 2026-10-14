@@ -224,6 +224,8 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                     }
                 }
                 Box(Modifier.fillMaxWidth().height(1.dp).background(Brush.horizontalGradient(listOf(Color.Transparent, Color(0xCCFFC94D), Color.Transparent))))
+                // Slim banner ad right under the header — free users only (the server sets showAds=false for VIP/premium; admin can switch the placement off).
+                Box(Modifier.fillMaxWidth().background(AppThemeMode.dialog), contentAlignment = Alignment.Center) { com.example.ads.PlacementBanner("chatRoom") }
                 if (isFriend == false) Row(Modifier.fillMaxWidth().background(AppThemeMode.card).padding(horizontal = 14.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(tr("คุณยังไม่ได้เป็นเพื่อนกัน"), color = AppThemeMode.muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
                     Box(Modifier.clip(RoundedCornerShape(14.dp)).background(Brush.linearGradient(listOf(Color(0xFFFF2FA8), Color(0xFF9B3DFF))))
@@ -237,7 +239,6 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                         text = { Text(tr("ระบบโทรผ่านแอปกำลังพัฒนา ยังใช้งานไม่ได้ — ตอนนี้คุยกันผ่านข้อความ รูป สติกเกอร์ และของขวัญได้")) })
                 }
                 decorState?.hiddenReason?.takeIf { it.isNotBlank() }?.let { Text("✨ $it", color = Slate400, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 12.dp)) }
-                com.example.ads.PlacementBanner("chatRoom")
                 Box(Modifier.weight(1f).background(chatPageBrush())) {
                 if (decor != null) DecorBackground(chatId, decor, token, stickerList.associateBy { it.id }, lite)
                 val dayStarts = remember(messages) { messages.filterIndexed { i, m -> i == 0 || dayKey(m.at) != dayKey(messages[i - 1].at) }.map { it.id }.toSet() }
