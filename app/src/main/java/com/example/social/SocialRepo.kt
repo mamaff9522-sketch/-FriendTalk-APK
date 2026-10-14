@@ -281,4 +281,9 @@ object ChatSticker {
     private val RE = Regex("^🎨 สติกเกอร์ \\[([A-Za-z0-9_-]{1,40})\\]$")
     fun encode(id: String) = "$PREVIEW [$id]"
     fun decode(text: String?): String? = text?.let { RE.matchEntire(it.trim())?.groupValues?.get(1) }
+    /** Free emoji stickers shown when the admin catalog (catalog/chatStickers) is still empty; ids start with "e_" so they never clash with admin items. */
+    val BUILT_IN: List<CatalogItem> = listOf("hi" to ("สวัสดี" to "👋"), "love" to ("รักนะ" to "🥰"), "lol" to ("ขำ" to "🤣"), "ok" to ("โอเค" to "👌"),
+        "thanks" to ("ขอบคุณ" to "🙏"), "sad" to ("เศร้า" to "🥺"), "wow" to ("ว้าว" to "😮"), "party" to ("เย่" to "🥳"), "sleep" to ("ฝันดี" to "😴"),
+        "hug" to ("กอด" to "🤗"), "heart" to ("หัวใจ" to "💖"), "cry" to ("ร้องไห้" to "😭")).mapIndexed { i, (id, nv) ->
+        CatalogItem("e_$id", nv.first, 0, "", nv.second, "อีโมจิ", true, i) }
 }

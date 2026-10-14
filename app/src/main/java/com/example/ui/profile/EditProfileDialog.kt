@@ -92,7 +92,7 @@ fun EditProfileDialog(
                                 busy = false
                                 if (err == null) {
                                     onSave(displayName.trim(), bio.trim(), currentUser.age, when (gender) { "male" -> Gender.MALE; "female" -> Gender.FEMALE; else -> Gender.OTHER }, province.trim(), me?.interests ?: currentUser.interests)
-                                    android.widget.Toast.makeText(ctx, tr("บันทึกโปรไฟล์แล้ว"), android.widget.Toast.LENGTH_SHORT).show()
+                                    android.widget.Toast.makeText(ctx, MyProfile.lastNote ?: tr("บันทึกโปรไฟล์แล้ว"), android.widget.Toast.LENGTH_LONG).show()
                                     onDismiss()
                                 } else msg = err
                             }

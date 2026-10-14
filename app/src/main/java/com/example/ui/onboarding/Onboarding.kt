@@ -68,7 +68,8 @@ private fun Wizard(user: FirebaseUser, st: JSONObject, onState: (JSONObject) -> 
         else err = r.json?.optString("error")?.ifBlank { null } ?: "ผิดพลาด (${r.code})"
     } }
     // Short sign-up: signin + terms + profile happen on ONE screen (nickname, age, gender, accept rules).
-    if (next in listOf("signin", "terms", "profile") && fields != null && terms != null) {
+    // Only when the server supports the short sign-up (it reports 'optional'); an older server keeps its own full wizard below.
+    if (st.has("optional") && next in listOf("signin", "terms", "profile") && fields != null && terms != null) {
         QuickStart(user, st, fields!!, terms!!, onState); return
     }
     Column(Modifier.fillMaxSize().padding(16.dp)) {

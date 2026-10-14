@@ -161,7 +161,7 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
     var stickerSheet by remember { mutableStateOf(false) }
     // free chat stickers uploaded by admins (catalog/chatStickers), for drawing sticker messages
     val chatStickers by remember { com.example.social.GiftRepo.catalog("chatStickers", enabledOnly = false) }.collectAsState(initial = emptyList())
-    val chatStickerMap = remember(chatStickers) { chatStickers.associateBy { it.id } }
+    val chatStickerMap = remember(chatStickers) { com.example.social.ChatSticker.BUILT_IN.associateBy { it.id } + chatStickers.associateBy { it.id } }
     var isFriend by remember { mutableStateOf<Boolean?>(null) }
     LaunchedEffect(otherUid, csTick) { if (otherUid.isNotBlank()) isFriend = com.example.social.NearbyRepo.friendsWithOnline().any { it.first.uid == otherUid } }
     val listState = rememberLazyListState()
@@ -376,7 +376,8 @@ internal fun ChatStickerSheet(onDismiss: () -> Unit, onPick: (com.example.social
                 Text(tr("😊 สติกเกอร์"), color = White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 Text(tr("แตะเพื่อส่ง · ส่งฟรี"), color = Slate400, fontSize = 11.sp)
                 Spacer(Modifier.height(8.dp))
-                val l = items
+                // admin catalog first; while it is empty, the built-in emoji stickers are offered
+                val l = items?.ifEmpty { com.example.social.ChatSticker.BUILT_IN }
                 when {
                     l == null -> CircularProgressIndicator(color = Pink500)
                     l.isEmpty() -> Text(tr("ยังไม่มีสติกเกอร์ (แอดมินกำลังเพิ่ม)"), color = Slate400, modifier = Modifier.padding(vertical = 16.dp))

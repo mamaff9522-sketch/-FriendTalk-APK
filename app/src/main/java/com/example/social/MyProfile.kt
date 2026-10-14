@@ -31,6 +31,9 @@ object MyProfile {
 
     var me by mutableStateOf<Data?>(null)
         private set
+    /** Extra note for the last successful save (e.g. some fields wait for the server update). */
+    var lastNote: String? = null
+        private set
     private var listening: String? = null
     private val storage by lazy { FirebaseStorage.getInstance("gs://friendtalk-4e623.firebasestorage.app") }
 
@@ -51,9 +54,18 @@ object MyProfile {
     /** null = saved; otherwise the error message to show. */
     suspend fun save(displayName: String, bio: String, gender: String, province: String, occupation: String, lookingFor: List<String>): String? {
         val u = FirebaseAuth.getInstance().currentUser ?: return "กรุณาเข้าสู่ระบบ"
+        lastNote = null
         val r = BrainApi.call(u, "PUT", "/me/profile", JSONObject().put("displayName", displayName.trim()).put("bio", bio.trim()).put("gender", gender)
             .put("province", province.trim()).put("occupation", occupation.trim()).put("lookingFor", JSONArray(lookingFor)))
-        return if (r.code == 200) null else r.json?.optString("error")?.ifBlank { null } ?: "บันทึกไม่สำเร็จ (${r.code}) — เซิร์ฟเวอร์อาจยังไม่อัปเดต"
+        if (r.code == 200) return null
+        if (r.code == 404) {
+            // Server not updated yet (no /me/profile): save what the existing database rules already allow, straight to users/{uid}.
+            val ok = SocialRepo.saveProfile(displayName, bio, -1, gender, province, me?.interests ?: emptyList())
+            if (!ok) return "บันทึกไม่สำเร็จ (ยืนยันอีเมลแล้วหรือยัง?)"
+            if (occupation.isNotBlank() || lookingFor.isNotEmpty()) lastNote = "บันทึกแล้ว · อาชีพและสิ่งที่มองหาจะบันทึกได้หลังอัปเดตเซิร์ฟเวอร์"
+            return null
+        }
+        return r.json?.optString("error")?.ifBlank { null } ?: "บันทึกไม่สำเร็จ (${r.code})"
     }
 
     /** Upload a new avatar / cover. null = done; otherwise the error message. */
@@ -66,6 +78,20 @@ object MyProfile {
         }
         if (!ok) return "อัปโหลดรูปไม่สำเร็จ (ยืนยันอีเมลแล้วหรือยัง?)"
         val r = BrainApi.call(u, "PUT", "/me/photo", JSONObject().put("kind", kind).put("ref", path))
-        return if (r.code == 200) null else r.json?.optString("error")?.ifBlank { null } ?: "บันทึกรูปไม่สำเร็จ (${r.code}) — เซิร์ฟเวอร์อาจยังไม่อัปเดต"
+        if (r.code == 200) return null
+        if (r.code == 404) {
+            // Server not updated yet (no /me/photo).
+            if (kind != "avatar") { runCatching { storage.reference.child(path).delete() }; return "รูปปกจะเปลี่ยนได้หลังอัปเดตเซิร์ฟเวอร์ (ตอนนี้เปลี่ยนได้เฉพาะรูปโปรไฟล์)" }
+            // The existing database rules already allow users/{uid}/avatar (an https link), so save the uploaded picture's link directly.
+            val url = suspendCancellableCoroutine<String?> { c ->
+                storage.reference.child(path).downloadUrl.addOnCompleteListener { if (c.isActive) c.resume(if (it.isSuccessful) it.result?.toString() else null) }
+            }
+            if (url == null || url.length > 500) return "บันทึกรูปไม่สำเร็จ"
+            val ok = suspendCancellableCoroutine<Boolean> { c ->
+                FirebaseDatabase.getInstance(SocialRepo.DB_URL).getReference("users/${u.uid}/avatar").setValue(url).addOnCompleteListener { if (c.isActive) c.resume(it.isSuccessful) }
+            }
+            return if (ok) null else "บันทึกรูปไม่สำเร็จ (ยืนยันอีเมลแล้วหรือยัง?)"
+        }
+        return r.json?.optString("error")?.ifBlank { null } ?: "บันทึกรูปไม่สำเร็จ (${r.code})"
     }
 }
