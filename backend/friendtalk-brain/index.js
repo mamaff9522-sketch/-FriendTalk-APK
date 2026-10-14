@@ -1575,7 +1575,10 @@ app.post('/posts', w(notBanned), w(async (q, r) => {
     if (q.body.posterRef) { const pu = await postImageUrl(q.uid, q.body.posterRef); if (!pu) return r.status(400).json({ error: 'invalid video cover' }); video.posterPath = q.body.posterRef; video.posterUrl = pu; }
   }
   if (!text && !images.length && !video) return r.status(400).json({ error: 'text, image or video required' });
-  { const m = await moderateText(q.uid, [text, cleanText(q.body?.place, 80)].join(' '), { kind: 'post' }); if (!m.ok) return r.status(422).json({ code: 'moderated', error: m.message }); }
+  // Feeling / activity ("รู้สึก 😊 มีความสุข", "🎬 กำลังดูหนัง"): short label + one emoji, moderated with the text.
+  const fb = q.body?.feeling, feeling = fb && ['feeling', 'activity'].includes(fb.kind) && cleanText(fb.label, 40)
+    ? { kind: fb.kind, emoji: String(fb.emoji || '').slice(0, 8), label: cleanText(fb.label, 40).replace(/[\u0000-\u001f]/g, '') } : null;
+  { const m = await moderateText(q.uid, [text, cleanText(q.body?.place, 80), feeling?.label || ''].join(' '), { kind: 'post' }); if (!m.ok) return r.status(422).json({ code: 'moderated', error: m.message }); }
   for (const im of images) { const mi = await moderateImage(q.uid, im.path, { kind: 'post_image' }); if (!mi.ok) return r.status(422).json({ code: 'moderated', error: 'รูปภาพนี้ขัดกติกาความปลอดภัย' }); }
   if (video?.posterPath) { const mv = await moderateImage(q.uid, video.posterPath, { kind: 'post_video_cover' }); if (!mv.ok) return r.status(422).json({ code: 'moderated', error: 'วิดีโอนี้ขัดกติกาความปลอดภัย' }); }
   const hashtags = parseHashtags(text);
@@ -1591,7 +1594,7 @@ app.post('/posts', w(notBanned), w(async (q, r) => {
   }
   const ref = db.ref('posts').push();
   const visibility = VIS.includes(q.body?.visibility) ? q.body.visibility : 'public';
-  const post = { authorId: q.uid, ...(await authorInfo(q.uid)), text, images, ...(video ? { video } : {}), hashtags, place, visibility, createdAt: Date.now(), likeCount: 0, commentCount: 0 };
+  const post = { authorId: q.uid, ...(await authorInfo(q.uid)), text, images, ...(video ? { video } : {}), hashtags, place, ...(feeling ? { feeling } : {}), visibility, createdAt: Date.now(), likeCount: 0, commentCount: 0 };
   const upd = { [`posts/${ref.key}`]: post };
   for (const t of hashtags) upd[`hashtags/${t}/${ref.key}`] = post.createdAt;
   upd[`authorPosts/${q.uid}/${ref.key}`] = post.createdAt;

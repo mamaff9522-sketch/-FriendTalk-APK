@@ -193,7 +193,7 @@ object AdsManager {
 
 /** Admin ad placements (RTDB appConfig/adPlacements, live). Defaults: home bottom + 1:1 chat-room top ON, others OFF. */
 object AdPlacements {
-    var cfg by androidx.compose.runtime.mutableStateOf(mapOf("home" to true, "chatRoom" to true))
+    var cfg by androidx.compose.runtime.mutableStateOf(mapOf("home" to true, "discover" to false, "chatList" to false, "video" to false, "inFeed" to false, "chatRoom" to true))
     var inFeedEvery by androidx.compose.runtime.mutableIntStateOf(5)
     val DEFAULTS = linkedMapOf("home" to true, "discover" to false, "chatList" to false, "video" to false, "inFeed" to false, "chatRoom" to true)
     private var started = false
@@ -205,7 +205,7 @@ object AdPlacements {
                     cfg = DEFAULTS.mapValues { (k, d) -> s.child(k).getValue(Boolean::class.java) ?: d }
                     inFeedEvery = (s.child("inFeedEvery").getValue(Long::class.java) ?: 5L).toInt().coerceIn(2, 50)
                 }
-                override fun onCancelled(e: com.google.firebase.database.DatabaseError) {}
+                override fun onCancelled(e: com.google.firebase.database.DatabaseError) { started = false } // e.g. read before sign-in: allow a retry later
             })
     }
     fun on(place: String) = cfg[place] ?: DEFAULTS[place] ?: false

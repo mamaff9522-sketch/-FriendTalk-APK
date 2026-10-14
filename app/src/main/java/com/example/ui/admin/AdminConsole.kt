@@ -489,10 +489,21 @@ private fun AdPlacementsCard() {
     var status by remember { mutableStateOf("") }
     val labels = linkedMapOf("home" to "หน้าแรก (แบนเนอร์ล่าง)", "discover" to "หาเพื่อน", "chatList" to "รายการแชท", "video" to "วิดีโอ",
         "inFeed" to "ในฟีด คั่นระหว่างโพสต์", "chatRoom" to "แชท 1:1 (แบนเนอร์เล็กด้านบน)")
-    fun save(m: Map<String, Boolean>) { scope.launch {
-        val j = JSONObject(); m.forEach { (k, v) -> j.put(k, v) }; j.put("inFeedEvery", every.toIntOrNull() ?: 5)
-        val r = api("PUT", "/admin/ad-placements", j); status = if (r.code == 200) "บันทึกแล้ว — มีผลทันที" else err(r)
-    } }
+    fun save(m: Map<String, Boolean>) {
+        // Flip the switch right away (the RTDB listener may be slow or not attached yet), then confirm with the server's saved values.
+        val before = com.example.ads.AdPlacements.cfg
+        val full = com.example.ads.AdPlacements.DEFAULTS.mapValues { (k, d) -> m[k] ?: before[k] ?: d }
+        com.example.ads.AdPlacements.cfg = full; status = "กำลังบันทึก…"
+        scope.launch {
+            val j = JSONObject(); full.forEach { (k, v) -> j.put(k, v) }; j.put("inFeedEvery", every.toIntOrNull() ?: 5)
+            val r = api("PUT", "/admin/ad-placements", j)
+            if (r.code == 200) {
+                r.json?.let { o -> com.example.ads.AdPlacements.cfg = com.example.ads.AdPlacements.DEFAULTS.mapValues { (k, d) -> if (o.has(k)) o.optBoolean(k) else full[k] ?: d }
+                    com.example.ads.AdPlacements.inFeedEvery = o.optInt("inFeedEvery", 5).coerceIn(2, 50) }
+                status = "บันทึกแล้ว — มีผลทันที"
+            } else { com.example.ads.AdPlacements.cfg = before; status = err(r) }
+        }
+    }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text("📍 ตำแหน่งแบนเนอร์โฆษณา", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
         Text("ซ่อนสำหรับ VIP · บัญชีแอดมินเห็นโฆษณาทดสอบเหมือนเดิม · ต้องเปิด 'แบนเนอร์' ในหน้าลิมิตด้วย · Interstitial ตั้งค่าที่หน้าลิมิต (ค่าเริ่มต้นปิด)", color = Slate400, fontSize = 11.sp)

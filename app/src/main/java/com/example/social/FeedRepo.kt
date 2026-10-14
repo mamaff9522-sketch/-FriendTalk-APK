@@ -23,8 +23,13 @@ data class FeedPost(
     val hashtags: List<String> = emptyList(), val placeLabel: String = "", val visibility: String = "public", val commentsOff: Boolean = false,
     val videoUrl: String = "", val videoPosterUrl: String = "",
     /** ~1 km point; only returned to the author, or to viewers when the author chose to share it. */
-    val placeLat: Double? = null, val placeLng: Double? = null
+    val placeLat: Double? = null, val placeLng: Double? = null,
+    val feeling: PostFeeling? = null
 )
+/** Feeling ("รู้สึก 😊 มีความสุข") or activity ("🎬 กำลังดูหนัง") attached to a post. */
+data class PostFeeling(val kind: String, val emoji: String, val label: String) {
+    fun display() = if (kind == "feeling") "รู้สึก $emoji $label" else "$emoji $label"
+}
 
 /** Place chosen in the composer. lat/lng are sent only when [shareCoords] is on (user consent). */
 data class PostPlace(val label: String, val lat: Double? = null, val lng: Double? = null, val shareCoords: Boolean = false)
@@ -45,7 +50,8 @@ object FeedRepo {
             o.optJSONObject("place")?.optString("label").orEmpty(), o.optString("visibility", "public"), o.optBoolean("commentsOff"),
             o.optJSONObject("video")?.optString("url").orEmpty(), o.optJSONObject("video")?.optString("posterUrl").orEmpty(),
             o.optJSONObject("place")?.let { pl -> if (pl.has("lat") && pl.has("lng")) pl.optDouble("lat") else null },
-            o.optJSONObject("place")?.let { pl -> if (pl.has("lat") && pl.has("lng")) pl.optDouble("lng") else null })
+            o.optJSONObject("place")?.let { pl -> if (pl.has("lat") && pl.has("lng")) pl.optDouble("lng") else null },
+            o.optJSONObject("feeling")?.let { f -> f.optString("label").takeIf { it.isNotBlank() }?.let { PostFeeling(f.optString("kind", "feeling"), f.optString("emoji"), it) } })
     }
 
     suspend fun feed(cursor: String?, tag: String? = null, author: String? = null): Pair<List<FeedPost>, String?>? {
@@ -127,7 +133,7 @@ object FeedRepo {
      * Files go to Storage posts/{uid}/ (same as before); friendtalk-brain POST /posts saves the post and enforces visibility.
      */
     suspend fun createPostFull(ctx: Context, text: String, images: List<Uri>, video: Uri?, place: PostPlace?, visibility: String,
-                               onProgress: (String) -> Unit = {}): Result<FeedPost> {
+                               onProgress: (String) -> Unit = {}, feeling: PostFeeling? = null): Result<FeedPost> {
         val u = user() ?: return Result.failure(Exception("กรุณาเข้าสู่ระบบ"))
         val t0 = System.currentTimeMillis()
         val refs = JSONArray()
@@ -165,6 +171,7 @@ object FeedRepo {
         onProgress("กำลังเผยแพร่…")
         val body = JSONObject().put("text", text.trim()).put("imageRefs", refs).put("visibility", visibility)
         if (videoRef != null) { body.put("videoRef", videoRef); posterRef?.let { body.put("posterRef", it) } }
+        feeling?.let { body.put("feeling", JSONObject().put("kind", it.kind).put("emoji", it.emoji).put("label", it.label)) }
         if (place != null && place.label.isNotBlank()) {
             body.put("place", place.label.trim().take(80))
             // Coordinates leave the phone only with the user's consent; the server rounds them to ~1 km.

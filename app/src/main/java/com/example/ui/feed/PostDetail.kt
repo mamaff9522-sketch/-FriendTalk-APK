@@ -139,6 +139,7 @@ fun PostDetailDialog(post: FeedPost, onDismiss: () -> Unit, onLike: () -> Unit, 
                                     Text(thaiTimeAgo(post.createdAt) + " · " + privacyIcon(post.visibility), color = DMuted, fontSize = 12.sp)
                                 }
                             }
+                            post.feeling?.let { f -> Text(tr(f.display()), color = AppThemeMode.muted, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp)) }
                             if (post.placeLabel.isNotBlank()) Row(Modifier.padding(top = 8.dp).clip(RoundedCornerShape(8.dp))
                                 .clickable { openPlaceOnMap(ctx, post.placeLabel, post.placeLat, post.placeLng) }.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Filled.LocationOn, tr("ดูบนแผนที่"), tint = DNeon, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp))

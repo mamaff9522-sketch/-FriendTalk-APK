@@ -33,6 +33,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.EmojiEmotions
+import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.outlined.MyLocation
 import androidx.compose.material.icons.outlined.Search
@@ -62,6 +64,7 @@ import coil.compose.AsyncImage
 import com.example.social.FeedPost
 import com.example.social.FeedRepo
 import com.example.social.PostPlace
+import com.example.social.PostFeeling
 import com.example.ui.components.ft.Text
 import com.example.ui.components.tr
 import com.example.ui.social.Avatar
@@ -138,6 +141,8 @@ fun CreatePostDialog(startWith: String? = null, onDismiss: () -> Unit, onPosted:
     var videoMs by remember { mutableStateOf(0L) }
     var visibility by remember { mutableStateOf("public") }
     var place by remember { mutableStateOf<PostPlace?>(null) }
+    var feeling by remember { mutableStateOf<PostFeeling?>(null) }
+    var feelingPicker by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var progress by remember { mutableStateOf("") }
     var msg by remember { mutableStateOf("") }
@@ -169,12 +174,12 @@ fun CreatePostDialog(startWith: String? = null, onDismiss: () -> Unit, onPosted:
 
     val hasContent = text.isNotBlank() || images.isNotEmpty() || video != null
     val canPost = hasContent && !busy && !locked
-    fun close() { if (busy) return; if (hasContent || place != null) confirmDiscard = true else onDismiss() }
+    fun close() { if (busy) return; if (hasContent || place != null || feeling != null) confirmDiscard = true else onDismiss() }
     fun publish() {
         if (!canPost) return
         busy = true; msg = ""; progress = tr("กำลังเตรียมโพสต์…")
         scope.launch {
-            FeedRepo.createPostFull(ctx, text, images, video, place, visibility) { progress = it }
+            FeedRepo.createPostFull(ctx, text, images, video, place, visibility, onProgress = { progress = it }, feeling = feeling)
                 .onSuccess { onPosted(it); onDismiss() }
                 .onFailure { msg = it.message ?: tr("โพสต์ไม่สำเร็จ") }
             busy = false; progress = ""
@@ -184,30 +189,26 @@ fun CreatePostDialog(startWith: String? = null, onDismiss: () -> Unit, onPosted:
     Dialog(onDismissRequest = { close() }, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnClickOutside = false)) {
         Surface(Modifier.fillMaxSize(), color = CBg) {
             Column(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding().imePadding()) {
-                // Edge-to-edge dialog (decorFitsSystemWindows = false) so systemBarsPadding keeps the bottom bar above the phone's navigation buttons.
-                // top bar: ✕  สร้างโพสต์  [โพสต์]
-                Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { close() }) { Icon(Icons.Filled.Close, tr("ปิด"), tint = CSoft) }
-                    Text(tr("สร้างโพสต์"), color = CText, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    Box(Modifier.clip(RoundedCornerShape(20.dp)).background(if (canPost) Brush.horizontalGradient(listOf(CNeon, CViolet)) else SolidColor(if (AppThemeMode.dark) Color(0xFF2A2357) else Color(0xFFE2CFF5)))
-                        .clickable(enabled = canPost) { publish() }.padding(horizontal = 18.dp, vertical = 8.dp)) {
-                        Text(if (busy) tr("กำลังโพสต์…") else tr("โพสต์"), color = if (canPost || busy) PureWhite else CMuted, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Spacer(Modifier.width(6.dp))
+                // top bar: ✕   โพสต์ใหม่ (centered)
+                Box(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp)) {
+                    IconButton(onClick = { close() }, modifier = Modifier.align(Alignment.CenterStart)) { Icon(Icons.Filled.Close, tr("ปิด"), tint = CText) }
+                    Text(tr("โพสต์ใหม่"), color = CText, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.Center))
                 }
                 HorizontalDivider(color = CLine, thickness = 0.8.dp)
 
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 12.dp)) {
-                    // avatar + name + privacy under the name
+                    // avatar + name (+ feeling / place like "รู้สึก 😊 มีความสุข ที่ สุราษฎร์ธานี") + privacy
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Avatar(myInfo?.avatar ?: me?.photoUrl?.toString().orEmpty(), myInfo?.name ?: me?.displayName ?: tr("ฉัน"), 48)
-                        Spacer(Modifier.width(10.dp))
-                        Column {
-                            Text(myInfo?.name ?: me?.displayName ?: tr("ฉัน"), color = CText, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                            Spacer(Modifier.height(4.dp))
+                        Avatar(myInfo?.avatar ?: me?.photoUrl?.toString().orEmpty(), myInfo?.name ?: me?.displayName ?: tr("ฉัน"), 54)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            val name = myInfo?.name ?: me?.displayName ?: tr("ฉัน")
+                            val extra = listOfNotNull(feeling?.let { tr(it.display()) }, place?.let { tr("ที่") + " " + it.label }).joinToString(" ")
+                            Text(buildString { append(name); if (extra.isNotBlank()) append(" — ").append(extra) }, color = CText, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                            Spacer(Modifier.height(5.dp))
                             val cur = PRIVACY.first { it.key == visibility }
                             Box {
-                                Surface(onClick = { privacyMenu = true }, enabled = !busy, shape = RoundedCornerShape(8.dp), color = CCard, border = BorderStroke(1.dp, Color(0xFF4A3590))) {
+                                Surface(onClick = { privacyMenu = true }, enabled = !busy, shape = RoundedCornerShape(8.dp), color = CCard, border = BorderStroke(1.dp, CLine)) {
                                     Text("${cur.icon} ${tr(cur.label)} ▾", color = CSoft, fontSize = 12.5.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
                                 }
                                 DropdownMenu(expanded = privacyMenu, onDismissRequest = { privacyMenu = false }) {
@@ -223,11 +224,17 @@ fun CreatePostDialog(startWith: String? = null, onDismiss: () -> Unit, onPosted:
                             }
                         }
                     }
-                    Spacer(Modifier.height(14.dp))
+                    // chips row: 📍 ตำแหน่ง · 😊 ความรู้สึก/กิจกรรม
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ComposerChip({ Icon(Icons.Outlined.LocationOn, null, tint = CNeon, modifier = Modifier.size(18.dp)) }, place?.label ?: tr("ตำแหน่ง"), place != null, !busy) { placePicker = true }
+                        ComposerChip({ Icon(Icons.Outlined.EmojiEmotions, null, tint = Color(0xFFFFB020), modifier = Modifier.size(18.dp)) },
+                            feeling?.let { "${it.emoji} ${it.label}" } ?: tr("ความรู้สึก/กิจกรรม"), feeling != null, !busy) { feelingPicker = true }
+                    }
+                    Spacer(Modifier.height(16.dp))
                     BasicTextField(value = text, onValueChange = { if (it.length <= 2000) text = it }, enabled = !busy,
-                        textStyle = TextStyle(color = CText, fontSize = 18.sp, lineHeight = 26.sp), cursorBrush = SolidColor(CNeon),
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp),
-                        decorationBox = { inner -> Box { if (text.isEmpty()) Text(tr("คุณกำลังคิดอะไรอยู่?"), color = AppThemeMode.fieldHint, fontSize = 18.sp); inner() } })
+                        textStyle = TextStyle(color = CText, fontSize = 20.sp, lineHeight = 28.sp), cursorBrush = SolidColor(CNeon),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 160.dp),
+                        decorationBox = { inner -> Box { if (text.isEmpty()) Text(tr("คุณกำลังคิดอะไรอยู่"), color = AppThemeMode.fieldHint, fontSize = 20.sp); inner() } })
                     if (text.length > 1800) Text("${text.length}/2000", color = CMuted, fontSize = 11.sp)
 
                     // place chip: change / remove, and consent for showing a ~1 km point
@@ -283,17 +290,24 @@ fun CreatePostDialog(startWith: String? = null, onDismiss: () -> Unit, onPosted:
                 }
 
                 HorizontalDivider(color = CLine, thickness = 0.8.dp)
-                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ComposerAction(Modifier.weight(1f), { Icon(Icons.Outlined.Image, null, tint = Color(0xFF4ADE80), modifier = Modifier.size(20.dp)) },
-                        tr("รูปภาพ") + if (images.isNotEmpty()) " ${images.size}/4" else "", !busy && images.size < 4) { pickImages() }
-                    ComposerAction(Modifier.weight(1f), { Icon(Icons.Outlined.Videocam, null, tint = Color(0xFFFF6B8F), modifier = Modifier.size(20.dp)) },
-                        tr("วิดีโอ"), !busy && video == null) { pickVideo() }
-                    ComposerAction(Modifier.weight(1.3f), { Icon(Icons.Filled.LocationOn, null, tint = CNeon, modifier = Modifier.size(20.dp)) },
-                        tr("เพิ่มสถานที่ 📍"), !busy) { placePicker = true }
+                // bottom bar: 🖼 🎥 📍 😊 ........ [โพสต์]
+                Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { pickImages() }, enabled = !busy && images.size < 4) { Icon(Icons.Outlined.Image, tr("รูปภาพ"), tint = Color(0xFF22C55E), modifier = Modifier.size(28.dp)) }
+                    IconButton(onClick = { pickVideo() }, enabled = !busy && video == null) { Icon(Icons.Outlined.Videocam, tr("วิดีโอ"), tint = Color(0xFFFF6B8F), modifier = Modifier.size(28.dp)) }
+                    IconButton(onClick = { placePicker = true }, enabled = !busy) { Icon(Icons.Outlined.LocationOn, tr("ตำแหน่ง"), tint = CNeon, modifier = Modifier.size(28.dp)) }
+                    IconButton(onClick = { feelingPicker = true }, enabled = !busy) { Icon(Icons.Outlined.EmojiEmotions, tr("ความรู้สึก/กิจกรรม"), tint = Color(0xFFFFB020), modifier = Modifier.size(28.dp)) }
+                    if (images.isNotEmpty()) Text("${images.size}/4", color = CMuted, fontSize = 11.sp)
+                    Spacer(Modifier.weight(1f))
+                    Box(Modifier.clip(RoundedCornerShape(12.dp)).background(if (canPost) Brush.horizontalGradient(listOf(CNeon, CViolet)) else SolidColor(if (AppThemeMode.dark) Color(0xFF2A2357) else Color(0xFFE2CFF5)))
+                        .clickable(enabled = canPost) { publish() }.padding(horizontal = 26.dp, vertical = 11.dp)) {
+                        Text(if (busy) tr("กำลังโพสต์…") else tr("โพสต์"), color = if (canPost || busy) PureWhite else CMuted, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.width(4.dp))
                 }
             }
         }
     }
+    if (feelingPicker) FeelingPickerDialog(current = feeling, onDismiss = { feelingPicker = false }, onPick = { feeling = it; feelingPicker = false })
     if (placePicker) PlacePickerDialog(current = place, onDismiss = { placePicker = false }, onPick = { place = it; placePicker = false })
     if (confirmDiscard) AlertDialog(onDismissRequest = { confirmDiscard = false }, title = { Text(tr("ทิ้งโพสต์นี้?")) },
         text = { Text(tr("ข้อความและไฟล์ที่เลือกไว้จะหายไป")) },
@@ -309,11 +323,78 @@ private fun RemoveDot(modifier: Modifier, enabled: Boolean, onClick: () -> Unit)
 }
 
 @Composable
-private fun ComposerAction(modifier: Modifier, icon: @Composable () -> Unit, label: String, enabled: Boolean, onClick: () -> Unit) {
-    Surface(onClick = onClick, enabled = enabled, shape = RoundedCornerShape(12.dp), color = CCard, border = BorderStroke(1.dp, CLine), modifier = modifier) {
-        Row(Modifier.padding(horizontal = 8.dp, vertical = 10.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-            icon(); Spacer(Modifier.width(5.dp))
-            Text(label, color = if (enabled) CSoft else CMuted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+private fun ComposerChip(icon: @Composable () -> Unit, label: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    Surface(onClick = onClick, enabled = enabled, shape = RoundedCornerShape(20.dp), color = if (selected) CNeon.copy(alpha = 0.12f) else CCard,
+        border = BorderStroke(1.dp, if (selected) CNeon else CLine)) {
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            icon(); Spacer(Modifier.width(6.dp))
+            Text(label, color = CText, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp))
+        }
+    }
+}
+
+// ---------------- feeling / activity ----------------
+
+private val FEELINGS = listOf(
+    "😊" to "มีความสุข", "🥰" to "มีความรัก", "😍" to "ปลื้ม", "😎" to "เท่", "🤩" to "ตื่นเต้น", "😌" to "ผ่อนคลาย",
+    "🥳" to "อยากฉลอง", "🤗" to "อบอุ่นใจ", "😇" to "รู้สึกดี", "💪" to "มีพลัง", "🙏" to "ขอบคุณ", "😋" to "หิว",
+    "😴" to "ง่วงนอน", "🥱" to "เบื่อ", "😢" to "เศร้า", "😭" to "เสียใจ", "😔" to "เหงา", "😤" to "หงุดหงิด",
+    "😡" to "โกรธ", "😰" to "กังวล", "🤒" to "ไม่สบาย", "🤔" to "สงสัย", "😳" to "อาย", "🥺" to "คิดถึง"
+)
+private val ACTIVITIES = listOf(
+    "🍽️" to "กำลังกินข้าว", "☕" to "กำลังดื่มกาแฟ", "🎬" to "กำลังดูหนัง", "📺" to "กำลังดูซีรีส์", "🎧" to "กำลังฟังเพลง",
+    "🎮" to "กำลังเล่นเกม", "📚" to "กำลังอ่านหนังสือ", "💼" to "กำลังทำงาน", "📖" to "กำลังเรียน", "🏋️" to "กำลังออกกำลังกาย",
+    "🏃" to "กำลังวิ่ง", "✈️" to "กำลังเดินทาง", "🚗" to "กำลังขับรถ", "🛍️" to "กำลังช้อปปิ้ง", "🍳" to "กำลังทำอาหาร",
+    "🎉" to "กำลังฉลอง", "🎂" to "กำลังฉลองวันเกิด", "🏖️" to "กำลังเที่ยวทะเล", "⛰️" to "กำลังเที่ยวภูเขา", "🛌" to "กำลังพักผ่อน"
+)
+
+/** "ความรู้สึก/กิจกรรม" picker: two tabs, search, tap to choose; 'ลบ' clears. */
+@Composable
+fun FeelingPickerDialog(current: PostFeeling?, onDismiss: () -> Unit, onPick: (PostFeeling?) -> Unit) {
+    var tab by remember { mutableStateOf(current?.kind ?: "feeling") }
+    var q by remember { mutableStateOf("") }
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        Surface(Modifier.fillMaxSize(), color = CBg) {
+            Column(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding().imePadding()) {
+                Box(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp)) {
+                    IconButton(onClick = onDismiss, modifier = Modifier.align(Alignment.CenterStart)) { Icon(Icons.Filled.Close, tr("ปิด"), tint = CText) }
+                    Text(tr("คุณรู้สึกอย่างไร?"), color = CText, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.Center))
+                    if (current != null) TextButton(onClick = { onPick(null) }, modifier = Modifier.align(Alignment.CenterEnd)) { Text(tr("ลบ"), color = Rose500) }
+                }
+                Row(Modifier.fillMaxWidth()) {
+                    listOf("feeling" to tr("ความรู้สึก"), "activity" to tr("กิจกรรม")).forEach { (k, l) ->
+                        Column(Modifier.weight(1f).clickable { tab = k }, horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(l, color = if (tab == k) CNeon else CMuted, fontSize = 15.sp, fontWeight = if (tab == k) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.padding(vertical = 10.dp))
+                            Box(Modifier.fillMaxWidth().height(2.5.dp).background(if (tab == k) CNeon else Color.Transparent))
+                        }
+                    }
+                }
+                HorizontalDivider(color = CLine, thickness = 0.8.dp)
+                Row(Modifier.fillMaxWidth().padding(12.dp).clip(RoundedCornerShape(12.dp)).background(CCard).border(1.dp, CLine, RoundedCornerShape(12.dp)).padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Outlined.Search, null, tint = CMuted, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
+                    BasicTextField(value = q, onValueChange = { q = it.take(30) }, singleLine = true, textStyle = TextStyle(color = CText, fontSize = 15.sp), cursorBrush = SolidColor(CNeon),
+                        modifier = Modifier.weight(1f), decorationBox = { inner -> Box { if (q.isEmpty()) Text(tr("ค้นหา"), color = AppThemeMode.fieldHint, fontSize = 15.sp); inner() } })
+                }
+                val list = (if (tab == "feeling") FEELINGS else ACTIVITIES).filter { q.isBlank() || it.second.contains(q.trim()) }
+                LazyColumn(Modifier.weight(1f)) {
+                    items(list.chunked(2)) { row ->
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            row.forEach { (e, l) ->
+                                val sel = current?.kind == tab && current.label == l
+                                Row(Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).background(if (sel) CNeon.copy(alpha = 0.12f) else CCard)
+                                    .border(1.dp, if (sel) CNeon else CLine, RoundedCornerShape(12.dp)).clickable { onPick(PostFeeling(tab, e, l)) }.padding(horizontal = 12.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically) {
+                                    Text(e, fontSize = 22.sp); Spacer(Modifier.width(8.dp))
+                                    Text(tr(l), color = CText, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                            if (row.size == 1) Spacer(Modifier.weight(1f))
+                        }
+                    }
+                    if (list.isEmpty()) item { Text(tr("ไม่พบ"), color = CMuted, fontSize = 13.sp, modifier = Modifier.padding(20.dp)) }
+                }
+            }
         }
     }
 }

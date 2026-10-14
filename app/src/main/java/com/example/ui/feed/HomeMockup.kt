@@ -522,6 +522,7 @@ fun HomePostCard(p: FeedPost, distance: String, modifier: Modifier, onLike: () -
                 }
                 more()
             }
+            p.feeling?.let { f -> Text(tr(f.display()), color = HMuted, fontSize = 10.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 8.dp, end = 8.dp, bottom = 2.dp)) }
             if (p.placeLabel.isNotBlank()) Row(Modifier.padding(start = 8.dp, end = 8.dp, bottom = 4.dp).clip(RoundedCornerShape(6.dp))
                 .clickable { openPlaceOnMap(ctx, p.placeLabel, p.placeLat, p.placeLng) }, verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Filled.LocationOn, tr("ดูบนแผนที่"), tint = HNeon, modifier = Modifier.size(12.dp)); Spacer(Modifier.width(2.dp))
