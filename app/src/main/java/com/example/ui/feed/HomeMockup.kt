@@ -241,11 +241,16 @@ private fun WalletChip(onClick: () -> Unit, icon: @Composable () -> Unit, value:
 fun HomeHeader(currentUser: User, onAvatar: () -> Unit, onCoins: () -> Unit, onDiamonds: () -> Unit, onBell: () -> Unit, onAdmin: () -> Unit) {
     val notif by HomeRepo.notifCount.collectAsState()
     val signedIn = FirebaseAuth.getInstance().currentUser != null
+    // Live profile (users/{uid}) so a new photo / name shows here right away; the sign-in copy is only the fallback.
+    LaunchedEffect(signedIn) { if (signedIn) com.example.social.MyProfile.start() }
+    val me = if (signedIn) com.example.social.MyProfile.me else null
+    val headerAvatar = me?.avatar?.ifBlank { null } ?: currentUser.avatar
+    val headerName = me?.displayName?.ifBlank { null } ?: currentUser.displayName
     Box(Modifier.fillMaxWidth().background(AppThemeMode.headerBrush)) {
         Column(Modifier.statusBarsPadding()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.clip(CircleShape).clickable(onClick = onAvatar)) {
-                    RingAvatar(currentUser.avatar, currentUser.displayName.ifBlank { "F" }, 42.dp)
+                    RingAvatar(headerAvatar, headerName.ifBlank { "F" }, 42.dp)
                     Box(Modifier.align(Alignment.BottomEnd).size(12.dp).clip(CircleShape).background(HBg).padding(2.dp).clip(CircleShape).background(HOnline))
                 }
                 Spacer(Modifier.width(6.dp))
@@ -256,7 +261,7 @@ fun HomeHeader(currentUser: User, onAvatar: () -> Unit, onCoins: () -> Unit, onD
                         Text("Talk", color = HNeon, fontSize = 21.sp, fontWeight = FontWeight.ExtraBold, fontStyle = FontStyle.Italic, maxLines = 1, style = neonGlow)
                         Icon(Icons.Outlined.FavoriteBorder, null, tint = Color(0xFFFF4FC0), modifier = Modifier.padding(start = 2.dp).size(17.dp))
                     }
-                    Text(if (signedIn) currentUser.displayName else tr("เข้าสู่ระบบ"), color = Color(0xFFD9D3F7), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(if (signedIn) headerName else tr("เข้าสู่ระบบ"), color = Color(0xFFD9D3F7), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
                     WalletChip(onCoins, {

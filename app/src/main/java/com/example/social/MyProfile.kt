@@ -35,13 +35,20 @@ object MyProfile {
     var lastNote: String? = null
         private set
     private var listening: String? = null
+    private var detach: (() -> Unit)? = null
     private val storage by lazy { FirebaseStorage.getInstance("gs://friendtalk-4e623.firebasestorage.app") }
 
     fun start() {
         val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
-        if (listening == uid) return; listening = uid
-        FirebaseDatabase.getInstance(SocialRepo.DB_URL).getReference("users/$uid").addValueEventListener(object : ValueEventListener {
+        if (listening == uid) return
+        // another account signed in: drop the previous listener and data so its photo/name never shows for the new user
+        detach?.invoke(); me = null; listening = uid
+        val ref = FirebaseDatabase.getInstance(SocialRepo.DB_URL).getReference("users/$uid")
+        lateinit var l: ValueEventListener
+        detach = { ref.removeEventListener(l) }
+        l = ref.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(s: DataSnapshot) {
+                if (listening != uid) return
                 fun str(k: String) = s.child(k).getValue(String::class.java).orEmpty()
                 me = Data(str("displayName"), str("username"), str("avatar"), str("cover"), str("bio"), str("gender"), str("province"), str("occupation"),
                     s.child("lookingFor").children.mapNotNull { it.getValue(String::class.java) }, s.child("interests").children.mapNotNull { it.getValue(String::class.java) },
