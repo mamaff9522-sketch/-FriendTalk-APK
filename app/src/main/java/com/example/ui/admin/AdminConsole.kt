@@ -4,6 +4,7 @@ import com.example.ui.components.dialogNavPadding
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -61,6 +62,7 @@ fun AdminConsole(onDismiss: () -> Unit, onOpenUiBuilder: () -> Unit, onOpenApkDo
     var overview by remember { mutableStateOf<JSONObject?>(null) }
     var loadErr by remember { mutableStateOf("") }
     var tick by remember { mutableIntStateOf(0) }
+    var section by remember { mutableStateOf<String?>(null) } // null = menu
     LaunchedEffect(tick) {
         val r = api("GET", "/admin/overview")
         if (r.code == 200 && r.json != null) {
@@ -70,7 +72,8 @@ fun AdminConsole(onDismiss: () -> Unit, onOpenUiBuilder: () -> Unit, onOpenApkDo
             perms = Perms(j.optString("yourRole"), m)
         } else loadErr = err(r)
     }
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+    // Back inside a section returns to the menu; back on the menu closes the console.
+    Dialog(onDismissRequest = { if (section != null) section = null else onDismiss() }, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(Modifier.fillMaxSize(), color = Slate950) {
             Column(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding()) {
                 Row(Modifier.fillMaxWidth().padding(16.dp, 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -82,33 +85,50 @@ fun AdminConsole(onDismiss: () -> Unit, onOpenUiBuilder: () -> Unit, onOpenApkDo
                 }
                 val p = perms
                 if (p == null) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { if (loadErr.isNotBlank()) Text(loadErr, color = Amber400) else CircularProgressIndicator(color = Pink500) }; return@Column }
-                val tabs = buildList {
-                    if (p.has("app_lock")) add("system" to "⚙️ ระบบ (ล็อกแอป)")
-                    add("overview" to "📊 ภาพรวม"); add("members" to "👥 สมาชิก & สิทธิ์")
-                    if (p.has("manage_content")) { add("reports" to "🚨 รายงาน"); add("applications" to "📝 ใบสมัคร") }
-                    if (p.has("config_edit") || p.has("manage_content") || p.has("coins_confirm")) add("economy" to "💰 เศรษฐกิจ")
-                    if (p.has("config_edit")) { add("content" to "🎨 เนื้อหา & UI"); add("bots" to "🤖 บอท AI") }
-                }
-                var tab by remember { mutableStateOf(if (p.has("app_lock")) "system" else "overview") }
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    tabs.forEach { (k, l) -> FilterChip(selected = tab == k, onClick = { tab = k }, label = { Text(l) },
-                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Pink500, selectedLabelColor = White, labelColor = Slate300)) }
-                }
-                HorizontalDivider(color = Slate800, modifier = Modifier.padding(top = 6.dp))
-                Box(Modifier.fillMaxSize()) {
-                    when (tab) {
-                        "overview" -> OverviewPane(overview, p, onOpenApkDownload) { tick++ }
-                        "members" -> MembersPane(p)
-                        "reports" -> ReportsPane(p)
-                        "applications" -> com.example.ui.social.AdminApplicationsPane()
-                        "economy" -> EconomyPane(p)
-                        "content" -> Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Text("ปรับหน้าตาแอปทั้งหมดในที่เดียว: ลากวางหน้าแรก, ธีม & สี, จัด Feed, ชื่อแอป/คำโปรย, โหมดปิดปรับปรุง, ประวัติเวอร์ชัน", color = Slate300, fontSize = 13.sp)
-                            Button(onClick = onOpenUiBuilder, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Purple600)) { Text("เปิด UI Builder") }
-                            ComingSoonList(p)
+                val sections = adminSections(p)
+                val sec = sections.firstOrNull { it.key == section }
+                if (sec == null) {
+                    AdminHome(sections, overview, p) { section = it }
+                } else {
+                    var sub by remember(sec.key) { mutableStateOf(sec.subs.first().first) }
+                    // section header: back to the menu + title
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = { section = null }) { Text("‹ เมนู", color = Pink400, fontSize = 15.sp, fontWeight = FontWeight.Bold) }
+                        Text(sec.icon + " " + sec.title, color = White, fontWeight = FontWeight.Bold, fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    if (sec.subs.size > 1) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        sec.subs.forEach { (k2, l) ->
+                            val on = sub == k2
+                            Box(Modifier.clip(RoundedCornerShape(18.dp)).background(if (on) Pink500 else Slate900).border(1.dp, if (on) Pink500 else Slate700, RoundedCornerShape(18.dp))
+                                .clickable { sub = k2 }.padding(horizontal = 14.dp, vertical = 8.dp)) {
+                                Text(l, color = if (on) White else Slate300, fontSize = 13.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Medium)
+                            }
                         }
-                        "bots" -> com.example.ui.ai.AdminBotsTab()
-                        "system" -> SystemPane()
+                    }
+                    if (sec.note.isNotBlank()) Text(sec.note, color = Slate400, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                    HorizontalDivider(color = Slate800, modifier = Modifier.padding(top = 6.dp))
+                    Box(Modifier.fillMaxSize()) {
+                        when (sub) {
+                            "overview" -> OverviewPane(overview, p, onOpenApkDownload) { tick++ }
+                            "members" -> MembersPane(p)
+                            "reports" -> ReportsPane(p)
+                            "applications" -> com.example.ui.social.AdminApplicationsPane()
+                            "topup" -> com.example.ui.shop.AdminTopupPane()
+                            "packs" -> com.example.ui.social.AdminShopPacksPane()
+                            "rates" -> com.example.ui.social.AdminCompanionRatesPane()
+                            "placements" -> AdPlacementsCard()
+                            "limits" -> AdminLimitsTab()
+                            "gifts" -> AdminGiftsTab()
+                            "decor" -> AdminDecorOptionsPane()
+                            "uibuilder" -> Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text("ปรับหน้าตาแอปทั้งหมดในที่เดียว: ลากวางหน้าแรก, ธีม & สี, จัด Feed, ชื่อแอป/คำโปรย, โหมดปิดปรับปรุง, ประวัติเวอร์ชัน", color = Slate300, fontSize = 13.sp)
+                                Button(onClick = onOpenUiBuilder, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Purple600)) { Text("เปิด UI Builder") }
+                            }
+                            "showcase" -> com.example.ui.feed.AdminShowcasePane()
+                            "comingsoon" -> Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp)) { ComingSoonList(p) }
+                            "bots" -> com.example.ui.ai.AdminBotsTab()
+                            "system" -> SystemPane()
+                        }
                     }
                 }
             }
@@ -378,14 +398,68 @@ private fun ReportsPane(p: Perms) {
     openUid?.let { UserProfileDialog(it) { openUid = null } }
 }
 
+/** One menu entry of the console: a group of related tools (sub-tabs), shown only when the role has at least one of them. */
+private data class AdminSection(val key: String, val icon: String, val title: String, val desc: String, val accent: Color, val subs: List<Pair<String, String>>, val note: String = "", val badge: String = "")
+
+private fun adminSections(p: Perms): List<AdminSection> {
+    val content = p.has("manage_content"); val cfg = p.has("config_edit")
+    fun subs(vararg x: Pair<Pair<String, String>, Boolean>) = x.filter { it.second }.map { it.first }
+    return listOf(
+        AdminSection("overview", "📊", "ภาพรวม", "สถิติผู้ใช้ งานที่รอ และสิทธิ์ของคุณ", Color(0xFF3D8BFF), subs(("overview" to "ภาพรวม") to true)),
+        AdminSection("people", "👥", "ผู้ใช้ & ทีมงาน", "ค้นหาผู้ใช้ แบน ให้ VIP/เหรียญ ตั้งสิทธิ์แอดมิน", Color(0xFF9B3DFF), subs(("members" to "สมาชิก & สิทธิ์") to true)),
+        AdminSection("safety", "🛡", "ตรวจสอบ & ใบสมัคร", "รายงานจากผู้ใช้ และใบสมัครเพื่อนคุย/ครีเอเตอร์", Color(0xFFFF4D6D),
+            subs(("reports" to "รายงาน") to content, ("applications" to "ใบสมัคร") to content), badge = "openReports"),
+        AdminSection("money", "💳", "การเงิน & ราคา", "ยืนยันการโอน ตั้งราคาแพ็กเพชร/เหรียญ และค่าเพื่อนคุย", Color(0xFF10B981),
+            subs(("topup" to "เติมเงิน (โอน)") to p.has("coins_confirm"), ("packs" to "ราคาแพ็กเพชร/เหรียญ") to cfg, ("rates" to "ค่าเพื่อนคุย") to cfg),
+            note = com.example.ui.social.AD_REVENUE_NOTE, badge = "pendingCoinRequests"),
+        AdminSection("ads", "📢", "โฆษณา & โควตา", "จุดวางแบนเนอร์ การ์ด VIP โควตาฟรี/VIP และโฆษณารับรางวัล", Color(0xFFFF9F43),
+            subs(("placements" to "ตำแหน่งโฆษณา & การ์ด VIP") to cfg, ("limits" to "โควตา & โฆษณา") to cfg)),
+        AdminSection("gifts", "🎁", "ของขวัญ & ตกแต่ง", "ของขวัญ สติกเกอร์ และธีม/กรอบ/เอฟเฟกต์ห้อง VIP", Color(0xFFFF2FA8),
+            subs(("gifts" to "ของขวัญ & สติกเกอร์") to content, ("decor" to "ตกแต่งห้อง VIP") to cfg)),
+        AdminSection("look", "🎨", "หน้าตาแอป", "UI Builder รูปตัวอย่าง AI และป้าย 'เร็ว ๆ นี้'", Color(0xFF6D5BFF),
+            subs(("uibuilder" to "UI Builder") to cfg, ("showcase" to "รูปตัวอย่าง AI") to cfg, ("comingsoon" to "ป้าย 'เร็ว ๆ นี้'") to cfg)),
+        AdminSection("bots", "🤖", "บอท AI", "ตัวละคร AI สำหรับคุยและเติมคนใกล้คุณ", Color(0xFF00B8D9), subs(("bots" to "บอท AI") to cfg)),
+        AdminSection("system", "⚙️", "ระบบ", "ล็อกแอปทั้งหมด หรือปิดบางฟีเจอร์ชั่วคราว", Color(0xFF94A3B8), subs(("system" to "ล็อกแอป & ฟีเจอร์") to p.has("app_lock")))
+    ).filter { it.subs.isNotEmpty() }
+}
+
+/** Console home: things waiting for action first, then every tool group as a card. */
 @Composable
-private fun EconomyPane(p: Perms) {
-    val subs = buildList { if (p.has("coins_confirm")) add("topup" to "เติมเงิน (โอน)"); if (p.has("config_edit")) { add("limits" to "ลิมิต & โฆษณา"); add("placements" to "ตำแหน่งโฆษณา"); add("rates" to "อัตราค่าเพื่อนคุย"); add("packs" to "ราคาแพ็กเพชร/เหรียญ"); add("showcase" to "รูปตัวอย่าง AI"); add("decor" to "ตกแต่งห้อง VIP") }; if (p.has("manage_content")) add("gifts" to "ของขวัญ & สติกเกอร์") }
-    var sub by remember { mutableStateOf(subs.firstOrNull()?.first ?: "") }
-    Column(Modifier.fillMaxSize()) {
-        Text(com.example.ui.social.AD_REVENUE_NOTE, color = Slate400, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 12.dp))
-        Row(Modifier.horizontalScroll(rememberScrollState()).padding(12.dp, 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) { subs.forEach { (k, l) -> FilterChip(selected = sub == k, onClick = { sub = k }, label = { Text(l) }) } }
-        Box(Modifier.fillMaxSize()) { when (sub) { "limits" -> AdminLimitsTab(); "placements" -> AdPlacementsCard(); "rates" -> com.example.ui.social.AdminCompanionRatesPane(); "packs" -> com.example.ui.social.AdminShopPacksPane(); "gifts" -> AdminGiftsTab(); "topup" -> com.example.ui.shop.AdminTopupPane(); "showcase" -> com.example.ui.feed.AdminShowcasePane(); "decor" -> AdminDecorOptionsPane() } }
+private fun AdminHome(sections: List<AdminSection>, o: JSONObject?, p: Perms, open: (String) -> Unit) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        val todo = listOfNotNull(
+            o?.optInt("openReports")?.takeIf { it > 0 && p.has("manage_content") }?.let { Triple("🚨 รายงานรอตรวจ", it, "safety") },
+            o?.optInt("pendingCoinRequests")?.takeIf { it > 0 && p.has("coins_confirm") }?.let { Triple("💸 การโอนรอยืนยัน", it, "money") },
+            o?.optInt("pendingAgeRequests")?.takeIf { it > 0 }?.let { Triple("🪪 คำขอยืนยันอายุ", it, "people") })
+        Text(if (todo.isEmpty()) "ไม่มีงานค้าง 🎉" else "งานที่รอคุณ", color = White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+        todo.forEach { (l, n, k) ->
+            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Amber400.copy(alpha = 0.12f)).border(1.dp, Amber400.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+                .clickable { open(k) }.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(l, color = White, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                Text("$n", color = Amber400, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp); Text("  ›", color = Slate400)
+            }
+        }
+        Text("เครื่องมือ", color = White, fontWeight = FontWeight.Bold, fontSize = 15.sp, modifier = Modifier.padding(top = 4.dp))
+        sections.chunked(2).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                row.forEach { s ->
+                    val n = if (s.badge.isNotBlank()) o?.optInt(s.badge) ?: 0 else 0
+                    Column(Modifier.weight(1f).heightIn(min = 120.dp).clip(RoundedCornerShape(18.dp)).background(Slate900).border(1.dp, Slate800, RoundedCornerShape(18.dp))
+                        .clickable { open(s.key) }.padding(14.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(s.accent.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) { Text(s.icon, fontSize = 20.sp) }
+                            Spacer(Modifier.weight(1f))
+                            if (n > 0) Box(Modifier.clip(RoundedCornerShape(10.dp)).background(Rose500).padding(horizontal = 7.dp, vertical = 2.dp)) { Text("$n", color = White, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        Text(s.title, color = White, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(s.desc, color = Slate400, fontSize = 11.sp, maxLines = 3, lineHeight = 15.sp)
+                    }
+                }
+                if (row.size == 1) Spacer(Modifier.weight(1f))
+            }
+        }
+        Spacer(Modifier.height(12.dp))
     }
 }
 
