@@ -1048,7 +1048,8 @@ app.put('/admin/vip-plans', perm('config_edit'), w(notBanned), w(async (q, r) =>
   await db.ref('appConfig/vipPlans').set(v); r.json(v);
 }));
 // Ad offers the user can pick from (admin-editable). AdMob picks the creative; an offer = format + est. duration label + reward.
-const SEED_AD_OFFERS = [
+const COIN_AD_OFFER = { id: 'coins', title: 'รับเหรียญฟรี', adFormat: 'rewarded', estDurationLabel: '~15–30 วินาที', description: 'ดูจบรับเหรียญเข้ากระเป๋าทันที', validityHours: 0, reward: { feature: 'coins', amount: 10 }, enabled: true, order: 0 };
+const SEED_AD_OFFERS = [COIN_AD_OFFER,
   { id: 'short', title: 'โฆษณาสั้น', adFormat: 'rewarded_interstitial', estDurationLabel: '~5–15 วินาที', description: 'ใช้คุยกับบอท AI ทุกตัว', validityHours: 0, reward: { feature: 'aiBotMessagesPerDay', amount: 3 }, enabled: true, order: 1 },
   { id: 'standard', title: 'โฆษณามาตรฐาน', adFormat: 'rewarded', estDurationLabel: '~15–30 วินาที', description: 'ใช้คุยกับบอท AI ทุกตัว', validityHours: 0, reward: { feature: 'aiBotMessagesPerDay', amount: 10 }, enabled: true, order: 2 },
   { id: 'radar', title: 'บูสต์เรดาร์', adFormat: 'rewarded', estDurationLabel: '~15–30 วินาที', description: 'ใช้ค้นหาคนใกล้ ๆ ด้วยเรดาร์', validityHours: 24, reward: { feature: 'radarPerDay', amount: 5 }, enabled: true, order: 3 }
@@ -1060,6 +1061,10 @@ async function getAdOffers() {
   const ref = db.ref('appConfig/adOffers');
   let v = (await ref.get()).val();
   if (!v) { await ref.transaction(c => c || SEED_AD_OFFERS); v = (await ref.get()).val(); }
+  // one-time: add the 'watch an ad → coins' offer to configs created before it existed (admin can delete/disable it after)
+  if (Array.isArray(v) && !v.some(o => o?.reward?.feature === 'coins') && !(await db.ref('appConfig/adOffersCoinSeeded').get()).exists()) {
+    v = [COIN_AD_OFFER, ...v]; await ref.set(v); await db.ref('appConfig/adOffersCoinSeeded').set(Date.now());
+  }
   v = (Array.isArray(v) ? v : Object.values(v || {})).filter(Boolean);
   offersCache = { at: Date.now(), v }; return v;
 }
@@ -1074,7 +1079,7 @@ function validOffers(list) {
     if (!AD_FORMATS.includes(o.adFormat)) e('adFormat must be rewarded|rewarded_interstitial');
     const label = String(o.estDurationLabel || '').trim(); if (label.length > 40) e('estDurationLabel max 40 chars');
     const f = o.reward?.feature, amt = o.reward?.amount;
-    if (!FEATURES.includes(f)) e('reward.feature unknown'); if (!Number.isInteger(amt) || amt < 1 || amt > 1000) e('reward.amount 1..1000');
+    if (!FEATURES.includes(f) && f !== 'coins') e('reward.feature unknown (or coins)'); if (!Number.isInteger(amt) || amt < 1 || amt > 1000) e('reward.amount 1..1000');
     const description = String(o.description || '').trim(); if (description.length > 200) e('description max 200 chars');
     const vh = o.validityHours === undefined ? 0 : o.validityHours; if (!Number.isInteger(vh) || vh < 0 || vh > 72) e('validityHours 0..72 (0 = until midnight Bangkok)');
     return { id, title, adFormat: o.adFormat, estDurationLabel: label, description, validityHours: vh, reward: { feature: f, amount: amt }, enabled: o.enabled !== false, order: Number.isInteger(o.order) ? o.order : i };
@@ -1094,7 +1099,7 @@ async function offerReward(offerId) {
 async function creditAd(uid, feature, txId, amount = null, validityHours = 0) {
   const L = await getLimits();
   if (!(L.ads?.adsEnabled && L.ads?.rewardEnabled)) return { status: 403, body: { error: 'ad rewards disabled' } };
-  if (!FEATURES.includes(feature)) return { status: 400, body: { error: 'bad feature' } };
+  if (!FEATURES.includes(feature) && feature !== 'coins') return { status: 400, body: { error: 'bad feature' } };
   const { tier } = await tierOf(uid);
   const max = num(L.tiers?.[tier]?.maxAdsPerDay), per = amount !== null ? num(amount) : num(L.adBonus?.[feature]), day = dayKey();
   if (txId) { const t = await db.ref(`adTx/${txId}`).transaction(c => c ? c : { uid, at: Date.now() }); if (t.snapshot.val()?.done) return { status: 200, body: { duplicate: true } }; }
@@ -1105,7 +1110,11 @@ async function creditAd(uid, feature, txId, amount = null, validityHours = 0) {
   let over = false;
   await db.ref(`usage/${uid}/${day}/ads`).transaction(c => { c = c || 0; over = max > 0 && c >= max; return over ? c : c + 1; });
   if (max === 0 || over) return { status: 429, body: { code: 'ad_cap', limit: max, error: 'daily ad limit reached' } };
-  if (validityHours > 0) await db.ref(`quotaGrants/${uid}`).push({ feature, amount: per, until: Date.now() + validityHours * 3600000, at: Date.now() });
+  if (feature === 'coins') {
+    // 'coins' offers pay into the wallet instead of a quota
+    await db.ref(`wallets/${uid}/coins`).transaction(c => num(c) + per);
+    await db.ref(`adCoinLedger/${uid}`).push({ amount: per, at: Date.now(), txId: txId || '' });
+  } else if (validityHours > 0) await db.ref(`quotaGrants/${uid}`).push({ feature, amount: per, until: Date.now() + validityHours * 3600000, at: Date.now() });
   else await db.ref(`quotaBonus/${uid}/${day}/${feature}`).transaction(c => (c || 0) + per);
   if (txId) await db.ref(`adTx/${txId}/done`).set(true);
   return { status: 200, body: { credited: per, feature, ...(await quotaInfo(uid, L)) } };

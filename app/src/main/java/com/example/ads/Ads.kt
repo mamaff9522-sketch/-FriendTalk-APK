@@ -56,6 +56,7 @@ data class AdOffer(val id: String, val title: String, val adFormat: String, val 
                    val validityHours: Int, val feature: String, val amount: Int)
 
 fun rewardText(feature: String, n: Int) = when (feature) {
+    "coins" -> "รับ 🪙 $n เหรียญเข้ากระเป๋า"
     "aiBotMessagesPerDay" -> "คุยกับ AI ได้เพิ่ม $n ข้อความ"
     "chatMessagesPerDay" -> "แชทกับคนได้เพิ่ม $n ข้อความ"
     "radarPerDay" -> "ใช้เรดาร์ได้เพิ่ม $n ครั้ง"
@@ -356,7 +357,7 @@ fun AdsPageContent(feature: String?, onClose: (() -> Unit)?, returnAfterReward: 
                                     busy = null
                                     if (err != null) msg = err
                                     else if (returnAfterReward) onClose?.invoke() // back to where the user was (draft kept)
-                                    else msg = "ได้รับแล้ว: ${rewardText(o.feature, o.amount)}"
+                                    else msg = "✅ ได้รับแล้ว: ${rewardText(o.feature, o.amount)}"
                                 }
                             }.padding(vertical = 11.dp), contentAlignment = Alignment.Center) {
                             Text(if (busy == o.id) tr("กำลังโหลดโฆษณา…") else if (capped) tr("ดูครบจำนวนวันนี้แล้ว") else tr("▶  ดูโฆษณานี้"), color = PureWhite, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp)
@@ -384,9 +385,7 @@ fun AdsPageContent(feature: String?, onClose: (() -> Unit)?, returnAfterReward: 
             FeedBanner(Modifier.fillMaxWidth())
         }
     }
-    if (vipInfo) AlertDialog(onDismissRequest = { vipInfo = false }, title = { Text(tr("VIP เร็ว ๆ นี้")) },
-        text = { Text(tr("ยังไม่เปิดให้ซื้อ VIP ในแอป หากต้องการ VIP กรุณาติดต่อแอดมิน")) },
-        confirmButton = { TextButton(onClick = { vipInfo = false }) { Text(tr("ตกลง")) } })
+    if (vipInfo) com.example.ui.feed.VipDetailsDialog { vipInfo = false; scope.launch { AdRoom.refresh() } }
 }
 
 /** Admin/superadmin/moderator accounts always get Google TEST units, so the owner never views/clicks live ads. */

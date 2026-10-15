@@ -58,9 +58,9 @@ fun AdminAdOffersSection() {
                         FilterChip(o.adFormat == "rewarded", { upd { it.copy(adFormat = "rewarded") } }, label = { Text("Rewarded", fontSize = 11.sp) })
                         FilterChip(o.adFormat == "rewarded_interstitial", { upd { it.copy(adFormat = "rewarded_interstitial") } }, label = { Text("Rewarded interstitial", fontSize = 11.sp) })
                     }
-                    Text("รางวัล: ${FEATURE_LABELS[o.feature] ?: o.feature}", color = Slate300, fontSize = 12.sp)
+                    Text("รางวัล: ${if (o.feature == "coins") "🪙 เหรียญ" else FEATURE_LABELS[o.feature] ?: o.feature}", color = Slate300, fontSize = 12.sp)
                     Row(Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState())) {
-                        FEATURE_LABELS.forEach { (k, l) -> FilterChip(o.feature == k, { upd { it.copy(feature = k) } }, label = { Text(l, fontSize = 10.sp) }, modifier = Modifier.padding(end = 4.dp)) }
+                        (listOf("coins" to "🪙 เหรียญ") + FEATURE_LABELS.toList()).forEach { (k, l) -> FilterChip(o.feature == k, { upd { it.copy(feature = k) } }, label = { Text(l, fontSize = 10.sp) }, modifier = Modifier.padding(end = 4.dp)) }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         OutlinedTextField(o.amount, { v -> if (v.length <= 4 && v.all(Char::isDigit)) upd { it.copy(amount = v) } }, label = { Text("จำนวน") }, singleLine = true,
