@@ -256,7 +256,7 @@ fun QuotaChip(feature: String) {
 @Composable
 fun AdRoomHost() {
     val ctx = LocalContext.current
-    LaunchedEffect(Unit) { ctx.activity()?.let { AdsManager.init(it) }; AdRoom.refresh() }
+    LaunchedEffect(Unit) { AdUnits.load(ctx); ctx.activity()?.let { AdsManager.init(it) }; AdRoom.refresh() }
     val hit by AdRoom.quotaHit.collectAsState()
     val open by AdRoom.open.collectAsState()
     hit?.let { f ->
@@ -407,7 +407,11 @@ fun AdsPageContent(feature: String?, onClose: (() -> Unit)?, returnAfterReward: 
 /** Admin/superadmin/moderator accounts always get Google TEST units, so the owner never views/clicks live ads. */
 object AdUnits {
     @Volatile var adminTestAds = true // safe default until /me confirms a normal USER role
-    fun unit(real: String, test: String) = if (adminTestAds) test else real
+    /** Staff switch (this phone only): show REAL ads on an admin account to check them. Never click them (AdMob invalid-traffic rules). */
+    @Volatile var forceReal = false
+    fun load(ctx: android.content.Context) { forceReal = ctx.getSharedPreferences("friendtalk", 0).getBoolean("adsForceReal", false) }
+    fun setForceReal(ctx: android.content.Context, on: Boolean) { forceReal = on; ctx.getSharedPreferences("friendtalk", 0).edit().putBoolean("adsForceReal", on).apply() }
+    fun unit(real: String, test: String) = if (adminTestAds && !forceReal) test else real
 }
 
 /** Decorative illustration: big emoji with glow + coins (bundled vector-free; uses system emoji). */

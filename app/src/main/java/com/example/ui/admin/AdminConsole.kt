@@ -581,6 +581,24 @@ private fun AdPlacementsCard() {
         }
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        // Real ads on this admin phone (default: Google test ads so the owner never generates invalid traffic)
+        val actx = androidx.compose.ui.platform.LocalContext.current
+        var real by remember { mutableStateOf(run { com.example.ads.AdUnits.load(actx); com.example.ads.AdUnits.forceReal }) }
+        var warn by remember { mutableStateOf(false) }
+        Surface(shape = RoundedCornerShape(14.dp), color = if (real) Rose500.copy(alpha = 0.15f) else Slate900, border = BorderStroke(1.dp, if (real) Rose500 else Slate700)) {
+            Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("👀 แสดงโฆษณาจริงบนเครื่องนี้", color = White, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Switch(checked = real, onCheckedChange = { if (it) warn = true else { real = false; com.example.ads.AdUnits.setForceReal(actx, false) } })
+                }
+                Text(if (real) "เปิดอยู่: บัญชีแอดมินบนเครื่องนี้เห็นโฆษณาจริง — ห้ามกดโฆษณา และอย่าดูซ้ำบ่อย ๆ" else "ปิด: แอดมินเห็นโฆษณาทดสอบของ Google (ปลอดภัย) · ผู้ใช้ทั่วไปเห็นโฆษณาจริงอยู่แล้ว",
+                    color = if (real) Rose500 else Slate400, fontSize = 11.sp)
+            }
+        }
+        if (warn) AlertDialog(onDismissRequest = { warn = false }, title = { Text("เปิดโฆษณาจริงบนบัญชีแอดมิน?") },
+            text = { Text("AdMob ห้ามเจ้าของแอปกดหรือดูโฆษณาของตัวเองเพื่อเพิ่มยอด ถ้าตรวจเจออาจโดนระงับบัญชี AdMob และไม่ได้รับเงิน\n\nใช้เพื่อตรวจว่าโฆษณาจริงขึ้นได้เท่านั้น: ดูแค่ไม่กี่ครั้ง ห้ามกดที่โฆษณา แล้วปิดสวิตช์นี้\n\nวิธีที่ปลอดภัยกว่า: ใช้บัญชีผู้ใช้ทั่วไป (ไม่ใช่แอดมิน) ซึ่งเห็นโฆษณาจริงอยู่แล้ว") },
+            confirmButton = { TextButton(onClick = { warn = false; real = true; com.example.ads.AdUnits.setForceReal(actx, true) }) { Text("เข้าใจแล้ว เปิด", color = Rose500) } },
+            dismissButton = { TextButton(onClick = { warn = false }) { Text("ยกเลิก") } })
         Text("📍 ตำแหน่งแบนเนอร์โฆษณา", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
         Text("ซ่อนสำหรับ VIP · บัญชีแอดมินเห็นโฆษณาทดสอบเหมือนเดิม · ต้องเปิด 'แบนเนอร์' ในหน้าลิมิตด้วย · Interstitial ตั้งค่าที่หน้าลิมิต (ค่าเริ่มต้นปิด)", color = Slate400, fontSize = 11.sp)
         labels.forEach { (k, l) ->
