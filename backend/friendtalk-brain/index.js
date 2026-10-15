@@ -2211,6 +2211,8 @@ app.post('/lives/:id/join', w(notBanned), w(async (q, r) => {
   if (await blockedEither(q.uid, l.hostUid)) return r.status(403).json({ error: 'ดูไลฟ์นี้ไม่ได้' });
   if (l.hostUid !== q.uid && !(await db.ref(`liveViewers/${id}/${q.uid}`).get()).exists()) {
     await db.ref(`liveViewers/${id}/${q.uid}`).set(Date.now()); await db.ref(`lives/${id}/viewers`).transaction(v => (v || 0) + 1);
+    const u = (await db.ref(`users/${q.uid}`).get()).val() || {};
+    await db.ref(`liveChat/${id}`).push({ type: 'join', uid: q.uid, name: u.displayName || 'ผู้ใช้', avatar: u.avatar || '', at: Date.now() });
   }
   r.json({ liveId: id, appId: AGORA_APP_ID, channel: id, uid: agoraUid(q.uid), hostUid: agoraUid(l.hostUid), token: rtcToken(id, q.uid, false, 4 * 3600) });
 }));
@@ -2227,8 +2229,33 @@ app.post('/lives/:id/chat', w(notBanned), w(async (q, r) => {
   const l = (await db.ref(`lives/${id}`).get()).val(); if (!liveAlive(l)) return r.status(410).json({ error: 'ไลฟ์นี้จบแล้ว' });
   if (!(await bump(`rate/liveChat/${q.uid}/${Math.floor(Date.now() / 60e3)}`, 20))) return r.status(429).json({ error: 'ส่งเร็วเกินไป' });
   const m = await moderateText(q.uid, text, { kind: 'live_chat', ref: id }); if (!m.ok) return r.status(400).json({ error: m.message });
-  await db.ref(`liveChat/${id}`).push({ uid: q.uid, name: await nameOf(q.uid), text, at: Date.now() });
+  const u = (await db.ref(`users/${q.uid}`).get()).val() || {};
+  await db.ref(`liveChat/${id}`).push({ uid: q.uid, name: u.displayName || 'ผู้ใช้', avatar: u.avatar || '', text, at: Date.now() });
   r.json({ ok: true });
+}));
+// Live gift: paid immediately from the viewer's diamonds (no accept step); host gets recipientPercent like chat gifts.
+// Shown to everyone as liveChat {type:'gift'} (banner + chat line) and totalled on lives/{id}/giftDiamonds.
+app.post('/lives/:id/gift', w(notBanned), w(async (q, r) => {
+  const id = q.params.id, giftId = q.body?.giftId, count = Math.max(1, Math.min(99, parseInt(q.body?.count) || 1));
+  if (!LIVE_ID.test(id) || typeof giftId !== 'string' || !ITEM_ID.test(giftId)) return r.status(400).json({ error: 'bad request' });
+  const l = (await db.ref(`lives/${id}`).get()).val(); if (!liveAlive(l)) return r.status(410).json({ error: 'ไลฟ์นี้จบแล้ว' });
+  if (l.hostUid === q.uid) return r.status(400).json({ error: 'ส่งของขวัญให้ตัวเองไม่ได้' });
+  if (await blockedEither(q.uid, l.hostUid)) return r.status(403).json({ error: 'ส่งของขวัญให้ผู้ใช้นี้ไม่ได้' });
+  const cfg = await giftCfg(); if (!cfg.enabled) return r.status(403).json({ code: 'gifts_disabled', error: 'ปิดระบบของขวัญชั่วคราว' });
+  const item = (await db.ref(`catalog/live/${giftId}`).get()).val();
+  if (!item || item.enabled === false || !(item.price > 0)) return r.status(404).json({ error: 'ไม่พบของขวัญนี้' });
+  const price = item.price * count, pend = await pendingSum(q.uid);
+  const d = await db.ref(`wallets/${q.uid}/diamonds`).transaction(c => (c === null ? null : num(c) - pend >= price ? num(c) - price : undefined));
+  if (!d.committed || d.snapshot.val() === null) return r.status(402).json({ code: 'insufficient', error: `เพชรไม่พอ (ต้องการ 💎${price})`, price });
+  const hostShare = Math.floor(price * cfg.recipientPercent / 100), adminShare = price - hostShare, t = Date.now();
+  await Promise.all([db.ref(`wallets/${l.hostUid}/diamonds`).transaction(c => num(c) + hostShare), db.ref(`wallets/${l.hostUid}/earnedDiamonds`).transaction(c => num(c) + hostShare),
+    db.ref('wallets/_system/diamonds').transaction(c => num(c) + adminShare), db.ref(`lives/${id}/giftDiamonds`).transaction(c => num(c) + price)]);
+  const u = (await db.ref(`users/${q.uid}`).get()).val() || {};
+  await db.ref().update({
+    [`liveGiftTx/${id}/${t}_${q.uid.slice(0, 8)}`]: { from: q.uid, to: l.hostUid, giftId, name: item.name, price, count, hostShare, adminShare, at: t },
+    [`liveChat/${id}/${t}_g${crypto.randomBytes(3).toString('hex')}`]: { type: 'gift', uid: q.uid, name: u.displayName || 'ผู้ใช้', avatar: u.avatar || '', giftId, giftName: item.name, icon: item.icon || '', imageUrl: item.imageUrl || '', count, at: t }
+  });
+  r.json({ ok: true, price, diamonds: d.snapshot.val() });
 }));
 
 // ===== VIP room decor for 1:1 chats =====

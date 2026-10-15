@@ -73,14 +73,19 @@ fun rememberLiveRooms(): List<LiveRoom>? {
     }.sortedByDescending { it.viewers }
 }
 
+data class LiveMsg(val id: String, val type: String, val uid: String, val name: String, val avatar: String, val text: String,
+                   val giftId: String = "", val giftName: String = "", val icon: String = "", val count: Int = 1, val at: Long = 0)
+
 @Composable
-private fun rememberLiveChat(liveId: String): List<Triple<String, String, String>> {
-    val msgs = remember(liveId) { mutableStateListOf<Triple<String, String, String>>() }
+private fun rememberLiveChat(liveId: String): List<LiveMsg> {
+    val msgs = remember(liveId) { mutableStateListOf<LiveMsg>() }
     DisposableEffect(liveId) {
         val q = RtcApi.db.getReference("liveChat/$liveId").limitToLast(50)
         val l = object : ChildEventListener {
             override fun onChildAdded(s: DataSnapshot, p: String?) {
-                msgs.add(Triple(s.key ?: "", s.child("name").getValue(String::class.java) ?: "", s.child("text").getValue(String::class.java).orEmpty()))
+                fun str(k: String) = s.child(k).getValue(String::class.java).orEmpty()
+                msgs.add(LiveMsg(s.key ?: "", str("type").ifBlank { "chat" }, str("uid"), str("name"), str("avatar"), str("text"), str("giftId"), str("giftName"), str("icon"),
+                    (s.child("count").value as? Number)?.toInt() ?: 1, (s.child("at").value as? Number)?.toLong() ?: 0L))
                 if (msgs.size > 80) msgs.removeAt(0)
             }
             override fun onChildChanged(s: DataSnapshot, p: String?) {}
@@ -94,7 +99,9 @@ private fun rememberLiveChat(liveId: String): List<Triple<String, String, String
     return msgs
 }
 
-/** Chat overlay (bottom-left) + input row used by both host and viewers. */
+private val QUICK_EMOJI = listOf("❤️", "😍", "😂", "👏", "🔥", "🥰", "😮", "🙏", "💯", "🎉", "😘", "👍")
+
+/** Gift banner + chat (avatars, joins, gifts) + input with emoji, plus caller-supplied round buttons. */
 @Composable
 private fun LiveChatOverlay(liveId: String, modifier: Modifier, extra: @Composable RowScope.() -> Unit) {
     val scope = rememberCoroutineScope()
@@ -102,33 +109,192 @@ private fun LiveChatOverlay(liveId: String, modifier: Modifier, extra: @Composab
     val list = rememberLazyListState()
     var text by remember { mutableStateOf("") }
     var err by remember { mutableStateOf("") }
+    var emoji by remember { mutableStateOf(false) }
+    val gifts by remember { com.example.social.GiftRepo.catalog("live") }.collectAsState(initial = emptyList())
     LaunchedEffect(msgs.size) { if (msgs.isNotEmpty()) list.animateScrollToItem(msgs.size - 1) }
+    // newest gift shows as a banner for 4 s
+    val lastGift = msgs.lastOrNull { it.type == "gift" }
+    var bannerFor by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(lastGift?.id) { if (lastGift != null && System.currentTimeMillis() - lastGift.at < 15_000) { bannerFor = lastGift.id; delay(4000); if (bannerFor == lastGift.id) bannerFor = null } }
+    fun send() {
+        val t = text.trim(); if (t.isEmpty()) return
+        text = ""; emoji = false
+        scope.launch { val r = RtcApi.post("/lives/$liveId/chat", JSONObject().put("text", t)); err = if (r?.code == 200) "" else RtcApi.error(r) }
+    }
     Column(modifier) {
-        LazyColumn(state = list, modifier = Modifier.fillMaxWidth(0.78f).heightIn(max = 220.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            items(msgs, key = { it.first }) { (_, name, t) ->
-                Row(Modifier.clip(RoundedCornerShape(14.dp)).background(Color(0x66000000)).padding(horizontal = 10.dp, vertical = 5.dp)) {
-                    Text("$name  ", color = Color(0xFFFFC94D), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    Text(t, color = Color.White, fontSize = 12.sp)
+        androidx.compose.animation.AnimatedVisibility(visible = bannerFor != null && lastGift != null,
+            enter = androidx.compose.animation.slideInHorizontally { -it } + androidx.compose.animation.fadeIn(),
+            exit = androidx.compose.animation.fadeOut()) {
+            val g = lastGift ?: return@AnimatedVisibility
+            val item = gifts.firstOrNull { it.id == g.giftId }
+            Row(Modifier.padding(bottom = 10.dp).clip(RoundedCornerShape(28.dp)).background(Brush.horizontalGradient(listOf(Color(0xCC2A0F55), Color(0x662A0F55))))
+                .padding(start = 4.dp, end = 14.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                com.example.ui.social.Avatar(g.avatar, g.name.ifBlank { "?" }, 38)
+                Spacer(Modifier.width(8.dp))
+                Column(Modifier.widthIn(max = 130.dp)) {
+                    Text(g.name, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("ส่ง ${g.giftName}", color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Spacer(Modifier.width(8.dp))
+                Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                    if (item != null) com.example.ui.social.StickerImage(item) else Text(g.icon.ifBlank { "🎁" }, fontSize = 32.sp)
+                }
+                Text("x${g.count}", color = Color(0xFFFFE08A), fontSize = 26.sp, fontWeight = FontWeight.Black, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic, modifier = Modifier.padding(start = 4.dp))
+            }
+        }
+        LazyColumn(state = list, modifier = Modifier.fillMaxWidth(0.8f).heightIn(max = 230.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(msgs, key = { it.id }) { m ->
+                when (m.type) {
+                    "join" -> Row(Modifier.clip(RoundedCornerShape(14.dp)).background(Color(0x40000000)).padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("👋 ", fontSize = 12.sp); Text(m.name, color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(" เข้าร่วมแล้ว", color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp)
+                    }
+                    else -> Row(verticalAlignment = Alignment.Top) {
+                        com.example.ui.social.Avatar(m.avatar, m.name.ifBlank { "?" }, 28)
+                        Spacer(Modifier.width(8.dp))
+                        Column(Modifier.clip(RoundedCornerShape(14.dp)).background(Color(0x4D000000)).padding(horizontal = 10.dp, vertical = 5.dp)) {
+                            Text(m.name, color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            if (m.type == "gift") Text("ส่ง ${m.giftName} ${m.icon} x${m.count}", color = Color(0xFFFFE08A), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            else Text(m.text, color = Color.White, fontSize = 13.sp)
+                        }
+                    }
                 }
             }
         }
         if (err.isNotBlank()) Text(err, color = Color(0xFFFFC94D), fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+        if (emoji) Row(Modifier.padding(top = 8.dp).clip(RoundedCornerShape(18.dp)).background(Color(0x99000000)).horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            QUICK_EMOJI.forEach { e -> Text(e, fontSize = 24.sp, modifier = Modifier.clip(CircleShape).clickable { text = (text + e).take(200) }.padding(4.dp)) }
+        }
         Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(Modifier.weight(1f).clip(RoundedCornerShape(22.dp)).background(Color(0x55000000)).border(1.dp, Color(0x44FFFFFF), RoundedCornerShape(22.dp)).padding(start = 14.dp, end = 4.dp),
+            Row(Modifier.weight(1f).clip(RoundedCornerShape(22.dp)).background(Color(0x66000000)).border(1.dp, Color(0x44FFFFFF), RoundedCornerShape(22.dp)).padding(start = 14.dp, end = 4.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1f).padding(vertical = 10.dp)) {
-                    if (text.isEmpty()) Text("พูดอะไรสักหน่อย…", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp)
-                    BasicTextField(text, { text = it.take(200) }, singleLine = true, textStyle = TextStyle(color = Color.White, fontSize = 14.sp), cursorBrush = SolidColor(Color.White), modifier = Modifier.fillMaxWidth())
+                    if (text.isEmpty()) Text("พิมพ์…", color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp)
+                    BasicTextField(text, { text = it.take(200) }, singleLine = true, textStyle = TextStyle(color = Color.White, fontSize = 14.sp), cursorBrush = SolidColor(Color.White), modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Send),
+                        keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSend = { send() }))
                 }
-                Box(Modifier.size(36.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Neon, Violet))).clickable {
-                    val t = text.trim(); if (t.isEmpty()) return@clickable
-                    text = ""
-                    scope.launch { val r = RtcApi.post("/lives/$liveId/chat", JSONObject().put("text", t)); err = if (r?.code == 200) "" else RtcApi.error(r) }
-                }, contentAlignment = Alignment.Center) { Icon(Icons.Filled.Send, "ส่ง", tint = Color.White, modifier = Modifier.size(18.dp)) }
+                Box(Modifier.size(34.dp).clip(CircleShape).clickable { emoji = !emoji }, contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.EmojiEmotions, "อีโมจิ", tint = if (emoji) Color(0xFFFFC94D) else Color.White.copy(alpha = 0.85f), modifier = Modifier.size(22.dp)) }
+                if (text.isNotBlank()) Box(Modifier.size(34.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Neon, Violet))).clickable { send() }, contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.Send, "ส่ง", tint = Color.White, modifier = Modifier.size(17.dp)) }
             }
             extra()
         }
     }
+}
+
+/** Last 3 viewers' faces + count (TikTok-style, top right). */
+@Composable
+private fun ViewerFaces(liveId: String, viewers: Int) {
+    val snap = rememberDbValue("liveViewers/$liveId")
+    val uids = snap?.children?.sortedByDescending { (it.value as? Number)?.toLong() ?: 0L }?.mapNotNull { it.key }?.take(3).orEmpty()
+    Row(Modifier.clip(RoundedCornerShape(20.dp)).background(Color(0x66000000)).padding(start = 4.dp, end = 10.dp, top = 3.dp, bottom = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box {
+            uids.forEachIndexed { i, u ->
+                val av by produceState("", u) { value = runCatching { com.example.ui.feed.HomeRepo.user(u).avatar }.getOrDefault("") }
+                Box(Modifier.padding(start = (i * 18).dp).size(28.dp).clip(CircleShape).border(1.5.dp, Color.White, CircleShape)) { com.example.ui.social.Avatar(av, "?", 28) }
+            }
+        }
+        if (uids.isNotEmpty()) Spacer(Modifier.width(6.dp))
+        Icon(Icons.Filled.Visibility, null, tint = Color.White, modifier = Modifier.size(13.dp)); Spacer(Modifier.width(3.dp))
+        Text("$viewers", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun FollowButton(hostUid: String) {
+    val scope = rememberCoroutineScope()
+    val me = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser
+    var following by remember(hostUid) { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(hostUid) {
+        if (me == null || hostUid.isBlank() || hostUid == me.uid) return@LaunchedEffect
+        following = runCatching { com.example.network.BrainApi.call(me, "GET", "/follow/$hostUid").json?.optBoolean("following") }.getOrNull() ?: false
+    }
+    if (following != false) return
+    Text("+ ติดตาม", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(start = 8.dp).clip(RoundedCornerShape(16.dp)).background(LiveRed).clickable {
+            following = true
+            scope.launch { val r = RtcApi.post("/follow/$hostUid", JSONObject().put("follow", true)); if (r?.code != 200) following = false }
+        }.padding(horizontal = 12.dp, vertical = 6.dp))
+}
+
+private fun shareLive(ctx: android.content.Context, host: String, title: String) {
+    val text = "มาดูไลฟ์ของ $host ใน FriendTalk กัน! ${if (title.isNotBlank()) "\"$title\" " else ""}\nโหลดแอป: https://github.com/mamaff9522-sketch/-FriendTalk-APK/releases/download/friendtalk-test/FriendTalk.apk"
+    val i = android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, text)
+    runCatching { ctx.startActivity(android.content.Intent.createChooser(i, "แชร์ไลฟ์").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+}
+
+/** Live gift picker: real catalog/live items, paid with diamonds right away (host gets the recipient share). */
+@Composable
+private fun LiveGiftSheet(liveId: String, onDismiss: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val items by remember { com.example.social.GiftRepo.catalog("live") }.collectAsState(initial = null)
+    var wallet by remember { mutableStateOf<Triple<Int, Int, Int>?>(null) }
+    var tick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(tick) { wallet = com.example.social.GiftRepo.wallet() }
+    var sel by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    var msg by remember { mutableStateOf("") }
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(Modifier.fillMaxSize().clickable(onClick = onDismiss)) {
+            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)).background(Color(0xFF15102F))
+                .clickable(enabled = false) {}.dialogNavPadding().navigationBarsPadding().padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("ส่งของขวัญ", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text("💎 ${wallet?.third ?: "…"}", color = Color(0xFF7AF5FF), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+                Text("หักเพชรทันทีเมื่อส่ง สตรีมเมอร์ได้รับส่วนแบ่งเป็นเพชร", color = Color.White.copy(alpha = 0.55f), fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp, bottom = 12.dp))
+                val l = items
+                when {
+                    l == null -> CircularProgressIndicator(color = Neon)
+                    l.isEmpty() -> Text("ยังไม่มีของขวัญไลฟ์ (แอดมินเพิ่มได้)", color = Color.White.copy(alpha = 0.6f))
+                    else -> l.chunked(4).forEach { row ->
+                        Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            row.forEach { g ->
+                                val on = sel == g.id
+                                Column(Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).background(if (on) Color(0x33FF2FA8) else Color(0x14FFFFFF))
+                                    .border(1.5.dp, if (on) Neon else Color.Transparent, RoundedCornerShape(14.dp)).clickable { sel = g.id }.padding(vertical = 8.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Box(Modifier.size(44.dp)) { com.example.ui.social.StickerImage(g) }
+                                    Text(g.name, color = Color.White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text("💎 ${g.price}", color = Color(0xFF7AF5FF), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                    }
+                }
+                if (msg.isNotBlank()) Text(msg, color = Color(0xFFFFC94D), fontSize = 12.sp, modifier = Modifier.padding(vertical = 4.dp))
+                Box(Modifier.fillMaxWidth().padding(top = 6.dp).height(48.dp).clip(RoundedCornerShape(24.dp))
+                    .background(if (sel != null) Brush.horizontalGradient(listOf(Neon, Violet)) else Brush.horizontalGradient(listOf(Color(0x33FFFFFF), Color(0x33FFFFFF))))
+                    .clickable(enabled = sel != null && !busy) {
+                        val id = sel ?: return@clickable
+                        busy = true; msg = ""
+                        scope.launch {
+                            val r = RtcApi.post("/lives/$liveId/gift", JSONObject().put("giftId", id).put("count", 1))
+                            busy = false
+                            if (r?.code == 200) { tick++; onDismiss() } else msg = RtcApi.error(r) + if (r?.code == 402) " — เติมเพชรได้ที่หน้า 'ฉัน' → เหรียญ & เพชร" else ""
+                        }
+                    }, contentAlignment = Alignment.Center) {
+                    if (busy) CircularProgressIndicator(Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
+                    else Text("ส่งของขวัญ", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+/** One-tap cheapest gift (the 🌹 shortcut). */
+@Composable
+private fun QuickGift(liveId: String, onError: (String) -> Unit) {
+    val scope = rememberCoroutineScope()
+    val items by remember { com.example.social.GiftRepo.catalog("live") }.collectAsState(initial = emptyList())
+    val g = items.firstOrNull { it.id == "gift_flower" } ?: items.minByOrNull { it.price } ?: return
+    Box(Modifier.size(42.dp).clip(CircleShape).background(Color(0x55000000)).border(1.dp, Color(0x44FFFFFF), CircleShape).clickable {
+        scope.launch { val r = RtcApi.post("/lives/$liveId/gift", JSONObject().put("giftId", g.id).put("count", 1)); if (r?.code != 200) onError(RtcApi.error(r)) }
+    }.padding(7.dp), contentAlignment = Alignment.Center) { com.example.ui.social.StickerImage(g) }
 }
 
 @Composable
@@ -153,6 +319,7 @@ private fun SmallRound(icon: androidx.compose.ui.graphics.vector.ImageVector, de
 @Composable
 fun LiveHostScreen(onClose: () -> Unit) {
     val ctx = LocalContext.current
+    val myName by produceState("") { value = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid?.let { runCatching { com.example.ui.feed.HomeRepo.user(it).name }.getOrNull() }.orEmpty() }
     val scope = rememberCoroutineScope()
     var title by remember { mutableStateOf("") }
     var cat by remember { mutableStateOf("talk") }
@@ -186,12 +353,15 @@ fun LiveHostScreen(onClose: () -> Unit) {
                 Box(Modifier.fillMaxWidth().height(320.dp).align(Alignment.BottomCenter).background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xB3000000)))))
                 var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
                 LaunchedEffect(Unit) { while (true) { delay(1000); now = System.currentTimeMillis() } }
-                Column(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding().imePadding().padding(14.dp)) {
+                Column(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding().imePadding().padding(start = 14.dp, end = 14.dp, top = 14.dp, bottom = 40.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        LivePill(viewers)
+                        Text("LIVE", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Black,
+                            modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(LiveRed).padding(horizontal = 8.dp, vertical = 3.dp))
                         Spacer(Modifier.width(8.dp))
                         Text(((now - startedAt) / 1000).let { "%02d:%02d".format(it / 60, it % 60) }, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.weight(1f))
+                        ViewerFaces(id, viewers)
+                        Spacer(Modifier.width(8.dp))
                         Text("จบไลฟ์", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                             modifier = Modifier.clip(RoundedCornerShape(16.dp)).background(LiveRed).clickable { confirmEnd = true }.padding(horizontal = 14.dp, vertical = 7.dp))
                     }
@@ -200,6 +370,7 @@ fun LiveHostScreen(onClose: () -> Unit) {
                     LiveChatOverlay(id, Modifier.fillMaxWidth()) {
                         SmallRound(if (Rtc.micOn) Icons.Filled.Mic else Icons.Filled.MicOff, "ไมค์", active = !Rtc.micOn) { Rtc.toggleMic() }
                         SmallRound(Icons.Filled.Cameraswitch, "สลับกล้อง") { Rtc.switchCamera() }
+                        SmallRound(Icons.Filled.Share, "แชร์") { shareLive(ctx, myName, title) }
                     }
                 }
                 if (confirmEnd) androidx.compose.material3.AlertDialog(onDismissRequest = { confirmEnd = false },
@@ -273,6 +444,8 @@ fun LiveViewerScreen(liveId: String, onClose: () -> Unit) {
     val avatar = info?.child("avatar")?.getValue(String::class.java).orEmpty()
     val title = info?.child("title")?.getValue(String::class.java).orEmpty()
     val viewers = (info?.child("viewers")?.value as? Number)?.toInt() ?: 0
+    val hostUid = info?.child("hostUid")?.getValue(String::class.java).orEmpty()
+    var giftSheet by remember { mutableStateOf(false) }
     LaunchedEffect(liveId) {
         val r = RtcApi.post("/lives/$liveId/join")
         if (r?.code == 200 && r.json != null) {
@@ -299,27 +472,32 @@ fun LiveViewerScreen(liveId: String, onClose: () -> Unit) {
             }
             Box(Modifier.fillMaxWidth().height(160.dp).background(Brush.verticalGradient(listOf(Color(0x99000000), Color.Transparent))))
             Box(Modifier.fillMaxWidth().height(320.dp).align(Alignment.BottomCenter).background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xB3000000)))))
-            Column(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding().imePadding().padding(14.dp)) {
+            Column(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding().imePadding().padding(start = 14.dp, end = 14.dp, top = 14.dp, bottom = 40.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Row(Modifier.clip(RoundedCornerShape(24.dp)).background(Color(0x66000000)).padding(4.dp).padding(end = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.weight(1f, fill = false).clip(RoundedCornerShape(24.dp)).background(Color(0x66000000)).padding(4.dp).padding(end = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         com.example.ui.social.Avatar(avatar, name.ifBlank { "?" }, 34)
                         Spacer(Modifier.width(8.dp))
-                        Column {
+                        Column(Modifier.widthIn(max = 120.dp)) {
                             Text(name, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             if (title.isNotBlank()) Text(title, color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
+                        FollowButton(hostUid)
                     }
-                    Spacer(Modifier.weight(1f))
-                    LivePill(viewers)
+                    Spacer(Modifier.width(8.dp))
+                    ViewerFaces(liveId, viewers)
                     Spacer(Modifier.width(8.dp))
                     Box(Modifier.size(34.dp).clip(CircleShape).background(Color(0x66000000)).clickable(onClick = onClose), contentAlignment = Alignment.Center) {
                         Icon(Icons.Filled.Close, "ออก", tint = Color.White, modifier = Modifier.size(18.dp)) }
                 }
                 Spacer(Modifier.weight(1f))
+                if (err.isNotBlank() && hostOn) Text(err, color = Color(0xFFFFC94D), fontSize = 12.sp)
                 if (status != "ended") LiveChatOverlay(liveId, Modifier.fillMaxWidth()) {
-                    SmallRound(if (Rtc.speakerOn) Icons.Filled.VolumeUp else Icons.Filled.VolumeOff, "เสียง", active = !Rtc.speakerOn) { Rtc.toggleSpeaker() }
+                    QuickGift(liveId) { err = it }
+                    SmallRound(Icons.Filled.CardGiftcard, "ของขวัญ") { giftSheet = true }
+                    SmallRound(Icons.Filled.Share, "แชร์") { shareLive(ctx, name, title) }
                 }
             }
+            if (giftSheet) LiveGiftSheet(liveId) { giftSheet = false }
         }
     }
 }
