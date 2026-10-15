@@ -2006,6 +2006,13 @@ const SEED_LIVE = [
   ['gift_crown', 'มงกุฎทอง', '👑', 500, 'ROYAL'], ['gift_rocket', 'จรวดซูเปอร์สตาร์', '🚀', 1000, 'BLAST']];
 (async () => { try { await db.ref('catalog/live').transaction(c => c || Object.fromEntries(SEED_LIVE.map(([id, name, icon, price, fx], i) => [id, { name, icon, price, animationEffect: fx, category: 'live', enabled: true, order: i, imagePath: '' }]))); } catch (e) { console.error('seed live', e.message); } })();
 // Built-in live gift pack (artwork in assets/gifts, served below). Added once; afterwards admins own the catalog (edit / disable / delete stays as they left it).
+// Page 1 of the mockups (cheapest, shown first). 'existing' = same gift already in the catalog → only give it the picture, no duplicate.
+const GIFT_PACK_1 = [
+  ['wingheart', 'หัวใจวิ้ง', '💖', 30], ['teddy', 'ตุ๊กตาหมี', '🧸', 50], ['cake', 'เค้กวันเกิด', '🎂', 80], ['bouquet', 'ช่อดอกไม้', '💐', 100],
+  ['goldcrown', 'มงกุฎทอง', '👑', 300, 'gift_crown'], ['diamondring', 'แหวนเพชร', '💍', 500], ['luckystar', 'ดาวนำโชค', '⭐', 20], ['loveballoon', 'ลูกโป่งรัก', '🎈', 40],
+  ['bubbletea', 'ชานมไข่มุก', '🧋', 60, 'gift_tea'], ['giftbox', 'กล่องของขวัญ', '🎁', 120]];
+// Chat-gift catalog seeds (catalog/chat) that match a pack picture: add the picture only if the item has none.
+const CHAT_PICS = { heart: 'wingheart', bear: 'teddy', cake: 'cake', bouquet: 'bouquet', crown: 'goldcrown', ring: 'diamondring', coffee: 'coffee' };
 const GIFT_PACK = [
   ['sportscar', 'รถสปอร์ต', '🏎️', 800], ['castle', 'ปราสาทฝัน', '🏰', 1000], ['sundae', 'ไอศกรีมซันเดย์', '🍨', 70], ['kitty', 'แมวเหมียว', '🐱', 90],
   ['lovekey', 'กุญแจรัก', '🗝️', 150], ['starglasses', 'แว่นดาว', '🤩', 110], ['rocket', 'จรวดทะยานฟ้า', '🚀', 250], ['trophy', 'ถ้วยรางวัล', '🏆', 400],
@@ -2026,14 +2033,24 @@ app.get('/gift-pack/:f', (q, r) => {
 });
 (async () => {
   try {
-    const flag = await db.ref('appConfig/giftPackV1').transaction(c => (c ? undefined : { at: Date.now() }));
-    if (!flag.committed) return; // already added once — never re-add what an admin removed
-    const have = Object.keys((await db.ref('catalog/live').get()).val() || {}).length, upd = {};
-    GIFT_PACK.forEach(([id, name, icon, price], i) => {
-      upd[`catalog/live/p_${id}`] = { name, icon, price, animationEffect: packFx(price), category: 'live', enabled: true, order: have + i, imagePath: '', imageUrl: `${PACK_URL}${id}.webp`, updatedAt: Date.now(), updatedBy: 'system' };
-    });
-    await db.ref().update(upd);
-  } catch (e) { console.error('seed gift pack', e.message); db.ref('appConfig/giftPackV1').remove().catch(() => {}); }
+    const live = (await db.ref('catalog/live').get()).val() || {}, upd = {};
+    let order = Object.keys(live).length;
+    const add = ([id, name, icon, price, existing]) => {
+      if (existing) { if (live[existing] && !live[existing].imageUrl) upd[`catalog/live/${existing}/imageUrl`] = `${PACK_URL}${id}.webp`; if (live[existing]) return; }
+      upd[`catalog/live/p_${id}`] = { name, icon, price, animationEffect: packFx(price), category: 'live', enabled: true, order: order++, imagePath: '', imageUrl: `${PACK_URL}${id}.webp`, updatedAt: Date.now(), updatedBy: 'system' };
+    };
+    // each part is added once (flag); afterwards whatever an admin edits or deletes stays that way
+    const once = async flag => (await db.ref(`appConfig/${flag}`).transaction(c => (c ? undefined : { at: Date.now() }))).committed;
+    const v1 = await once('giftPackV1'), v2 = await once('giftPackV2');
+    if (v2) GIFT_PACK_1.forEach(add);
+    if (v1) GIFT_PACK.forEach(add);
+    if (v2) {
+      const chat = (await db.ref('catalog/chat').get()).val() || {};
+      for (const [cid, pic] of Object.entries(CHAT_PICS)) if (chat[cid] && !chat[cid].imageUrl) upd[`catalog/chat/${cid}/imageUrl`] = `${PACK_URL}${pic}.webp`;
+    }
+    if (Object.keys(upd).length) await db.ref().update(upd).catch(async e => { // failed → let the next start try again
+      if (v1) await db.ref('appConfig/giftPackV1').remove().catch(() => {}); if (v2) await db.ref('appConfig/giftPackV2').remove().catch(() => {}); throw e; });
+  } catch (e) { console.error('seed gift pack', e.message); }
 })();
 const GIFT_CFG_SEED = { enabled: true, autoFriend: true, adminPercent: 20, recipientPercent: 80 };
 async function giftCfg() { return { ...GIFT_CFG_SEED, ...((await db.ref('appConfig/gifts').get()).val() || {}) }; }
