@@ -25,7 +25,7 @@ android {
     buildConfigField("String", "ADMOB_TEST_INTERSTITIAL_ID", "\"ca-app-pub-3940256099942544/1033173712\"")
     versionName = "1.2.0"
     // Phones only (keeps the Agora voice/video native libs out of the x86 emulator ABIs → much smaller APK).
-    ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
+    // native ABIs are set per flavor below (flavor filters merge with defaultConfig, so none here)
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -74,11 +74,15 @@ android {
       dimension = "dist"
       applicationId = "com.example"
       buildConfigField("boolean", "PLAY_STORE", "false")
+      // test APK shared by link: 64-bit only (~60 MB instead of ~100 MB); nearly every phone since ~2017
+      ndk { abiFilters += listOf("arm64-v8a") }
     }
     create("play") {
       dimension = "dist"
       applicationId = "com.friendtalk.app"
       buildConfigField("boolean", "PLAY_STORE", "true")
+      // Play splits the bundle per device, so keep 32-bit too (users only download their own ABI)
+      ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
   }
   compileOptions {
