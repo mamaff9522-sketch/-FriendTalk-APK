@@ -2036,8 +2036,8 @@ app.get('/gift-pack/:f', (q, r) => {
     const live = (await db.ref('catalog/live').get()).val() || {}, upd = {};
     let order = Object.keys(live).length;
     const add = ([id, name, icon, price, existing]) => {
-      if (existing) { if (live[existing] && !live[existing].imageUrl) upd[`catalog/live/${existing}/imageUrl`] = `${PACK_URL}${id}.webp`; if (live[existing]) return; }
-      upd[`catalog/live/p_${id}`] = { name, icon, price, animationEffect: packFx(price), category: 'live', enabled: true, order: order++, imagePath: '', imageUrl: `${PACK_URL}${id}.webp`, updatedAt: Date.now(), updatedBy: 'system' };
+      if (existing) { if (live[existing] && !live[existing].imageUrl) upd[`catalog/live/${existing}/imageUrl`] = `${PACK_URL}${id}.webp?v=3`; if (live[existing]) return; }
+      upd[`catalog/live/p_${id}`] = { name, icon, price, animationEffect: packFx(price), category: 'live', enabled: true, order: order++, imagePath: '', imageUrl: `${PACK_URL}${id}.webp?v=3`, updatedAt: Date.now(), updatedBy: 'system' };
     };
     // each part is added once (flag); afterwards whatever an admin edits or deletes stays that way
     const once = async flag => (await db.ref(`appConfig/${flag}`).transaction(c => (c ? undefined : { at: Date.now() }))).committed;
@@ -2046,10 +2046,17 @@ app.get('/gift-pack/:f', (q, r) => {
     if (v1) GIFT_PACK.forEach(add);
     if (v2) {
       const chat = (await db.ref('catalog/chat').get()).val() || {};
-      for (const [cid, pic] of Object.entries(CHAT_PICS)) if (chat[cid] && !chat[cid].imageUrl) upd[`catalog/chat/${cid}/imageUrl`] = `${PACK_URL}${pic}.webp`;
+      for (const [cid, pic] of Object.entries(CHAT_PICS)) if (chat[cid] && !chat[cid].imageUrl) upd[`catalog/chat/${cid}/imageUrl`] = `${PACK_URL}${pic}.webp?v=3`;
+    }
+    // v3: pictures re-cut with a transparent background → new ?v so phones drop the cached square ones (only items still using our pack picture)
+    const v3 = await once('giftPackV3');
+    if (v3) for (const ch of ['live', 'chat']) {
+      const cur = ch === 'live' ? { ...live, ...Object.fromEntries(Object.entries(upd).filter(([k]) => k.startsWith('catalog/live/') && k.split('/').length === 3).map(([k, v]) => [k.split('/')[2], v])) } : ((await db.ref('catalog/chat').get()).val() || {});
+      for (const [id, it] of Object.entries(cur)) if (typeof it?.imageUrl === 'string' && it.imageUrl.startsWith(PACK_URL) && !it.imageUrl.includes('?v=')) upd[`catalog/${ch}/${id}/imageUrl`] = `${it.imageUrl}?v=3`;
+      for (const [k, v] of Object.entries(upd)) if (k.startsWith(`catalog/${ch}/`) && k.endsWith('/imageUrl') && typeof v === 'string' && v.startsWith(PACK_URL) && !v.includes('?v=')) upd[k] = `${v}?v=3`;
     }
     if (Object.keys(upd).length) await db.ref().update(upd).catch(async e => { // failed → let the next start try again
-      if (v1) await db.ref('appConfig/giftPackV1').remove().catch(() => {}); if (v2) await db.ref('appConfig/giftPackV2').remove().catch(() => {}); throw e; });
+      for (const [f, mine] of [['giftPackV1', v1], ['giftPackV2', v2], ['giftPackV3', v3]]) if (mine) await db.ref(`appConfig/${f}`).remove().catch(() => {}); throw e; });
   } catch (e) { console.error('seed gift pack', e.message); }
 })();
 // Built-in chat sticker packs (free, artwork in assets/stickers/sNN_MM.webp). Added once to catalog/chatStickers; admins own them afterwards.
