@@ -26,6 +26,9 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.EmojiEmotions
+import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Videocam
@@ -169,6 +172,9 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
     var vipInfo by remember { mutableStateOf(false) }
     var giftSheet by remember { mutableStateOf(false) }
     var stickerSheet by remember { mutableStateOf(false) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val focus = androidx.compose.ui.platform.LocalFocusManager.current
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     // free chat stickers uploaded by admins (catalog/chatStickers), for drawing sticker messages
     val chatStickers by remember { com.example.social.GiftRepo.catalog("chatStickers", enabledOnly = false) }.collectAsState(initial = emptyList())
     val chatStickerMap = remember(chatStickers) { com.example.social.ChatSticker.BUILT_IN.associateBy { it.id } + chatStickers.associateBy { it.id } }
@@ -293,8 +299,8 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                 if (editDecor) RoomDecorEditor(chatId, decor, token) { saved -> editDecor = false; if (saved) decorTick++ }
                 if (vipInfo) com.example.ui.feed.VipDetailsDialog { vipInfo = false }
                 if (giftSheet) ChatGiftSheet(onDismiss = { giftSheet = false }) { item -> giftSheet = false; scope.launch { status = com.example.social.GiftRepo.sendGift(chatId, item.id).msg } }
-                if (stickerSheet) ChatStickerSheet(onDismiss = { stickerSheet = false }) { item ->
-                    stickerSheet = false
+                fun sendStickerItem(item: com.example.social.CatalogItem) {
+                    StickerPanelState.remember(ctx, item.id)
                     scope.launch {
                         val pc = paid
                         if (pc != null && pc.first && pc.second != me) { PaidChat.send(chatId, com.example.social.ChatSticker.encode(item.id))?.let { e -> status = e }; return@launch }
@@ -315,8 +321,8 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                     Row(Modifier.weight(1f).heightIn(min = 52.dp).clip(fieldShape).background(AppThemeMode.field)
                         .border(1.2.dp, Brush.linearGradient(listOf(Color(0xFFFF2FA8), Color(0xFF9B3DFF), Color(0xFFFFC94D))), fieldShape).padding(horizontal = 2.dp),
                         verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { stickerSheet = true }, modifier = Modifier.size(42.dp)) { Icon(Icons.Filled.EmojiEmotions, tr("สติกเกอร์"), tint = Color(0xFFC48CFF)) }
-                        TextField(value = input, onValueChange = { if (it.length <= 2000) input = it }, modifier = Modifier.weight(1f),
+                        IconButton(onClick = { if (!stickerSheet) { focus.clearFocus(); keyboard?.hide() }; stickerSheet = !stickerSheet }, modifier = Modifier.size(42.dp)) { Icon(Icons.Filled.EmojiEmotions, tr("สติกเกอร์"), tint = if (stickerSheet) Color(0xFFFF2FA8) else Color(0xFFC48CFF)) }
+                        TextField(value = input, onValueChange = { if (it.length <= 2000) input = it }, modifier = Modifier.weight(1f).onFocusChanged { if (it.isFocused) stickerSheet = false },
                             placeholder = { Text(tr("พิมพ์ข้อความ…"), color = AppThemeMode.fieldHint, fontSize = 15.sp) }, maxLines = 5,
                             textStyle = androidx.compose.ui.text.TextStyle(fontSize = 15.sp),
                             colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent, disabledContainerColor = Color.Transparent,
@@ -332,6 +338,9 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                         Icon(Icons.AutoMirrored.Filled.Send, tr("ส่ง"), tint = if (canSend) PureWhite else AppThemeMode.muted, modifier = Modifier.size(22.dp))
                     }
                 }
+                // LINE-style sticker keyboard: opens in place of the phone keyboard, under the message box
+                if (stickerSheet && cs?.canSend != false) StickerPanel(onPick = { sendStickerItem(it) })
+                androidx.activity.compose.BackHandler(enabled = stickerSheet) { stickerSheet = false }
             }
         }
     }
@@ -467,5 +476,62 @@ private fun DayChip(at: Long) {
     val label = when (dayKey(at)) { dayKey(now) -> tr("วันนี้"); dayKey(now - 86_400_000L) -> tr("เมื่อวาน"); else -> SimpleDateFormat("d MMM yyyy", Locale("th", "TH")).format(Date(at)) }
     Box(Modifier.fillMaxWidth().padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
         Text(label, color = AppThemeMode.muted, fontSize = 11.sp, modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(AppThemeMode.pill).padding(horizontal = 12.dp, vertical = 3.dp))
+    }
+}
+
+/** Recently sent stickers (on this phone) for the first tab of the sticker keyboard. */
+internal object StickerPanelState {
+    private const val KEY = "recentStickers"
+    fun recent(ctx: android.content.Context): List<String> = ctx.getSharedPreferences("friendtalk", 0).getString(KEY, "").orEmpty().split(',').filter { it.isNotBlank() }
+    fun remember(ctx: android.content.Context, id: String) {
+        val l = (listOf(id) + recent(ctx).filter { it != id }).take(16)
+        ctx.getSharedPreferences("friendtalk", 0).edit().putString(KEY, l.joinToString(",")).apply()
+    }
+}
+
+/**
+ * Sticker keyboard like LINE: a row of pack tabs (each shows the pack's first sticker; first tab = recently used),
+ * and the selected pack's stickers in a grid below. Tap a sticker = send. Stays open for sending more.
+ */
+@Composable
+internal fun StickerPanel(onPick: (com.example.social.CatalogItem) -> Unit) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val items by remember { com.example.social.GiftRepo.catalog("chatStickers") }.collectAsState(initial = null)
+    val all = items?.ifEmpty { com.example.social.ChatSticker.BUILT_IN }
+    var recentIds by remember { mutableStateOf(StickerPanelState.recent(ctx)) }
+    val packs = remember(all) { all.orEmpty().groupBy { it.category.ifBlank { "สติกเกอร์" } }.toList() }
+    var tab by rememberSaveable { mutableStateOf(-2) } // -1 = recent, -2 = not chosen yet
+    LaunchedEffect(packs.size) { if (tab == -2 && packs.isNotEmpty()) tab = if (recentIds.isNotEmpty()) -1 else 0 }
+    Column(Modifier.fillMaxWidth().height(300.dp).background(AppThemeMode.dialog)) {
+        HorizontalDivider(color = AppThemeMode.divider)
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            @Composable fun TabBox(on: Boolean, onClick: () -> Unit, content: @Composable BoxScope.() -> Unit) =
+                Box(Modifier.size(width = 52.dp, height = 40.dp).clip(RoundedCornerShape(10.dp)).background(if (on) AppThemeMode.field else Color.Transparent)
+                    .clickable(onClick = onClick).padding(4.dp), contentAlignment = Alignment.Center, content = content)
+            if (recentIds.isNotEmpty()) TabBox(tab == -1, { tab = -1 }) { Icon(Icons.Filled.AccessTime, tr("ล่าสุด"), tint = Color(0xFF7AA2FF)) }
+            packs.forEachIndexed { i, (_, list) -> TabBox(tab == i, { tab = i }) { StickerImage(list.first()) } }
+        }
+        val shown = when {
+            all == null -> null
+            tab == -1 -> recentIds.mapNotNull { id -> all.firstOrNull { it.id == id } }
+            else -> packs.getOrNull(tab)?.second.orEmpty()
+        }
+        if (tab >= 0) packs.getOrNull(tab)?.first?.let { Text(it, color = AppThemeMode.muted, fontSize = 11.sp, modifier = Modifier.padding(start = 12.dp, bottom = 2.dp)) }
+        when {
+            shown == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Pink500) }
+            shown.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(tr("ยังไม่มีสติกเกอร์"), color = AppThemeMode.muted) }
+            else -> {
+                val wide = shown.any { it.imageUrl.isNotBlank() }
+                androidx.compose.foundation.lazy.grid.LazyVerticalGrid(androidx.compose.foundation.lazy.grid.GridCells.Fixed(if (wide) 3 else 4), Modifier.fillMaxSize().padding(horizontal = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    contentPadding = PaddingValues(bottom = 8.dp)) {
+                    items(shown.size) { i -> val it = shown[i]
+                        Box(Modifier.aspectRatio(if (wide) 1.4f else 1f).clip(RoundedCornerShape(10.dp)).clickable {
+                            onPick(it); recentIds = (listOf(it.id) + recentIds.filter { r -> r != it.id }).take(16)
+                        }.padding(3.dp)) { StickerImage(it) }
+                    }
+                }
+            }
+        }
     }
 }
