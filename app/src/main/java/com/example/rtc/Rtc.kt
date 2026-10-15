@@ -78,7 +78,7 @@ object Rtc {
             autoSubscribeVideo = video
             if (!publisher) audienceLatencyLevel = Constants.AUDIENCE_LATENCY_LEVEL_LOW_LATENCY
         }
-        if (publisher && video) e.startPreview()
+        if (publisher && video) { e.startPreview(); Beauty.load(ctx); Beauty.apply(e) } // face beauty on my camera
         micOn = true; camOn = video; speakerOn = video || live
         e.setDefaultAudioRoutetoSpeakerphone(speakerOn)
         val rc = e.joinChannel(s.token, s.channel, s.uid, o)

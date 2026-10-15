@@ -93,6 +93,8 @@ dependencies {
   implementation("com.android.billingclient:billing-ktx:7.1.1")
   // Voice/video calls + live streaming (Agora RTC, basic build without optional extensions).
   implementation("io.agora.rtc:full-rtc-basic:4.6.4")
+  // Face beauty / colour / low-light filters for the camera (Agora clear-vision extension).
+  implementation("io.agora.rtc:clear-vision:4.6.4")
   implementation(platform(libs.androidx.compose.bom))
   implementation(platform(libs.firebase.bom))
 implementation("com.google.firebase:firebase-auth")

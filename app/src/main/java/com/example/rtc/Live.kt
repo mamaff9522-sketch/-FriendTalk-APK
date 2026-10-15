@@ -144,28 +144,21 @@ private fun CommentsPanel(liveId: String, msgs: List<LiveMsg>, modifier: Modifie
         text = ""; emoji = false
         scope.launch { val r = RtcApi.post("/lives/$liveId/chat", JSONObject().put("text", t)); err = if (r?.code == 200) "" else RtcApi.error(r) }
     }
-    Column(modifier.background(Color(0xFF110A26))) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("💬 ความคิดเห็น", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.width(6.dp))
-            Text("${msgs.count { it.type == "chat" }}", color = Color.White.copy(alpha = 0.5f), fontSize = 12.sp)
-        }
-        Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0x1AFFFFFF)))
-        if (msgs.isEmpty()) Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-            Text("ยังไม่มีความคิดเห็น — ทักทายกันเลย 👋", color = Color.White.copy(alpha = 0.45f), fontSize = 13.sp)
-        } else LazyColumn(state = list, modifier = Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    // floats over the full-screen video: transparent background, comments in dark pills, newest at the bottom
+    Column(modifier) {
+        if (msgs.isNotEmpty()) LazyColumn(state = list, modifier = Modifier.fillMaxWidth(0.82f).heightIn(max = 240.dp), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             items(msgs, key = { it.id }) { m ->
                 when (m.type) {
-                    "join" -> Row(verticalAlignment = Alignment.CenterVertically) {
+                    "join" -> Row(Modifier.clip(RoundedCornerShape(14.dp)).background(Color(0x40000000)).padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("👋  ", fontSize = 12.sp)
                         Text(m.name, color = Color(0xFF9FD8FF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         Text(" เข้าร่วมแล้ว", color = Color.White.copy(alpha = 0.5f), fontSize = 12.sp)
                     }
-                    else -> Row(verticalAlignment = Alignment.Top) {
-                        com.example.ui.social.Avatar(m.avatar, m.name.ifBlank { "?" }, 32)
-                        Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(m.name, color = Color.White.copy(alpha = 0.55f), fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    else -> Row(Modifier.clip(RoundedCornerShape(18.dp)).background(Color(0x59000000)).padding(start = 4.dp, end = 12.dp, top = 4.dp, bottom = 5.dp), verticalAlignment = Alignment.Top) {
+                        com.example.ui.social.Avatar(m.avatar, m.name.ifBlank { "?" }, 28)
+                        Spacer(Modifier.width(8.dp))
+                        Column(Modifier.weight(1f, fill = false)) {
+                            Text(m.name, color = Color(0xFFFFD98A), fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                             if (m.type == "gift") Row(Modifier.padding(top = 2.dp).clip(RoundedCornerShape(10.dp)).background(Color(0x33FFC94D)).padding(horizontal = 8.dp, vertical = 3.dp)) {
                                 Text("🎁 ส่ง ${m.giftName} ${m.icon} x${m.count}", color = Color(0xFFFFE08A), fontSize = 13.sp, fontWeight = FontWeight.Bold) }
                             else Text(m.text, color = Color.White, fontSize = 14.sp)
@@ -175,11 +168,11 @@ private fun CommentsPanel(liveId: String, msgs: List<LiveMsg>, modifier: Modifie
             }
         }
         if (err.isNotBlank()) Text(err, color = Color(0xFFFFC94D), fontSize = 11.sp, modifier = Modifier.padding(horizontal = 16.dp))
-        if (emoji) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 10.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        if (emoji) Row(Modifier.padding(horizontal = 12.dp).clip(RoundedCornerShape(20.dp)).background(Color(0x99000000)).horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             QUICK_EMOJI.forEach { e -> Text(e, fontSize = 24.sp, modifier = Modifier.clip(CircleShape).clickable { text = (text + e).take(200) }.padding(5.dp)) }
         }
-        Row(Modifier.fillMaxWidth().background(Color(0xFF15102F)).padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(Modifier.weight(1f).clip(RoundedCornerShape(22.dp)).background(Color(0x1FFFFFFF)).padding(start = 14.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.weight(1f).clip(RoundedCornerShape(22.dp)).background(Color(0x66000000)).border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(22.dp)).padding(start = 14.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1f).padding(vertical = 10.dp)) {
                     if (text.isEmpty()) Text("แสดงความคิดเห็น…", color = Color.White.copy(alpha = 0.5f), fontSize = 14.sp)
                     BasicTextField(text, { text = it.take(200) }, singleLine = true, textStyle = TextStyle(color = Color.White, fontSize = 14.sp), cursorBrush = SolidColor(Color.White), modifier = Modifier.fillMaxWidth(),
@@ -330,6 +323,7 @@ fun LiveHostScreen(onClose: () -> Unit) {
     var viewers by remember { mutableIntStateOf(0) }
     var startedAt by remember { mutableLongStateOf(0L) }
     var confirmEnd by remember { mutableStateOf(false) }
+    var beautySheet by remember { mutableStateOf(false) }
     val askPerm = rememberRtcPermission { err = "ต้องอนุญาตกล้องและไมโครโฟนก่อนไลฟ์" }
     fun stop() { val id = liveId; liveId = null; Rtc.leave(); if (id != null) RtcScope.launch { RtcApi.post("/lives/$id/end") } }
     fun end() { stop(); onClose() }
@@ -351,12 +345,12 @@ fun LiveHostScreen(onClose: () -> Unit) {
                 var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
                 LaunchedEffect(Unit) { while (true) { delay(1000); now = System.currentTimeMillis() } }
                 val msgs = rememberLiveChat(id)
-                Column(Modifier.fillMaxSize().background(Color(0xFF110A26)).systemBarsPadding().dialogNavPadding().imePadding()) {
-                    // video (top) — rounded card, not full screen
-                    Box(Modifier.fillMaxWidth().weight(0.6f).padding(horizontal = 8.dp).padding(top = 6.dp).clip(RoundedCornerShape(22.dp)).background(Color.Black)) {
-                        if (Rtc.camOn) AndroidView(factory = { Rtc.localView(it, overlay = false) }, modifier = Modifier.fillMaxSize())
-                        else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("ปิดกล้องอยู่", color = Color.White.copy(alpha = 0.7f)) }
-                        Box(Modifier.fillMaxWidth().height(110.dp).background(Brush.verticalGradient(listOf(Color(0x99000000), Color.Transparent))))
+                Box(Modifier.fillMaxSize().background(Color.Black)) {
+                    if (Rtc.camOn) AndroidView(factory = { Rtc.localView(it, overlay = false) }, modifier = Modifier.fillMaxSize())
+                    else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("ปิดกล้องอยู่", color = Color.White.copy(alpha = 0.7f)) }
+                    Box(Modifier.fillMaxWidth().height(150.dp).background(Brush.verticalGradient(listOf(Color(0x99000000), Color.Transparent))))
+                    Box(Modifier.fillMaxWidth().fillMaxHeight(0.45f).align(Alignment.BottomCenter).background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xB3000000)))))
+                    Column(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding().imePadding()) {
                         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Text("LIVE", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Black,
                                 modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(LiveRed).padding(horizontal = 8.dp, vertical = 3.dp))
@@ -368,15 +362,18 @@ fun LiveHostScreen(onClose: () -> Unit) {
                             Text("จบไลฟ์", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                                 modifier = Modifier.clip(RoundedCornerShape(16.dp)).background(LiveRed).clickable { confirmEnd = true }.padding(horizontal = 14.dp, vertical = 7.dp))
                         }
-                        if (err.isNotBlank() || Rtc.error != null) Text(Rtc.error ?: err, color = Color(0xFFFFC94D), fontSize = 12.sp, modifier = Modifier.align(Alignment.Center))
-                        GiftBanner(msgs, Modifier.align(Alignment.BottomStart).padding(10.dp))
-                    }
-                    CommentsPanel(id, msgs, Modifier.fillMaxWidth().weight(0.4f).padding(top = 8.dp)) {
-                        SmallRound(if (Rtc.micOn) Icons.Filled.Mic else Icons.Filled.MicOff, "ไมค์", active = !Rtc.micOn) { Rtc.toggleMic() }
-                        SmallRound(Icons.Filled.Cameraswitch, "สลับกล้อง") { Rtc.switchCamera() }
-                        SmallRound(Icons.Filled.Share, "แชร์") { shareLive(ctx, myName, title) }
+                        if (err.isNotBlank() || Rtc.error != null) Text(Rtc.error ?: err, color = Color(0xFFFFC94D), fontSize = 12.sp, modifier = Modifier.padding(horizontal = 14.dp))
+                        Spacer(Modifier.weight(1f))
+                        GiftBanner(msgs, Modifier.padding(start = 12.dp, bottom = 8.dp))
+                        CommentsPanel(id, msgs, Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+                            SmallRound(Icons.Filled.AutoAwesome, "แต่งหน้า", active = Beauty.on) { beautySheet = true }
+                            SmallRound(if (Rtc.micOn) Icons.Filled.Mic else Icons.Filled.MicOff, "ไมค์", active = !Rtc.micOn) { Rtc.toggleMic() }
+                            SmallRound(Icons.Filled.Cameraswitch, "สลับกล้อง") { Rtc.switchCamera() }
+                            SmallRound(Icons.Filled.Share, "แชร์") { shareLive(ctx, myName, title) }
+                        }
                     }
                 }
+                if (beautySheet) BeautySheet { beautySheet = false }
                 if (confirmEnd) androidx.compose.material3.AlertDialog(onDismissRequest = { confirmEnd = false },
                     confirmButton = { androidx.compose.material3.TextButton(onClick = { confirmEnd = false; end() }) { Text("จบไลฟ์") } },
                     dismissButton = { androidx.compose.material3.TextButton(onClick = { confirmEnd = false }) { Text("ไลฟ์ต่อ") } },
@@ -460,23 +457,26 @@ fun LiveViewerScreen(liveId: String, onClose: () -> Unit) {
     DisposableEffect(liveId) { onDispose { Rtc.leave(); RtcScope.launch { RtcApi.post("/lives/$liveId/leave") } } }
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         val msgs = rememberLiveChat(liveId)
-        Column(Modifier.fillMaxSize().background(Color(0xFF110A26)).systemBarsPadding().dialogNavPadding().imePadding()) {
-            Box(Modifier.fillMaxWidth().weight(0.6f).padding(horizontal = 8.dp).padding(top = 6.dp).clip(RoundedCornerShape(22.dp)).background(Color(0xFF0B0824))) {
-                val s = session
-                val hostOn = s != null && s.peerUid in Rtc.remoteUids
-                if (hostOn) key(s!!.peerUid) { AndroidView(factory = { Rtc.remoteView(it, s.peerUid) }, modifier = Modifier.fillMaxSize()) }
-                else {
-                    if (avatar.isNotBlank()) AsyncImage(model = avatar, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(), alpha = 0.35f)
-                    Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-                        when {
-                            status == "ended" -> { Text("ไลฟ์นี้จบแล้ว", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                                Text("ขอบคุณที่มาร่วมดู 💖", color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp) }
-                            err.isNotBlank() -> Text(err, color = Color(0xFFFFC94D), fontSize = 14.sp)
-                            else -> { CircularProgressIndicator(color = Color.White); Spacer(Modifier.height(10.dp)); Text("กำลังเชื่อมต่อไลฟ์…", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp) }
-                        }
+        Box(Modifier.fillMaxSize().background(Color(0xFF0B0824))) {
+            val s = session
+            val hostOn = s != null && s.peerUid in Rtc.remoteUids
+            if (hostOn) key(s!!.peerUid) { AndroidView(factory = { Rtc.remoteView(it, s.peerUid) }, modifier = Modifier.fillMaxSize()) }
+            else {
+                if (avatar.isNotBlank()) AsyncImage(model = avatar, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(), alpha = 0.35f)
+                Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                    when {
+                        status == "ended" -> { Text("ไลฟ์นี้จบแล้ว", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            Text("ขอบคุณที่มาร่วมดู 💖", color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp)
+                            Spacer(Modifier.height(14.dp))
+                            Text("ปิดหน้านี้", color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(Brush.horizontalGradient(listOf(Neon, Violet))).clickable(onClick = onClose).padding(horizontal = 24.dp, vertical = 10.dp)) }
+                        err.isNotBlank() -> Text(err, color = Color(0xFFFFC94D), fontSize = 14.sp)
+                        else -> { CircularProgressIndicator(color = Color.White); Spacer(Modifier.height(10.dp)); Text("กำลังเชื่อมต่อไลฟ์…", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp) }
                     }
                 }
-                Box(Modifier.fillMaxWidth().height(110.dp).background(Brush.verticalGradient(listOf(Color(0x99000000), Color.Transparent))))
+            }
+            Box(Modifier.fillMaxWidth().height(150.dp).background(Brush.verticalGradient(listOf(Color(0x99000000), Color.Transparent))))
+            Box(Modifier.fillMaxWidth().fillMaxHeight(0.45f).align(Alignment.BottomCenter).background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xB3000000)))))
+            Column(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding().imePadding()) {
                 Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Row(Modifier.weight(1f, fill = false).clip(RoundedCornerShape(24.dp)).background(Color(0x66000000)).padding(4.dp).padding(end = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         com.example.ui.social.Avatar(avatar, name.ifBlank { "?" }, 34)
@@ -493,17 +493,13 @@ fun LiveViewerScreen(liveId: String, onClose: () -> Unit) {
                     Box(Modifier.size(34.dp).clip(CircleShape).background(Color(0x66000000)).clickable(onClick = onClose), contentAlignment = Alignment.Center) {
                         Icon(Icons.Filled.Close, "ออก", tint = Color.White, modifier = Modifier.size(18.dp)) }
                 }
-                Text("LIVE", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Black,
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp).clip(RoundedCornerShape(6.dp)).background(LiveRed).padding(horizontal = 6.dp, vertical = 2.dp))
-                GiftBanner(msgs, Modifier.align(Alignment.BottomStart).padding(10.dp))
-            }
-            if (status != "ended") CommentsPanel(liveId, msgs, Modifier.fillMaxWidth().weight(0.4f).padding(top = 8.dp)) {
-                // one gift button: opens the gift picker (rose pre-selected), sending needs the explicit "ส่ง …" tap there
-                Box(Modifier.size(42.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Neon, Violet))).clickable { giftSheet = true }, contentAlignment = Alignment.Center) {
-                    Icon(Icons.Filled.CardGiftcard, "ของขวัญ", tint = Color.White, modifier = Modifier.size(21.dp)) }
-                SmallRound(Icons.Filled.Share, "แชร์") { shareLive(ctx, name, title) }
-            } else Box(Modifier.fillMaxWidth().weight(0.4f), contentAlignment = Alignment.Center) {
-                Text("ปิดหน้านี้", color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(Brush.horizontalGradient(listOf(Neon, Violet))).clickable(onClick = onClose).padding(horizontal = 24.dp, vertical = 10.dp))
+                Spacer(Modifier.weight(1f))
+                GiftBanner(msgs, Modifier.padding(start = 12.dp, bottom = 8.dp))
+                if (status != "ended") CommentsPanel(liveId, msgs, Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+                    Box(Modifier.size(42.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Neon, Violet))).clickable { giftSheet = true }, contentAlignment = Alignment.Center) {
+                        Icon(Icons.Filled.CardGiftcard, "ของขวัญ", tint = Color.White, modifier = Modifier.size(21.dp)) }
+                    SmallRound(Icons.Filled.Share, "แชร์") { shareLive(ctx, name, title) }
+                }
             }
         }
         if (giftSheet) LiveGiftSheet(liveId) { giftSheet = false }
