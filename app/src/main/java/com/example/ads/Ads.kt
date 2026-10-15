@@ -294,6 +294,8 @@ fun AdsPageContent(feature: String?, onClose: (() -> Unit)?, returnAfterReward: 
     val l by AdRoom.limits.collectAsState()
     var busy by remember { mutableStateOf<String?>(null) }
     var msg by remember { mutableStateOf("") }
+    var msgFor by remember { mutableStateOf<String?>(null) } // offer whose card shows the message (right under its button)
+    LaunchedEffect(msg) { if (msg.isNotBlank()) android.widget.Toast.makeText(ctx, msg, android.widget.Toast.LENGTH_LONG).show() }
     var vipInfo by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { AdRoom.refresh() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
@@ -358,6 +360,7 @@ fun AdsPageContent(feature: String?, onClose: (() -> Unit)?, returnAfterReward: 
                         Box(Modifier.fillMaxWidth().padding(top = 12.dp).clip(RoundedCornerShape(26.dp))
                             .background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Pink500, Pink400))).alpha(if (en) 1f else 0.5f)
                             .clickable(enabled = en) {
+                                msgFor = o.id
                                 val act = ctx.activity() ?: run { msg = tr("เปิดโฆษณาไม่ได้ในหน้านี้ ลองเปิดจากหน้าอื่น"); return@clickable }
                                 busy = o.id; msg = ""
                                 scope.launch {
@@ -375,12 +378,13 @@ fun AdsPageContent(feature: String?, onClose: (() -> Unit)?, returnAfterReward: 
                             Text(if (busy == o.id) tr("กำลังโหลดโฆษณา…") else if (capped) tr("ดูครบจำนวนวันนี้แล้ว") else tr("▶  ดูโฆษณานี้"), color = PureWhite, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp)
                             Text("›", color = PureWhite, fontSize = 20.sp, modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp))
                         }
+                        if (msgFor == o.id && msg.isNotBlank()) Text(msg, color = if (msg.startsWith("✅")) Emerald400 else Amber400, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
                     }
                     }
                 }
             }
         } else if (!vip) Text(tr("ตอนนี้ยังไม่เปิดให้ดูโฆษณารับโควตา"), color = Slate400, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
-        if (msg.isNotBlank()) Text(msg, color = Amber400, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+        if (msgFor == null && msg.isNotBlank()) Text(msg, color = Amber400, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
         Spacer(Modifier.height(12.dp))
         Text(tr("โควตาวันนี้"), color = White, fontWeight = FontWeight.Bold)
         FEATURE_LABELS.forEach { (k, label) ->
