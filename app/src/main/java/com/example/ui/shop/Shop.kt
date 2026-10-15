@@ -108,6 +108,9 @@ private fun ShopDialog(initial: String, onClose: () -> Unit) {
                 when {
                     loading -> CircularProgressIndicator(color = Pink500)
                     // Google Play billing not available (app not on Play yet / no products) → bank-transfer top-up checked by admins
+                    // Play Store build: digital goods must go through Google Play Billing only (no bank transfer); admins can still grant
+                    com.example.BuildConfig.PLAY_STORE && (!enabled || list.isEmpty() || details.isEmpty()) ->
+                        Text("ℹ️ " + tr("ยังไม่มีแพ็กเกจให้ซื้อในตอนนี้ ลองใหม่ภายหลัง"), color = Slate400, fontSize = 13.sp)
                     !enabled || list.isEmpty() -> TopupSection(tab)
                     // Play products configured but this copy was not installed from Google Play (test APK) → offer the other way
                     details.isEmpty() -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -225,7 +225,7 @@ private fun FollowButton(hostUid: String) {
 }
 
 private fun shareLive(ctx: android.content.Context, host: String, title: String) {
-    val text = "มาดูไลฟ์ของ $host ใน FriendTalk กัน! ${if (title.isNotBlank()) "\"$title\" " else ""}\nโหลดแอป: https://github.com/mamaff9522-sketch/-FriendTalk-APK/releases/download/friendtalk-test/FriendTalk.apk"
+    val text = "มาดูไลฟ์ของ $host ใน FriendTalk กัน! ${if (title.isNotBlank()) "\"$title\" " else ""}\nโหลดแอป: " + if (com.example.BuildConfig.PLAY_STORE) "https://play.google.com/store/apps/details?id=com.friendtalk.app" else "https://github.com/mamaff9522-sketch/-FriendTalk-APK/releases/download/friendtalk-test/FriendTalk.apk"
     val i = android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, text)
     runCatching { ctx.startActivity(android.content.Intent.createChooser(i, "แชร์ไลฟ์").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
 }

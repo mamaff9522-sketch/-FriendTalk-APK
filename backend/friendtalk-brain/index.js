@@ -27,7 +27,7 @@ async function auth(req, res, next) {
   try {
     const t = await admin.auth().verifyIdToken(m[1], true);
     req.uid = t.uid; req.tok = t;
-    if (req.method !== 'GET' && t.firebase?.sign_in_provider === 'password' && t.email_verified !== true) return res.status(403).json({ error: 'email not verified' });
+    if (req.method !== 'GET' && req.originalUrl !== '/me/account/delete' && t.firebase?.sign_in_provider === 'password' && t.email_verified !== true) return res.status(403).json({ error: 'email not verified' });
     next();
   }
   catch { res.status(401).json({ error: 'invalid token' }); }
@@ -2713,6 +2713,105 @@ app.post('/admin/coins/reject', perm('coins_confirm'), w(notBanned), w(async (q,
   sendPush(uid, 'คำขอเติมเงินไม่ผ่าน', reason || 'กรุณาตรวจสอบการโอนแล้วลองใหม่', { type: 'wallet' });
   r.json({ status: 'rejected' });
 }));
+// ===== Account deletion (Google Play requirement): in-app POST /me/account/delete + public web request page, and the public privacy policy.
+// Removes the profile, photos, posts, wallet, location, tokens and app data of the account, then the Firebase Auth user itself.
+// Kept (stated on /privacy): money records needed for accounting/law (coinTransactions, withdrawals, gift/VIP purchase logs) and
+// reports/bans made against the account (safety), plus messages already delivered to the other member of a chat (shown as a deleted user).
+const PER_UID = ['users', 'wallets', 'giftPending', 'vip', 'pushTokens', 'radar', 'shakeWaiting', 'shakeResults', 'swipes', 'friendRequests', 'matchQueue',
+  'private', 'idv', 'kyc', 'ageInfo', 'onboarding', 'usage', 'quotaBonus', 'quotaGrants', 'chatRulesAccepted', 'termsAccepted', 'creators', 'creatorMetrics',
+  'creatorApplications', 'companionApplications', 'userChats', 'callInbox', 'following', 'followers', 'followCounts', 'friends', 'authorPosts',
+  'deviceOf', 'postBlocks', 'chatBlocks', 'blocks'];
+async function deleteAccountData(uid) {
+  const del = {};
+  for (const k of PER_UID) del[`${k}/${uid}`] = null;
+  const val = async p => (await db.ref(p).get()).val() || {};
+  const [posts, friends, following, followers] = await Promise.all([val(`authorPosts/${uid}`), val(`friends/${uid}`), val(`following/${uid}`), val(`followers/${uid}`)]);
+  for (const id of Object.keys(posts)) {
+    const p = (await db.ref(`posts/${id}`).get()).val(); if (!p || p.authorId !== uid) continue;
+    Object.assign(del, { [`posts/${id}`]: null, [`postLikes/${id}`]: null, [`postComments/${id}`]: null });
+    for (const t of p.hashtags || []) del[`hashtags/${t}/${id}`] = null;
+  }
+  for (const o of Object.keys(friends)) del[`friends/${o}/${uid}`] = null;
+  for (const o of Object.keys(following)) del[`followers/${o}/${uid}`] = null;
+  for (const o of Object.keys(followers)) del[`following/${o}/${uid}`] = null;
+  const lives = (await db.ref('lives').orderByChild('hostUid').equalTo(uid).get()).val() || {};
+  for (const id of Object.keys(lives)) del[`lives/${id}`] = null;
+  await db.ref().update(del);
+  const bucket = admin.storage().bucket(STORAGE_BUCKET);
+  for (const prefix of [`posts/${uid}/`, `idv/${uid}/`, `avatars/${uid}/`]) await bucket.deleteFiles({ prefix }).catch(() => {});
+  await db.ref(`deletedAccounts/${uid}`).set({ at: Date.now() });
+  await admin.auth().deleteUser(uid).catch(e => { if (e?.code !== 'auth/user-not-found') throw e; });
+}
+app.post('/me/account/delete', w(async (q, r) => {
+  if (q.body?.confirm !== 'DELETE') return r.status(400).json({ error: 'confirm required' });
+  await deleteAccountData(q.uid);
+  r.json({ ok: true });
+}));
+// Admin: process a web deletion request (after checking the requester owns the account).
+app.get('/admin/deletion-requests', perm('ban_users'), w(async (_q, r) => {
+  const v = (await db.ref('deletionRequests').orderByKey().limitToLast(50).get()).val() || {};
+  r.json({ items: Object.entries(v).map(([id, x]) => ({ id, ...x })).reverse() });
+}));
+app.post('/admin/deletion-requests/:id/done', perm('ban_users'), w(async (q, r) => {
+  const id = q.params.id; if (!/^[A-Za-z0-9_-]{1,40}$/.test(id)) return r.status(400).json({ error: 'bad id' });
+  const req = (await db.ref(`deletionRequests/${id}`).get()).val(); if (!req) return r.status(404).json({ error: 'not found' });
+  let uid = typeof q.body?.uid === 'string' ? q.body.uid : '';
+  if (!uid && req.email) uid = (await admin.auth().getUserByEmail(req.email).catch(() => null))?.uid || '';
+  if (uid) await deleteAccountData(uid);
+  await db.ref(`deletionRequests/${id}`).update({ status: uid ? 'deleted' : 'no_account', uid: uid || null, by: q.uid, doneAt: Date.now() });
+  await db.ref('adminLog').push({ action: 'account_delete', target: uid || req.email, by: q.uid, at: Date.now() });
+  r.json({ ok: true, uid: uid || null });
+}));
+const CONTACT = () => process.env.CONTACT_EMAIL || '';
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const page = (title, body) => `<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>
+<style>body{font-family:system-ui,-apple-system,"Noto Sans Thai",sans-serif;max-width:760px;margin:0 auto;padding:20px 16px 48px;line-height:1.65;color:#1e1b2e;background:#fff}
+h1{color:#c2187a;font-size:26px}h2{font-size:18px;margin-top:28px}input,textarea{width:100%;box-sizing:border-box;padding:10px;border:1px solid #ccc;border-radius:10px;font:inherit}
+button{background:linear-gradient(90deg,#ff2fa8,#9b3dff);color:#fff;border:0;border-radius:12px;padding:12px 20px;font:inherit;font-weight:700}
+.box{background:#f7f2fb;border-radius:14px;padding:14px 16px}.muted{color:#666;font-size:14px}</style></head><body>${body}</body></html>`;
+const contactLine = () => CONTACT() ? `อีเมล / Email: <a href="mailto:${esc(CONTACT())}">${esc(CONTACT())}</a>` : 'ผ่านเมนู "รายงาน / ติดต่อแอดมิน" ในแอป หรือแบบฟอร์มที่หน้า <a href="/delete-account">/delete-account</a>';
+app.get('/delete-account', (_q, r) => r.type('html').send(page('ลบบัญชี FriendTalk', `
+<h1>ลบบัญชี FriendTalk</h1>
+<div class="box"><b>วิธีที่เร็วที่สุด — ลบในแอป:</b> เปิดแอป FriendTalk → แท็บ <b>โปรไฟล์</b> → เลื่อนลงล่างสุด → <b>🗑 ลบบัญชี</b> → พิมพ์ยืนยัน บัญชีจะถูกลบทันที</div>
+<h2>ส่งคำขอลบบัญชีผ่านเว็บ (กรณีเข้าแอปไม่ได้)</h2>
+<form method="post" action="/delete-account"><p>อีเมลที่ใช้เข้าสู่ระบบ<br><input name="email" type="email" required maxlength="200"></p>
+<p>ชื่อในแอป (ถ้ามี)<br><input name="name" maxlength="80"></p><p>หมายเหตุ (ไม่บังคับ)<br><textarea name="note" rows="3" maxlength="500"></textarea></p>
+<button type="submit">ส่งคำขอลบบัญชี</button></form>
+<p class="muted">ทีมงานจะตรวจสอบว่าเป็นเจ้าของบัญชีจริง และลบภายใน 30 วัน</p>
+<h2>ข้อมูลที่ถูกลบ</h2><p>โปรไฟล์ รูปภาพ โพสต์ ความคิดเห็นในโพสต์ เพื่อน/ผู้ติดตาม ตำแหน่งโดยประมาณ ยอดเหรียญ/เพชรคงเหลือ สถานะ VIP เอกสารยืนยันตัวตน โทเคนแจ้งเตือน และบัญชีเข้าสู่ระบบ</p>
+<h2>ข้อมูลที่เก็บต่อ</h2><p>ประวัติการชำระเงิน/ถอนเงิน (เก็บตามกฎหมายบัญชีสูงสุด 5 ปี) · รายงานและการแบนเพื่อความปลอดภัยของผู้ใช้อื่น · ข้อความที่ส่งถึงผู้อื่นแล้วจะยังอยู่ในแชทของผู้รับ โดยแสดงเป็นผู้ใช้ที่ลบบัญชีแล้ว</p>
+<p class="muted">English: Delete in the app (Profile → 🗑 Delete account) or submit the form above. We delete your profile, photos, posts, social graph, approximate location, balances, VIP, ID documents and login. Payment records (up to 5 years, legal), safety reports and messages already delivered to others are kept.</p>
+<p><a href="/privacy">นโยบายความเป็นส่วนตัว / Privacy policy</a></p>`)));
+const delHits = new Map();
+app.post('/delete-account', express.urlencoded({ extended: false, limit: '8kb' }), w(async (q, r) => {
+  const ip = String(q.headers['x-forwarded-for'] || q.ip || '').split(',')[0].trim(), n = (delHits.get(ip) || 0) + 1; delHits.set(ip, n);
+  if (delHits.size > 5000) delHits.clear();
+  const email = String(q.body?.email || '').trim().toLowerCase().slice(0, 200);
+  if (n > 5 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return r.status(400).type('html').send(page('ลบบัญชี', '<h1>ส่งไม่สำเร็จ</h1><p>กรุณาตรวจสอบอีเมลแล้วลองใหม่</p><p><a href="/delete-account">กลับ</a></p>'));
+  await db.ref('deletionRequests').push({ email, name: String(q.body?.name || '').slice(0, 80), note: String(q.body?.note || '').slice(0, 500), status: 'pending', at: Date.now() });
+  r.type('html').send(page('ลบบัญชี', '<h1>ได้รับคำขอแล้ว ✅</h1><p>ทีมงานจะตรวจสอบและลบบัญชีภายใน 30 วัน / We received your request and will delete the account within 30 days.</p>'));
+}));
+app.get('/privacy', (_q, r) => r.type('html').send(page('นโยบายความเป็นส่วนตัว FriendTalk', `
+<h1>นโยบายความเป็นส่วนตัว — FriendTalk</h1><p class="muted">ปรับปรุงล่าสุด: 15 ตุลาคม 2026</p>
+<p>FriendTalk เป็นแอปหาเพื่อนคุย แชท โทร และไลฟ์สด สำหรับผู้ใช้อายุ 18 ปีขึ้นไป นโยบายนี้อธิบายว่าเราเก็บข้อมูลอะไร ใช้ทำอะไร และคุณควบคุมข้อมูลได้อย่างไร</p>
+<h2>1. ข้อมูลที่เราเก็บ</h2><ul>
+<li><b>บัญชี:</b> อีเมล ชื่อ และรหัสผู้ใช้จาก Google/อีเมล ผ่าน Firebase Authentication</li>
+<li><b>โปรไฟล์:</b> ชื่อที่แสดง รูปโปรไฟล์/ปก ประวัติย่อ ความสนใจ เพศ และวันเกิด/อายุ (เพื่อยืนยันว่าอายุ 18+)</li>
+<li><b>ตำแหน่งโดยประมาณ:</b> ใช้เมื่อคุณเปิดฟีเจอร์ "คนใกล้คุณ/เรดาร์" เท่านั้น เราปัดเป็นระดับประมาณ 1 กม. และไม่แสดงพิกัดแม่นยำให้ผู้อื่น</li>
+<li><b>เนื้อหาที่คุณสร้าง:</b> โพสต์ รูป วิดีโอ ความคิดเห็น ข้อความแชท และของขวัญที่ส่ง</li>
+<li><b>โทรและไลฟ์สด:</b> เสียงและวิดีโอส่งแบบเรียลไทม์ผ่าน Agora เราไม่บันทึกเสียงหรือวิดีโอการโทร/ไลฟ์ เก็บเฉพาะข้อมูลห้อง (ผู้เข้าร่วม เวลา ข้อความในไลฟ์)</li>
+<li><b>การยืนยันตัวตน (ถ้าคุณส่ง):</b> รูปบัตรและเซลฟี่ ใช้ตรวจอายุ/ตัวตน และลบไฟล์ภาพหลังตรวจเสร็จ</li>
+<li><b>การชำระเงิน:</b> รายการซื้อเหรียญ/เพชร/VIP ผ่าน Google Play (เราไม่เห็นข้อมูลบัตร) และประวัติยอดคงเหลือ</li>
+<li><b>อุปกรณ์:</b> โทเคนแจ้งเตือน (Firebase Cloud Messaging) รหัสอุปกรณ์แบบแฮชเพื่อป้องกันการโกง และรหัสโฆษณา (Advertising ID) ที่ Google AdMob ใช้แสดงโฆษณา</li></ul>
+<h2>2. เราใช้ข้อมูลเพื่อ</h2><p>ให้บริการแชท โทร ไลฟ์ และจับคู่เพื่อน · แสดงคนใกล้เคียง · ประมวลผลการซื้อและของขวัญ · ส่งการแจ้งเตือน · ตรวจจับสแปม การโกง และเนื้อหาไม่เหมาะสม (รวมถึงการตรวจภาพอัตโนมัติ) · ปกป้องผู้เยาว์ · แสดงโฆษณา</p>
+<p>ตัวละคร AI ในแอปมีป้ายกำกับ "AI" เสมอ ข้อความที่คุณคุยกับ AI ถูกส่งไปประมวลผลเพื่อสร้างคำตอบ</p>
+<h2>3. การแบ่งปันข้อมูล</h2><p>เราไม่ขายข้อมูลส่วนบุคคล เราใช้ผู้ให้บริการต่อไปนี้: Google Firebase / Google Cloud (เก็บข้อมูล ระบบล็อกอิน แจ้งเตือน) · Agora (โทรและไลฟ์) · Google AdMob (โฆษณา) · Google Play Billing (ชำระเงิน) ข้อมูลอาจถูกเปิดเผยเมื่อกฎหมายกำหนด</p>
+<h2>4. ความปลอดภัย</h2><p>ข้อมูลส่งผ่านการเข้ารหัส (HTTPS/TLS) และจำกัดสิทธิ์การเข้าถึงฐานข้อมูลตามบัญชี</p>
+<h2>5. การเก็บรักษาและการลบ</h2><p>เราเก็บข้อมูลตราบที่บัญชียังใช้งาน คุณลบบัญชีได้เองในแอป (โปรไฟล์ → 🗑 ลบบัญชี) หรือที่ <a href="/delete-account">หน้าคำขอลบบัญชี</a> ประวัติการเงินเก็บตามกฎหมายสูงสุด 5 ปี</p>
+<h2>6. สิทธิของคุณ</h2><p>ขอเข้าถึง แก้ไข ลบ หรือคัดค้านการประมวลผลข้อมูลได้ตาม พ.ร.บ.คุ้มครองข้อมูลส่วนบุคคล (PDPA) ปิดการติดตามโฆษณาได้ในการตั้งค่า Google ของเครื่อง</p>
+<h2>7. เด็ก</h2><p>แอปนี้ไม่อนุญาตให้ผู้ที่อายุต่ำกว่า 18 ปีใช้งาน หากพบบัญชีของผู้เยาว์ เราจะระงับและลบ</p>
+<h2>8. ติดต่อเรา</h2><p>${contactLine()}</p>
+<hr><h2>English summary</h2><p>FriendTalk (18+) collects account info (email, name), profile data, approximate location (~1 km, only when you use Nearby/Radar; never shown precisely), content you post and messages, optional ID verification images (deleted after review), purchase records (via Google Play; we never see card data), push tokens, a hashed device ID (anti-fraud) and the Advertising ID (Google AdMob). Calls and live video stream in real time through Agora and are not recorded. Processors: Google Firebase/Cloud, Agora, Google AdMob, Google Play Billing. We do not sell personal data. Delete your account in the app (Profile → Delete account) or at <a href="/delete-account">/delete-account</a>. Contact: ${CONTACT() ? esc(CONTACT()) : 'in-app report menu'}.</p>`)));
 app.use((e, _q, r, _n) => {
   if (e.type === 'entity.too.large') return r.status(413).json({ error: 'request too large' });
   if (e.type === 'entity.parse.failed') return r.status(400).json({ error: 'invalid JSON' });

@@ -58,6 +58,8 @@ fun ProfileTab(
     val shownAvatar = me?.avatar?.ifBlank { null } ?: currentUser.avatar
     val shownBio = me?.bio ?: currentUser.bio.takeUnless { it.startsWith("สมาชิก FriendTalk (UID") }.orEmpty()
     var confirmLogout by remember { mutableStateOf(false) }
+    var deleteAcc by remember { mutableStateOf(false) }
+    if (deleteAcc) DeleteAccountDialog(onClose = { deleteAcc = false }, onDeleted = { deleteAcc = false; onLogout() })
     if (confirmLogout) AlertDialog(onDismissRequest = { confirmLogout = false }, title = { Text(tr("ออกจากระบบ?")) },
         text = { Text(tr("คุณต้องการออกจากบัญชีนี้ใช่ไหม")) },
         confirmButton = { TextButton(onClick = { confirmLogout = false; onLogout() }) { Text(tr("ออกจากระบบ"), color = Rose500) } },
@@ -336,6 +338,10 @@ fun ProfileTab(
                         border = androidx.compose.foundation.BorderStroke(1.dp, Rose500)) {
                         Text(tr("🚪 ออกจากระบบ"), color = Rose500, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                     }
+                    Spacer(Modifier.height(6.dp))
+                    TextButton(onClick = { deleteAcc = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text(tr("🗑 ลบบัญชี"), color = Slate400, fontSize = 13.sp)
+                    }
                 }
             }
         }
@@ -360,4 +366,42 @@ private fun ThemeModeRow() {
                 colors = SwitchDefaults.colors(checkedTrackColor = Pink500, checkedThumbColor = PureWhite))
         }
     }
+}
+
+/** Permanent account deletion (Google Play requirement). The user must type ลบบัญชี; the server removes data + login, then we sign out. */
+@Composable
+private fun DeleteAccountDialog(onClose: () -> Unit, onDeleted: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var typed by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var err by remember { mutableStateOf("") }
+    val word = "ลบบัญชี"
+    AlertDialog(onDismissRequest = { if (!busy) onClose() }, title = { Text(tr("ลบบัญชีถาวร?")) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(tr("โปรไฟล์ รูป โพสต์ เพื่อน เหรียญ/เพชรคงเหลือ และ VIP จะถูกลบทั้งหมด กู้คืนไม่ได้"), fontSize = 13.sp)
+                Text(tr("พิมพ์คำว่า") + " \"$word\" " + tr("เพื่อยืนยัน"), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                OutlinedTextField(value = typed, onValueChange = { typed = it.take(20) }, singleLine = true, enabled = !busy)
+                if (err.isNotBlank()) Text(err, color = Rose500, fontSize = 12.sp)
+                TextButton(onClick = { runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,
+                    android.net.Uri.parse("https://friendtalk-brain-123224091480.asia-southeast1.run.app/privacy"))) } }) { Text(tr("นโยบายความเป็นส่วนตัว"), fontSize = 12.sp) }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = !busy && typed.trim() == word, onClick = {
+                val u = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser ?: return@TextButton
+                busy = true; err = ""
+                scope.launch {
+                    val r = runCatching { com.example.network.BrainApi.call(u, "POST", "/me/account/delete", org.json.JSONObject().put("confirm", "DELETE")) }.getOrNull()
+                    busy = false
+                    when {
+                        r?.code == 200 -> onDeleted()
+                        r?.code == 404 -> err = tr("เซิร์ฟเวอร์ยังไม่อัปเดต ลองใหม่ภายหลัง")
+                        else -> err = tr("ลบไม่สำเร็จ ลองใหม่อีกครั้ง") + (r?.code?.let { " ($it)" } ?: "")
+                    }
+                }
+            }) { Text(if (busy) tr("กำลังลบ…") else tr("ลบบัญชีถาวร"), color = Rose500, fontWeight = FontWeight.Bold) }
+        },
+        dismissButton = { TextButton(enabled = !busy, onClick = onClose) { Text(tr("ยกเลิก")) } })
 }

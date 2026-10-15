@@ -13,7 +13,7 @@ android {
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
   defaultConfig {
-    applicationId = "com.example"
+    applicationId = "com.example" // per flavor below
     minSdk = 24
     targetSdk = 36
     versionCode = (System.getenv("VERSION_CODE") ?: "4").toInt()
@@ -64,6 +64,22 @@ android {
       signingConfig = signingConfigs.getByName("release")
     }
    
+  }
+  // Two installs of the same app:
+  //  - sideload: the test APK shared by link (keeps the old id so testers' installs keep updating in place)
+  //  - play:     the Google Play build (real package name, Play-only rules: no self-install permission, no bank-transfer top-up)
+  flavorDimensions += "dist"
+  productFlavors {
+    create("sideload") {
+      dimension = "dist"
+      applicationId = "com.example"
+      buildConfigField("boolean", "PLAY_STORE", "false")
+    }
+    create("play") {
+      dimension = "dist"
+      applicationId = "com.friendtalk.app"
+      buildConfigField("boolean", "PLAY_STORE", "true")
+    }
   }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_11
