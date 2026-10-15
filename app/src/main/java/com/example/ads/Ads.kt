@@ -204,9 +204,9 @@ object AdsManager {
 
 /** Admin ad placements (RTDB appConfig/adPlacements, live). Defaults: home bottom + 1:1 chat-room top ON, others OFF. */
 object AdPlacements {
-    var cfg by androidx.compose.runtime.mutableStateOf(mapOf("home" to true, "discover" to false, "chatList" to false, "video" to false, "inFeed" to false, "chatRoom" to true))
+    var cfg by androidx.compose.runtime.mutableStateOf(mapOf("home" to true, "discover" to false, "chatList" to false, "video" to false, "inFeed" to false, "chatRoom" to true, "vipBanner" to true))
     var inFeedEvery by androidx.compose.runtime.mutableIntStateOf(5)
-    val DEFAULTS = linkedMapOf("home" to true, "discover" to false, "chatList" to false, "video" to false, "inFeed" to false, "chatRoom" to true)
+    val DEFAULTS = linkedMapOf("home" to true, "discover" to false, "chatList" to false, "video" to false, "inFeed" to false, "chatRoom" to true, "vipBanner" to true)
     private var started = false
     fun start() {
         if (started) return; started = true

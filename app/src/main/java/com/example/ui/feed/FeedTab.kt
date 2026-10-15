@@ -172,6 +172,7 @@ fun FeedTab(
             if (feedConfig.showStoryRow) {
                 item { com.example.ui.components.ComingSoonGate("home_live", Modifier.fillMaxWidth()) { HomeLiveSection(onSeeAll = onOpenLive) } }
                 item { com.example.ui.components.ComingSoonGate("home_nearby", Modifier.fillMaxWidth()) { HomeNearbySection(onSeeAll = onOpenFindFriends) } }
+                item { HomeVipBanner() }
             }
             }
 

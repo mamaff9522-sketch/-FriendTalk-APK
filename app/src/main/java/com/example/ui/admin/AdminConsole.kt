@@ -488,7 +488,7 @@ private fun AdPlacementsCard() {
     var every by remember(com.example.ads.AdPlacements.inFeedEvery) { mutableStateOf(com.example.ads.AdPlacements.inFeedEvery.toString()) }
     var status by remember { mutableStateOf("") }
     val labels = linkedMapOf("home" to "หน้าแรก (แบนเนอร์ล่าง)", "discover" to "หาเพื่อน", "chatList" to "รายการแชท", "video" to "วิดีโอ",
-        "inFeed" to "ในฟีด คั่นระหว่างโพสต์", "chatRoom" to "แชท 1:1 (แบนเนอร์เล็กด้านบน)")
+        "inFeed" to "ในฟีด คั่นระหว่างโพสต์", "chatRoom" to "แชท 1:1 (แบนเนอร์เล็กด้านบน)", "vipBanner" to "การ์ด 'ปลดล็อก VIP' หน้าแรก (ใต้คนใกล้คุณ)")
     fun save(m: Map<String, Boolean>) {
         // Flip the switch right away (the RTDB listener may be slow or not attached yet), then confirm with the server's saved values.
         val before = com.example.ads.AdPlacements.cfg

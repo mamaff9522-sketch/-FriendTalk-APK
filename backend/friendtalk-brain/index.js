@@ -120,7 +120,7 @@ app.put('/admin/feature-locks', perm('app_lock'), w(notBanned), w(async (q, r) =
   r.json(v);
 }));
 // Ad placements (live via RTDB appConfig/adPlacements; clients read directly).
-const AD_PLACES = ['home', 'discover', 'chatList', 'video', 'inFeed', 'chatRoom'];
+const AD_PLACES = ['home', 'discover', 'chatList', 'video', 'inFeed', 'chatRoom', 'vipBanner']; // vipBanner = Home 'ปลดล็อก VIP' card (free users only)
 app.put('/admin/ad-placements', perm('config_edit'), w(notBanned), w(async (q, r) => {
   const b = q.body || {}, v = {};
   for (const k of AD_PLACES) if (typeof b[k] === 'boolean') v[k] = b[k];
