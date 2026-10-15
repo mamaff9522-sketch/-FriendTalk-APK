@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -74,7 +75,8 @@ fun rememberLiveRooms(): List<LiveRoom>? {
 }
 
 data class LiveMsg(val id: String, val type: String, val uid: String, val name: String, val avatar: String, val text: String,
-                   val giftId: String = "", val giftName: String = "", val icon: String = "", val count: Int = 1, val at: Long = 0)
+                   val giftId: String = "", val giftName: String = "", val icon: String = "", val count: Int = 1, val at: Long = 0,
+                   val imageUrl: String = "", val price: Int = 0, val fx: String = "")
 
 @Composable
 private fun rememberLiveChat(liveId: String): List<LiveMsg> {
@@ -85,7 +87,8 @@ private fun rememberLiveChat(liveId: String): List<LiveMsg> {
             override fun onChildAdded(s: DataSnapshot, p: String?) {
                 fun str(k: String) = s.child(k).getValue(String::class.java).orEmpty()
                 msgs.add(LiveMsg(s.key ?: "", str("type").ifBlank { "chat" }, str("uid"), str("name"), str("avatar"), str("text"), str("giftId"), str("giftName"), str("icon"),
-                    (s.child("count").value as? Number)?.toInt() ?: 1, (s.child("at").value as? Number)?.toLong() ?: 0L))
+                    (s.child("count").value as? Number)?.toInt() ?: 1, (s.child("at").value as? Number)?.toLong() ?: 0L,
+                    str("imageUrl"), (s.child("price").value as? Number)?.toInt() ?: 0, str("fx")))
                 if (msgs.size > 80) msgs.removeAt(0)
             }
             override fun onChildChanged(s: DataSnapshot, p: String?) {}
@@ -255,7 +258,8 @@ private fun LiveGiftSheet(liveId: String, onDismiss: () -> Unit) {
                 when {
                     l == null -> CircularProgressIndicator(color = Neon)
                     l.isEmpty() -> Text("ยังไม่มีของขวัญไลฟ์ (แอดมินเพิ่มได้)", color = Color.White.copy(alpha = 0.6f))
-                    else -> l.chunked(4).forEach { row ->
+                    // many gifts → scroll inside the sheet (send button stays visible below)
+                    else -> Column(Modifier.heightIn(max = 340.dp).verticalScroll(rememberScrollState())) { l.chunked(4).forEach { row ->
                         Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             row.forEach { g ->
                                 val on = sel == g.id
@@ -269,7 +273,7 @@ private fun LiveGiftSheet(liveId: String, onDismiss: () -> Unit) {
                             }
                             repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
                         }
-                    }
+                    } }
                 }
                 if (msg.isNotBlank()) Text(msg, color = Color(0xFFFFC94D), fontSize = 12.sp, modifier = Modifier.padding(vertical = 4.dp))
                 Box(Modifier.fillMaxWidth().padding(top = 6.dp).height(48.dp).clip(RoundedCornerShape(24.dp))
@@ -372,6 +376,7 @@ fun LiveHostScreen(onClose: () -> Unit) {
                             SmallRound(Icons.Filled.Share, "แชร์") { shareLive(ctx, myName, title) }
                         }
                     }
+                    GiftBurstLayer(msgs) // big gift effect in the middle of the screen
                 }
                 if (beautySheet) BeautySheet { beautySheet = false }
                 if (confirmEnd) androidx.compose.material3.AlertDialog(onDismissRequest = { confirmEnd = false },
@@ -501,6 +506,7 @@ fun LiveViewerScreen(liveId: String, onClose: () -> Unit) {
                     SmallRound(Icons.Filled.Share, "แชร์") { shareLive(ctx, name, title) }
                 }
             }
+            GiftBurstLayer(msgs) // big gift effect in the middle of the screen
         }
         if (giftSheet) LiveGiftSheet(liveId) { giftSheet = false }
     }

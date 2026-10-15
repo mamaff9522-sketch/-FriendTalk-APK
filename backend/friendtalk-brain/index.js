@@ -2005,6 +2005,36 @@ const SEED_LIVE = [
   ['gift_heart', 'หัวใจมินิ', '💖', 10, 'POP'], ['gift_flower', 'ดอกกุหลาบ', '🌹', 50, 'FLOAT'], ['gift_tea', 'ชานมไข่มุก', '🧋', 100, 'POP'],
   ['gift_crown', 'มงกุฎทอง', '👑', 500, 'ROYAL'], ['gift_rocket', 'จรวดซูเปอร์สตาร์', '🚀', 1000, 'BLAST']];
 (async () => { try { await db.ref('catalog/live').transaction(c => c || Object.fromEntries(SEED_LIVE.map(([id, name, icon, price, fx], i) => [id, { name, icon, price, animationEffect: fx, category: 'live', enabled: true, order: i, imagePath: '' }]))); } catch (e) { console.error('seed live', e.message); } })();
+// Built-in live gift pack (artwork in assets/gifts, served below). Added once; afterwards admins own the catalog (edit / disable / delete stays as they left it).
+const GIFT_PACK = [
+  ['sportscar', 'รถสปอร์ต', '🏎️', 800], ['castle', 'ปราสาทฝัน', '🏰', 1000], ['sundae', 'ไอศกรีมซันเดย์', '🍨', 70], ['kitty', 'แมวเหมียว', '🐱', 90],
+  ['lovekey', 'กุญแจรัก', '🗝️', 150], ['starglasses', 'แว่นดาว', '🤩', 110], ['rocket', 'จรวดทะยานฟ้า', '🚀', 250], ['trophy', 'ถ้วยรางวัล', '🏆', 400],
+  ['moon', 'พระจันทร์ยิ้ม', '🌙', 55], ['karaoke', 'ไมค์คาราโอเกะ', '🎤', 130], ['yacht', 'เรือยอร์ช', '🛥️', 1500], ['handbag', 'กระเป๋าหรู', '👜', 600],
+  ['swans', 'หงส์คู่', '🦢', 700], ['sushi', 'ซูชิเซ็ต', '🍣', 95], ['crystalball', 'ลูกแก้ววิเศษ', '🔮', 220], ['goldwatch', 'นาฬิกาทอง', '⌚', 550],
+  ['butterfly', 'ผีเสื้อคริสตัล', '🦋', 180], ['musicnote', 'โน้ตเพลง', '🎵', 45], ['magiclamp', 'โคมไฟวิเศษ', '🪔', 320], ['angelwings', 'ปีกนางฟ้า', '👼', 900],
+  ['sunflower', 'ดอกทานตะวัน', '🌻', 85], ['hearttrain', 'รถไฟหัวใจ', '🚂', 260], ['unicorn', 'ยูนิคอร์น', '🦄', 480], ['rainbow', 'สายรุ้ง', '🌈', 140],
+  ['candle', 'เทียนหอม', '🕯️', 75], ['moneybag', 'ถุงเงิน', '💰', 350], ['queencrown', 'มงกุฎราชินี', '👑', 650], ['throne', 'บัลลังก์ทอง', '🪑', 1200],
+  ['coffee', 'แก้วกาแฟ', '☕', 50], ['camera', 'กล้องถ่ายรูป', '📷', 170], ['villa', 'วิลล่าหรู', '🏡', 2000], ['dolphin', 'โลมาน้อย', '🐬', 160],
+  ['moneytree', 'ต้นไม้เงินทอง', '🌳', 450], ['shootingstar', 'ดาวตกอธิษฐาน', '🌠', 210], ['guitar', 'กีตาร์ไฟฟ้า', '🎸', 280], ['macaron', 'ขนมมาการอง', '🧁', 65],
+  ['rockinghorse', 'ม้าโยก', '🐴', 125], ['treasure', 'หีบสมบัติ', '💎', 750], ['bigdiamond', 'เพชรเม็ดโต', '💎', 888], ['championbelt', 'แชมป์เปี้ยนเบลท์', '🥇', 999]];
+const PACK_URL = 'https://friendtalk-brain-123224091480.asia-southeast1.run.app/gift-pack/';
+const packFx = price => price >= 1000 ? 'BLAST' : price >= 500 ? 'ROYAL' : price >= 100 ? 'FLOAT' : 'POP';
+app.get('/gift-pack/:f', (q, r) => {
+  if (!/^[a-z]{2,20}\.webp$/.test(q.params.f)) return r.status(400).end();
+  r.set('Cache-Control', 'public, max-age=604800'); r.type('image/webp');
+  r.sendFile(new URL(`./assets/gifts/${q.params.f}`, import.meta.url).pathname, e => { if (e && !r.headersSent) r.status(404).end(); });
+});
+(async () => {
+  try {
+    const flag = await db.ref('appConfig/giftPackV1').transaction(c => (c ? undefined : { at: Date.now() }));
+    if (!flag.committed) return; // already added once — never re-add what an admin removed
+    const have = Object.keys((await db.ref('catalog/live').get()).val() || {}).length, upd = {};
+    GIFT_PACK.forEach(([id, name, icon, price], i) => {
+      upd[`catalog/live/p_${id}`] = { name, icon, price, animationEffect: packFx(price), category: 'live', enabled: true, order: have + i, imagePath: '', imageUrl: `${PACK_URL}${id}.webp`, updatedAt: Date.now(), updatedBy: 'system' };
+    });
+    await db.ref().update(upd);
+  } catch (e) { console.error('seed gift pack', e.message); db.ref('appConfig/giftPackV1').remove().catch(() => {}); }
+})();
 const GIFT_CFG_SEED = { enabled: true, autoFriend: true, adminPercent: 20, recipientPercent: 80 };
 async function giftCfg() { return { ...GIFT_CFG_SEED, ...((await db.ref('appConfig/gifts').get()).val() || {}) }; }
 const assetUrl = id => `https://friendtalk-brain-123224091480.asia-southeast1.run.app/gift-assets/${id}`;
@@ -2285,7 +2315,7 @@ app.post('/lives/:id/gift', w(notBanned), w(async (q, r) => {
   const u = (await db.ref(`users/${q.uid}`).get()).val() || {};
   await db.ref().update({
     [`liveGiftTx/${id}/${t}_${q.uid.slice(0, 8)}`]: { from: q.uid, to: l.hostUid, giftId, name: item.name, price, count, hostShare, adminShare, at: t },
-    [`liveChat/${id}/${t}_g${crypto.randomBytes(3).toString('hex')}`]: { type: 'gift', uid: q.uid, name: u.displayName || 'ผู้ใช้', avatar: u.avatar || '', giftId, giftName: item.name, icon: item.icon || '', imageUrl: item.imageUrl || '', count, at: t }
+    [`liveChat/${id}/${t}_g${crypto.randomBytes(3).toString('hex')}`]: { type: 'gift', uid: q.uid, name: u.displayName || 'ผู้ใช้', avatar: u.avatar || '', giftId, giftName: item.name, icon: item.icon || '', imageUrl: item.imageUrl || '', price: item.price, fx: item.animationEffect || 'POP', count, at: t }
   });
   r.json({ ok: true, price, diamonds: d.snapshot.val() });
 }));
