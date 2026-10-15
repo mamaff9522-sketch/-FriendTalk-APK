@@ -248,6 +248,7 @@ private fun LiveGiftSheet(liveId: String, onDismiss: () -> Unit) {
     var sel by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var msg by remember { mutableStateOf("") }
+    LaunchedEffect(items) { if (sel == null) sel = items?.let { l -> (l.firstOrNull { it.id == "gift_flower" } ?: l.minByOrNull { it.price })?.id } }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxSize().clickable(onClick = onDismiss)) {
             Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)).background(Color(0xFF15102F))
@@ -290,44 +291,11 @@ private fun LiveGiftSheet(liveId: String, onDismiss: () -> Unit) {
                         }
                     }, contentAlignment = Alignment.Center) {
                     if (busy) CircularProgressIndicator(Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
-                    else Text("ส่งของขวัญ", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    else Text(items?.firstOrNull { it.id == sel }?.let { "ส่ง ${it.name}  💎${it.price}" } ?: "เลือกของขวัญ", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
     }
-}
-
-/** One-tap cheapest gift (the 🌹 shortcut). */
-@Composable
-private fun QuickGift(liveId: String, onError: (String) -> Unit) {
-    val scope = rememberCoroutineScope()
-    val ctx = LocalContext.current
-    val items by remember { com.example.social.GiftRepo.catalog("live") }.collectAsState(initial = emptyList())
-    val g = items.firstOrNull { it.id == "gift_flower" } ?: items.minByOrNull { it.price } ?: return
-    var busy by remember { mutableStateOf(false) }
-    var confirm by remember { mutableStateOf(false) }
-    // whole circle is the touch target (child image can't swallow taps); every tap gives feedback (toast)
-    Box(Modifier.size(42.dp).clip(CircleShape).background(Color(0x55000000)).border(1.dp, Color(0x44FFFFFF), CircleShape), contentAlignment = Alignment.Center) {
-        if (busy) CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
-        else Box(Modifier.size(28.dp)) { com.example.ui.social.StickerImage(g) }
-        Box(Modifier.matchParentSize().clickable(enabled = !busy) { confirm = true })
-    }
-    if (confirm) androidx.compose.material3.AlertDialog(onDismissRequest = { confirm = false },
-        icon = { Box(Modifier.size(48.dp)) { com.example.ui.social.StickerImage(g) } },
-        title = { Text("ส่ง ${g.name}?") },
-        text = { Text("ใช้ 💎 ${g.price} เพชร ส่งให้สตรีมเมอร์") },
-        dismissButton = { androidx.compose.material3.TextButton(onClick = { confirm = false }) { Text("ยกเลิก") } },
-        confirmButton = { androidx.compose.material3.TextButton(onClick = {
-            confirm = false
-            busy = true
-            scope.launch {
-                val r = RtcApi.post("/lives/$liveId/gift", JSONObject().put("giftId", g.id).put("count", 1))
-                busy = false
-                val text = if (r?.code == 200) "ส่ง ${g.name} แล้ว 💎${g.price}" else RtcApi.error(r) + if (r?.code == 402) " — เติมเพชรได้ที่หน้า 'ฉัน'" else ""
-                if (r?.code != 200) onError(text)
-                android.widget.Toast.makeText(ctx, text, android.widget.Toast.LENGTH_SHORT).show()
-            }
-        }) { Text("ส่งเลย", fontWeight = FontWeight.Bold) } })
 }
 
 @Composable
@@ -530,8 +498,9 @@ fun LiveViewerScreen(liveId: String, onClose: () -> Unit) {
                 GiftBanner(msgs, Modifier.align(Alignment.BottomStart).padding(10.dp))
             }
             if (status != "ended") CommentsPanel(liveId, msgs, Modifier.fillMaxWidth().weight(0.4f).padding(top = 8.dp)) {
-                QuickGift(liveId) { err = it }
-                SmallRound(Icons.Filled.CardGiftcard, "ของขวัญ") { giftSheet = true }
+                // one gift button: opens the gift picker (rose pre-selected), sending needs the explicit "ส่ง …" tap there
+                Box(Modifier.size(42.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Neon, Violet))).clickable { giftSheet = true }, contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.CardGiftcard, "ของขวัญ", tint = Color.White, modifier = Modifier.size(21.dp)) }
                 SmallRound(Icons.Filled.Share, "แชร์") { shareLive(ctx, name, title) }
             } else Box(Modifier.fillMaxWidth().weight(0.4f), contentAlignment = Alignment.Center) {
                 Text("ปิดหน้านี้", color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(Brush.horizontalGradient(listOf(Neon, Violet))).clickable(onClick = onClose).padding(horizontal = 24.dp, vertical = 10.dp))
