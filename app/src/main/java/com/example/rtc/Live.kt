@@ -305,11 +305,20 @@ private fun QuickGift(liveId: String, onError: (String) -> Unit) {
     val items by remember { com.example.social.GiftRepo.catalog("live") }.collectAsState(initial = emptyList())
     val g = items.firstOrNull { it.id == "gift_flower" } ?: items.minByOrNull { it.price } ?: return
     var busy by remember { mutableStateOf(false) }
+    var confirm by remember { mutableStateOf(false) }
     // whole circle is the touch target (child image can't swallow taps); every tap gives feedback (toast)
     Box(Modifier.size(42.dp).clip(CircleShape).background(Color(0x55000000)).border(1.dp, Color(0x44FFFFFF), CircleShape), contentAlignment = Alignment.Center) {
         if (busy) CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
         else Box(Modifier.size(28.dp)) { com.example.ui.social.StickerImage(g) }
-        Box(Modifier.matchParentSize().clickable(enabled = !busy) {
+        Box(Modifier.matchParentSize().clickable(enabled = !busy) { confirm = true })
+    }
+    if (confirm) androidx.compose.material3.AlertDialog(onDismissRequest = { confirm = false },
+        icon = { Box(Modifier.size(48.dp)) { com.example.ui.social.StickerImage(g) } },
+        title = { Text("ส่ง ${g.name}?") },
+        text = { Text("ใช้ 💎 ${g.price} เพชร ส่งให้สตรีมเมอร์") },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = { confirm = false }) { Text("ยกเลิก") } },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = {
+            confirm = false
             busy = true
             scope.launch {
                 val r = RtcApi.post("/lives/$liveId/gift", JSONObject().put("giftId", g.id).put("count", 1))
@@ -318,8 +327,7 @@ private fun QuickGift(liveId: String, onError: (String) -> Unit) {
                 if (r?.code != 200) onError(text)
                 android.widget.Toast.makeText(ctx, text, android.widget.Toast.LENGTH_SHORT).show()
             }
-        })
-    }
+        }) { Text("ส่งเลย", fontWeight = FontWeight.Bold) } })
 }
 
 @Composable
