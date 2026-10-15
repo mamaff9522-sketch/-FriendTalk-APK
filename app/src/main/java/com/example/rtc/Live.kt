@@ -252,7 +252,7 @@ private fun LiveGiftSheet(liveId: String, onDismiss: () -> Unit) {
             Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().heightIn(max = maxH).clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)).background(Color(0xFF15102F))
                 .clickable(enabled = false) {}.dialogNavPadding().navigationBarsPadding().padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("ส่งของขวัญ"", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text("ส่งของขวัญ", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     Text("💎 ${wallet?.third ?: "…"}", color = Color(0xFF7AF5FF), fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 }
                 Text("หักเพชรทันทีเมื่อส่ง สตรีมเมอร์ได้รับส่วนแบ่งเป็นเพชร", color = Color.White.copy(alpha = 0.55f), fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp, bottom = 12.dp))
