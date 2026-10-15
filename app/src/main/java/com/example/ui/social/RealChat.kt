@@ -157,6 +157,7 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
     val prefs = remember { context.getSharedPreferences("friendtalk", 0) }
     var lite by remember { mutableStateOf(prefs.getBoolean("decorLite", false)) }
     var editDecor by remember { mutableStateOf(false) }
+    var vipInfo by remember { mutableStateOf(false) }
     var giftSheet by remember { mutableStateOf(false) }
     var stickerSheet by remember { mutableStateOf(false) }
     // free chat stickers uploaded by admins (catalog/chatStickers), for drawing sticker messages
@@ -205,6 +206,11 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                             IconButton(onClick = { menu = true }, modifier = Modifier.size(40.dp)) { Icon(Icons.Filled.MoreVert, tr("เมนู"), tint = PureWhite) }
                             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                                 val c = cs
+                                val ds = decorState
+                                // Room decor (VIP): first item so it is easy to find; free users get the VIP details instead of a dead end.
+                                if (ds?.canEdit == true) DropdownMenuItem(text = { Text(tr("🎨 ตกแต่งห้องแชท"), fontWeight = FontWeight.Bold) }, onClick = { menu = false; editDecor = true })
+                                else if (ds != null && ds.ownerUid.isNotBlank() && ds.ownerUid != me) DropdownMenuItem(text = { Text(tr("🎨 ห้องนี้ตกแต่งโดยอีกฝ่าย"), color = Slate400) }, onClick = { menu = false; status = tr("ห้องนี้ถูกตกแต่งโดยอีกฝ่าย ต้องให้เจ้าของรีเซ็ตก่อนจึงจะตกแต่งเองได้") })
+                                else DropdownMenuItem(text = { Text(tr("🎨 ตกแต่งห้องแชท 👑 VIP")) }, onClick = { menu = false; vipInfo = true })
                                 DropdownMenuItem(text = { Text(tr("🚩 รายงานผู้ใช้")) }, onClick = { menu = false; reportU = true })
                                 DropdownMenuItem(text = { Text(if (blocked) tr("✅ เลิกบล็อก") else tr("⛔ บล็อกผู้ใช้")) }, onClick = { menu = false; scope.launch {
                                     val u = FirebaseAuth.getInstance().currentUser ?: return@launch
@@ -213,10 +219,6 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                                 DropdownMenuItem(text = { Text(tr("🛡 กติกาการแชท")) }, onClick = { menu = false; showRules = true })
                                 if (c?.closed == true && c.closedByMe) DropdownMenuItem(text = { Text(tr("🔓 เปิดแชทอีกครั้ง")) }, onClick = { menu = false; scope.launch { status = SocialRepo.setClosed(chatId, false).orEmpty(); csTick++ } })
                                 else if (c?.closed != true) DropdownMenuItem(text = { Text(tr("🔒 ปิดแชทนี้")) }, onClick = { menu = false; scope.launch { status = SocialRepo.setClosed(chatId, true).orEmpty(); csTick++ } })
-                                val ds = decorState
-                                if (ds?.canEdit == true) DropdownMenuItem(text = { Text(tr("✨ ตกแต่งห้อง VIP")) }, onClick = { menu = false; editDecor = true })
-                                else if (ds != null && ds.ownerUid.isNotBlank() && ds.ownerUid != me) DropdownMenuItem(text = { Text(tr("✨ ห้องนี้ตกแต่งโดยอีกฝ่าย"), color = Slate400) }, onClick = { menu = false })
-                                else DropdownMenuItem(text = { Text(tr("✨ ตกแต่งห้อง (VIP เท่านั้น)"), color = Slate400) }, onClick = { menu = false; status = tr("การตกแต่งห้องสำหรับสมาชิก VIP") })
                                 if (decor != null) DropdownMenuItem(text = { Text(if (lite) tr("🎞 เปิดภาพเคลื่อนไหว") else tr("🪶 โหมดประหยัด (หยุด GIF)")) }, onClick = { menu = false; lite = !lite; prefs.edit().putBoolean("decorLite", lite).apply() })
                                 if (decor != null && ds?.ownerUid != me) DropdownMenuItem(text = { Text(tr("🚩 รายงานพื้นหลังไม่เหมาะสม")) }, onClick = { menu = false; scope.launch { status = if (com.example.social.GiftRepo.reportDecor(chatId, "inappropriate")) tr("รายงานแล้ว ขอบคุณ") else tr("รายงานไม่สำเร็จ") } })
                             }
@@ -280,6 +282,7 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                 }
                 }
                 if (editDecor) RoomDecorEditor(chatId, decor, token) { saved -> editDecor = false; if (saved) decorTick++ }
+                if (vipInfo) com.example.ui.feed.VipDetailsDialog { vipInfo = false }
                 if (giftSheet) ChatGiftSheet(onDismiss = { giftSheet = false }) { item -> giftSheet = false; scope.launch { status = com.example.social.GiftRepo.sendGift(chatId, item.id).msg } }
                 if (stickerSheet) ChatStickerSheet(onDismiss = { stickerSheet = false }) { item ->
                     stickerSheet = false

@@ -2080,9 +2080,12 @@ app.get('/gifts/wallet', w(async (q, r) => {
   r.json({ coins: num(c.val()), diamonds: num(dm.val()), pending: p, available: num(dm.val()) - p, currency: 'diamonds' });
 }));
 // ===== VIP room decor for 1:1 chats =====
-const THEMES = ['royal_gold', 'diamond_luxury', 'galaxy', 'romantic', 'neon_vip', 'luxury_palace'];
-const FRAMES = ['none', 'diamond', 'gold', 'sparkle'], EFFECTS = ['none', 'sparkle', 'hearts', 'stars', 'snow', 'bubbles'], PATTERNS = ['none', 'dots', 'stripes', 'hearts', 'stars', 'diamonds'];
-const BUBBLES = ['default', 'rounded', 'glass', 'gold', 'neon'];
+const THEMES = ['royal_gold', 'diamond_luxury', 'galaxy', 'romantic', 'neon_vip', 'luxury_palace', 'sakura', 'ocean', 'sunset', 'midnight', 'mint_garden', 'rose_gold'];
+const FRAMES = ['none', 'diamond', 'gold', 'sparkle', 'neon', 'rose'], EFFECTS = ['none', 'sparkle', 'hearts', 'stars', 'snow', 'bubbles', 'petals', 'confetti', 'fireflies'], PATTERNS = ['none', 'dots', 'stripes', 'hearts', 'stars', 'diamonds'];
+const BUBBLES = ['default', 'rounded', 'glass', 'gold', 'neon', 'gradient', 'outline'];
+// Built-in emoji decor stickers (same ids as the app's ChatSticker.BUILT_IN 'e_*' + decor-only 'd_*'); usable without an admin catalog.
+const DECOR_BUILTIN = new Set(['hi', 'love', 'lol', 'ok', 'thanks', 'sad', 'wow', 'party', 'sleep', 'hug', 'heart', 'cry'].map(x => 'e_' + x)
+  .concat(['crown', 'rose', 'diamond', 'star', 'balloon', 'ribbon', 'moon', 'butterfly', 'sparkles', 'cake', 'teddy', 'rainbow'].map(x => 'd_' + x)));
 const DHEX = /^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/;
 function lum(hex) { const c = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255).map(v => v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; }
 const contrast = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
@@ -2128,7 +2131,7 @@ app.put('/rooms/:chatId/decor', w(notBanned), w(async (q, r) => {
   const cur = (await db.ref(`roomDecor/${chatId}`).get()).val();
   if (cur && cur.ownerUid !== q.uid) return r.status(403).json({ code: 'not_owner', error: 'ห้องนี้ถูกตกแต่งโดยอีกฝ่าย ต้องให้เจ้าของรีเซ็ตก่อน' });
   const d = validDecor(chatId, q.body?.decor); if (typeof d === 'string') return r.status(400).json({ error: d });
-  if (d.items.length) { const st = (await db.ref('catalog/stickers').get()).val() || {}; if (d.items.some(i => !st[i.stickerId] || st[i.stickerId].enabled === false)) return r.status(400).json({ error: 'unknown sticker' }); }
+  if (d.items.some(i => !DECOR_BUILTIN.has(i.stickerId))) { const st = (await db.ref('catalog/stickers').get()).val() || {}; if (d.items.some(i => !DECOR_BUILTIN.has(i.stickerId) && (!st[i.stickerId] || st[i.stickerId].enabled === false))) return r.status(400).json({ error: 'unknown sticker' }); }
   const t = Date.now(); await db.ref(`roomDecor/${chatId}`).set({ ownerUid: q.uid, decor: d, updatedAt: t, rev: t });
   r.json({ saved: true, rev: t });
 }));

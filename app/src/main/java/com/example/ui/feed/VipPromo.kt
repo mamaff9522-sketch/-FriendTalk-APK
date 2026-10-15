@@ -119,7 +119,7 @@ fun VipDetailsDialog(onClose: () -> Unit) {
             Spacer(Modifier.height(16.dp))
             Benefit(Icons.Filled.Block, tr("ไม่มีโฆษณา"), tr("ไม่มีแบนเนอร์และโฆษณาคั่นทั้งแอป"))
             Benefit(Icons.Filled.Bolt, tr("โควตาสูงสุด"), tr("เรดาร์ เขย่า สุ่มแชท ค้นหา และคุยกับ AI ได้มากขึ้นหลายเท่าต่อวัน"))
-            Benefit(Icons.Filled.AutoAwesome, tr("ตกแต่งห้องแชท VIP"), tr("ธีมหรูและสติกเกอร์พิเศษในห้องแชท 1:1"))
+            Benefit(Icons.Filled.AutoAwesome, tr("ตกแต่งห้องแชท VIP"), tr("12 ธีม กรอบ เอฟเฟกต์ บับเบิล สติกเกอร์ และรูปพื้นหลังของคุณเอง"))
             Spacer(Modifier.height(16.dp))
             Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Color(0x22FFFFFF)).padding(12.dp)) {
                 Text(tr("ตอนนี้ยังไม่เปิดชำระเงินสมัคร VIP ในแอป หากต้องการเป็น VIP กรุณาติดต่อแอดมิน สิทธิ์จะเริ่มใช้ได้ทันทีที่แอดมินเปิดให้"),
