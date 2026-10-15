@@ -307,7 +307,17 @@ fun AdsPageContent(feature: String?, onClose: (() -> Unit)?, returnAfterReward: 
             }
             androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(com.example.R.drawable.art_gift), null, modifier = Modifier.width(170.dp).height(110.dp))
         }
-        if (lim == null) { CircularProgressIndicator(color = Pink500); return@Column }
+        if (lim == null) {
+            // /limits failed (offline / server not updated) → say so with a retry instead of spinning forever
+            var waited by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) { kotlinx.coroutines.delay(8000); waited = true }
+            if (!waited) CircularProgressIndicator(color = Pink500)
+            else Column(Modifier.padding(top = 12.dp)) {
+                Text(tr("โหลดหน้าโฆษณาไม่สำเร็จ ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่"), color = Amber400, fontSize = 13.sp)
+                TextButton(onClick = { waited = false; scope.launch { AdRoom.refresh() } }) { Text(tr("ลองใหม่"), color = Pink400) }
+            }
+            return@Column
+        }
         if (feature != null) Text("โควตาที่หมด: ${FEATURE_LABELS[feature] ?: feature}", color = Amber400, fontSize = 12.sp)
         if (!vip && lim.showAds && lim.rewardEnabled) {
             Spacer(Modifier.height(10.dp))
@@ -351,7 +361,9 @@ fun AdsPageContent(feature: String?, onClose: (() -> Unit)?, returnAfterReward: 
                                 val act = ctx.activity() ?: run { msg = tr("เปิดโฆษณาไม่ได้ในหน้านี้ ลองเปิดจากหน้าอื่น"); return@clickable }
                                 busy = o.id; msg = ""
                                 scope.launch {
-                                    val earned = AdsManager.showRewardedFormat(act, o.adFormat, "offer:${o.id}")
+                                    // never hang on "กำลังโหลดโฆษณา…": give up after 25 s with a clear message
+                                    val earned = kotlinx.coroutines.withTimeoutOrNull(25_000) { AdsManager.showRewardedFormat(act, o.adFormat, "offer:${o.id}") }
+                                        ?: run { if (AdsManager.lastError == null) AdsManager.lastError = tr("โหลดโฆษณาไม่ทันเวลา (เน็ตช้าหรือยังไม่มีโฆษณา) ลองใหม่อีกครั้ง"); false }
                                     if (!earned) { msg = AdsManager.lastError ?: tr("ยังไม่ได้รับรางวัล (ดูโฆษณาไม่จบ)"); busy = null; return@launch }
                                     val err = AdRoom.claimReward(o.feature, o.id)
                                     busy = null
