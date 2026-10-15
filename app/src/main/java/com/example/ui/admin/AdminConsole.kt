@@ -116,6 +116,7 @@ fun AdminConsole(onDismiss: () -> Unit, onOpenUiBuilder: () -> Unit, onOpenApkDo
                             "topup" -> com.example.ui.shop.AdminTopupPane()
                             "packs" -> com.example.ui.social.AdminShopPacksPane()
                             "rates" -> com.example.ui.social.AdminCompanionRatesPane()
+                            "vipplans" -> VipPlansPane()
                             "placements" -> AdPlacementsCard()
                             "limits" -> AdminLimitsTab()
                             "gifts" -> AdminGiftsTab()
@@ -410,7 +411,7 @@ private fun adminSections(p: Perms): List<AdminSection> {
         AdminSection("safety", "🛡", "ตรวจสอบ & ใบสมัคร", "รายงานจากผู้ใช้ และใบสมัครเพื่อนคุย/ครีเอเตอร์", Color(0xFFFF4D6D),
             subs(("reports" to "รายงาน") to content, ("applications" to "ใบสมัคร") to content), badge = "openReports"),
         AdminSection("money", "💳", "การเงิน & ราคา", "ยืนยันการโอน ตั้งราคาแพ็กเพชร/เหรียญ และค่าเพื่อนคุย", Color(0xFF10B981),
-            subs(("topup" to "เติมเงิน (โอน)") to p.has("coins_confirm"), ("packs" to "ราคาแพ็กเพชร/เหรียญ") to cfg, ("rates" to "ค่าเพื่อนคุย") to cfg),
+            subs(("topup" to "เติมเงิน (โอน)") to p.has("coins_confirm"), ("packs" to "ราคาแพ็กเพชร/เหรียญ") to cfg, ("rates" to "ค่าเพื่อนคุย") to cfg, ("vipplans" to "แพ็กเกจ VIP") to cfg),
             note = com.example.ui.social.AD_REVENUE_NOTE, badge = "pendingCoinRequests"),
         AdminSection("ads", "📢", "โฆษณา & โควตา", "จุดวางแบนเนอร์ การ์ด VIP โควตาฟรี/VIP และโฆษณารับรางวัล", Color(0xFFFF9F43),
             subs(("placements" to "ตำแหน่งโฆษณา & การ์ด VIP") to cfg, ("limits" to "โควตา & โฆษณา") to cfg)),
@@ -590,6 +591,50 @@ private fun AdPlacementsCard() {
         OutlinedTextField(value = every, onValueChange = { every = it.filter(Char::isDigit).take(2) }, label = { Text("ในฟีด: แสดงทุก ๆ N โพสต์ (2–50)") }, singleLine = true,
             colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White))
         Button(onClick = { save(cur) }) { Text("บันทึก") }
+        if (status.isNotBlank()) Text(status, color = Amber400, fontSize = 12.sp)
+    }
+}
+
+/** VIP packages users buy with diamonds (appConfig/vipPlans via PUT /admin/vip-plans). */
+@Composable
+private fun VipPlansPane() {
+    val scope = rememberCoroutineScope()
+    var enabled by remember { mutableStateOf(true) }
+    val rows = remember { mutableStateListOf<Triple<String, String, String>>() } // id, days, price
+    var status by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) {
+        val r = api("GET", "/vip/plans")
+        if (r.code == 200 && r.json != null) {
+            enabled = r.json.optBoolean("enabled", true)
+            val a = r.json.optJSONArray("plans"); rows.clear()
+            for (i in 0 until (a?.length() ?: 0)) { val o = a!!.getJSONObject(i); rows.add(Triple(o.optString("id"), o.optInt("days").toString(), o.optInt("price").toString())) }
+        } else status = if (r.code == 404) "เซิร์ฟเวอร์ยังไม่อัปเดต (404) — deploy friendtalk-brain ก่อน" else err(r)
+    }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("👑 แพ็กเกจ VIP (จ่ายด้วยเพชร)", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+        Text("ผู้ใช้กด 'ปลดล็อก VIP' → เลือกแพ็กเกจ → หักเพชรแล้วเป็น VIP ทันที (ถ้าเป็นอยู่แล้วจะต่อวันเพิ่ม) · เพชรเข้ากระเป๋าระบบ · สูงสุด 6 แพ็กเกจ", color = Slate400, fontSize = 11.sp)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("เปิดให้สมัครในแอป", color = White, modifier = Modifier.weight(1f))
+            Switch(checked = enabled, onCheckedChange = { enabled = it })
+        }
+        rows.forEachIndexed { i, (id, days, price) ->
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(days, { v -> rows[i] = Triple(id, v.filter(Char::isDigit).take(3), price) }, label = { Text("วัน") }, singleLine = true, modifier = Modifier.weight(1f),
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White))
+                OutlinedTextField(price, { v -> rows[i] = Triple(id, days, v.filter(Char::isDigit).take(7)) }, label = { Text("ราคา 💎") }, singleLine = true, modifier = Modifier.weight(1f),
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White))
+                TextButton(onClick = { rows.removeAt(i) }) { Text("ลบ", color = Rose500) }
+            }
+        }
+        if (rows.size < 6) OutlinedButton(onClick = { rows.add(Triple("p" + System.currentTimeMillis().toString(36).takeLast(5), "30", "990")) }) { Text("+ เพิ่มแพ็กเกจ", color = White) }
+        Button(onClick = {
+            status = "กำลังบันทึก…"
+            scope.launch {
+                val a = org.json.JSONArray(); rows.forEach { (id, d, p) -> a.put(JSONObject().put("id", id).put("days", d.toIntOrNull() ?: 0).put("price", p.toIntOrNull() ?: 0)) }
+                val r = api("PUT", "/admin/vip-plans", JSONObject().put("enabled", enabled).put("plans", a))
+                status = if (r.code == 200) "บันทึกแล้ว — ผู้ใช้เห็นราคาใหม่ทันที" else err(r)
+            }
+        }, colors = ButtonDefaults.buttonColors(containerColor = Pink500)) { Text("บันทึก") }
         if (status.isNotBlank()) Text(status, color = Amber400, fontSize = 12.sp)
     }
 }

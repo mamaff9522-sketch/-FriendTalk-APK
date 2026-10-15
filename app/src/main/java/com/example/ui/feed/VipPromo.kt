@@ -30,6 +30,8 @@ import com.example.ads.AdPlacements
 import com.example.ads.AdRoom
 import com.example.ui.components.tr
 import com.example.ui.theme.PureWhite
+import kotlinx.coroutines.launch
+import androidx.compose.material3.CircularProgressIndicator
 
 private val VGold = Color(0xFFFFC94D)
 private val VPink = Color(0xFFFF2FA8)
@@ -121,16 +123,78 @@ fun VipDetailsDialog(onClose: () -> Unit) {
             Benefit(Icons.Filled.Bolt, tr("โควตาสูงสุด"), tr("เรดาร์ เขย่า สุ่มแชท ค้นหา และคุยกับ AI ได้มากขึ้นหลายเท่าต่อวัน"))
             Benefit(Icons.Filled.AutoAwesome, tr("ตกแต่งห้องแชท VIP"), tr("12 ธีม กรอบ เอฟเฟกต์ บับเบิล สติกเกอร์ และรูปพื้นหลังของคุณเอง"))
             Spacer(Modifier.height(16.dp))
-            Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Color(0x22FFFFFF)).padding(12.dp)) {
-                Text(tr("ตอนนี้ยังไม่เปิดชำระเงินสมัคร VIP ในแอป หากต้องการเป็น VIP กรุณาติดต่อแอดมิน สิทธิ์จะเริ่มใช้ได้ทันทีที่แอดมินเปิดให้"),
-                    color = PureWhite.copy(alpha = 0.85f), fontSize = 12.sp, textAlign = TextAlign.Center)
+            // real plans from the server (appConfig/vipPlans), paid with diamonds
+            val scope = rememberCoroutineScope()
+            var info by remember { mutableStateOf<org.json.JSONObject?>(null) }
+            var loadErr by remember { mutableStateOf("") }
+            var wallet by remember { mutableStateOf<Triple<Int, Int, Int>?>(null) }
+            var sel by remember { mutableStateOf<String?>(null) }
+            var busy by remember { mutableStateOf(false) }
+            var msg by remember { mutableStateOf("") }
+            var tick by remember { mutableIntStateOf(0) }
+            LaunchedEffect(tick) {
+                val u = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser
+                val r = u?.let { runCatching { com.example.network.BrainApi.call(it, "GET", "/vip/plans") }.getOrNull() }
+                if (r?.code == 200) info = r.json else loadErr = if (r?.code == 404) tr("เซิร์ฟเวอร์ยังไม่อัปเดต (404)") else tr("โหลดแพ็กเกจไม่สำเร็จ")
+                wallet = com.example.social.GiftRepo.wallet()
             }
+            val df = remember { java.text.SimpleDateFormat("d MMM yyyy", java.util.Locale("th", "TH")) }
+            val until = info?.optLong("vipUntil") ?: 0L
+            if (info?.optString("tier") == "vip" && until > 0) Text("👑 " + tr("คุณเป็น VIP ถึง") + " " + df.format(java.util.Date(until)) + " · " + tr("ซื้อเพิ่มเพื่อต่ออายุได้"),
+                color = VGold, fontSize = 12.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, modifier = Modifier.padding(bottom = 10.dp))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(tr("เลือกแพ็กเกจ"), color = PureWhite, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text("💎 ${wallet?.third ?: "…"}", color = Color(0xFF7AF5FF), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.height(8.dp))
+            val plans = info?.optJSONArray("plans")
+            when {
+                info == null && loadErr.isNotBlank() -> Text(loadErr, color = Color(0xFFFFC94D), fontSize = 12.sp)
+                info == null -> CircularProgressIndicator(color = VPink, modifier = Modifier.size(24.dp))
+                info?.optBoolean("enabled", true) == false || plans == null || plans.length() == 0 -> Text(tr("ยังไม่เปิดให้สมัคร VIP ในแอป"), color = PureWhite.copy(alpha = 0.7f), fontSize = 12.sp)
+                else -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val best = (0 until plans.length()).map { plans.getJSONObject(it) }.minByOrNull { it.optDouble("price") / maxOf(1, it.optInt("days")) }?.optString("id")
+                    for (i in 0 until plans.length()) {
+                        val p = plans.getJSONObject(i); val id = p.optString("id"); val on = sel == id
+                        Column(Modifier.weight(1f).clip(RoundedCornerShape(16.dp)).background(if (on) Color(0x33FFC94D) else Color(0x14FFFFFF))
+                            .border(if (on) 2.dp else 1.dp, if (on) VGold else Color(0x33FFFFFF), RoundedCornerShape(16.dp)).clickable { sel = id; msg = "" }.padding(vertical = 12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally) {
+                            if (id == best && plans.length() > 1) Text(tr("คุ้มสุด"), color = Color(0xFF3B2A06), fontSize = 9.sp, fontWeight = FontWeight.Black,
+                                modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(VGold).padding(horizontal = 6.dp, vertical = 1.dp))
+                            Text("${p.optInt("days")}", color = PureWhite, fontSize = 22.sp, fontWeight = FontWeight.Black)
+                            Text(tr("วัน"), color = PureWhite.copy(alpha = 0.7f), fontSize = 11.sp)
+                            Spacer(Modifier.height(4.dp))
+                            Text("💎 ${p.optInt("price")}", color = Color(0xFF7AF5FF), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+            if (msg.isNotBlank()) Text(msg, color = if (msg.startsWith("✅")) Color(0xFF6EE7B7) else Color(0xFFFFC94D), fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 10.dp))
             Spacer(Modifier.height(14.dp))
             Box(
-                Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(24.dp))
-                    .background(Brush.horizontalGradient(listOf(VPink, VViolet))).clickable(onClick = onClose),
+                Modifier.fillMaxWidth().height(50.dp).clip(RoundedCornerShape(25.dp))
+                    .background(if (sel != null) Brush.horizontalGradient(listOf(Color(0xFFFFD86B), Color(0xFFE0A100))) else Brush.horizontalGradient(listOf(Color(0x33FFFFFF), Color(0x33FFFFFF))))
+                    .clickable(enabled = sel != null && !busy) {
+                        val id = sel ?: return@clickable
+                        busy = true; msg = ""
+                        scope.launch {
+                            val u = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser
+                            val r = u?.let { runCatching { com.example.network.BrainApi.call(it, "POST", "/vip/buy", org.json.JSONObject().put("planId", id)) }.getOrNull() }
+                            busy = false
+                            if (r?.code == 200) {
+                                msg = "✅ " + tr("สมัคร VIP สำเร็จ! ใช้สิทธิ์ได้ทันทีถึง") + " " + df.format(java.util.Date(r.json?.optLong("until") ?: 0L))
+                                sel = null; tick++
+                                runCatching { com.example.ads.AdRoom.refresh() }
+                            } else msg = (r?.json?.optString("error")?.ifBlank { null } ?: tr("สมัครไม่สำเร็จ")) +
+                                if (r?.code == 402) " — " + tr("เติมเพชรได้ที่หน้า 'ฉัน' → เหรียญ & เพชร") else ""
+                        }
+                    },
                 contentAlignment = Alignment.Center
-            ) { Text(tr("เข้าใจแล้ว"), color = PureWhite, fontSize = 15.sp, fontWeight = FontWeight.Bold) }
+            ) {
+                if (busy) CircularProgressIndicator(Modifier.size(20.dp), color = Color(0xFF3B2A06), strokeWidth = 2.dp)
+                else Text(if (sel != null) "👑 " + tr("สมัคร VIP ด้วยเพชร") else tr("เลือกแพ็กเกจด้านบน"), color = if (sel != null) Color(0xFF3B2A06) else PureWhite.copy(alpha = 0.6f), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            }
+            Text(tr("ปิด"), color = PureWhite.copy(alpha = 0.6f), fontSize = 13.sp, modifier = Modifier.padding(top = 12.dp).clickable(onClick = onClose).padding(8.dp))
         }
     }
 }

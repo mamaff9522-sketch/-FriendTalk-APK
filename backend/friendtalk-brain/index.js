@@ -58,7 +58,7 @@ async function isSuper(req, res, next) {
   req.role = r; next();
 }
 const w = fn => (q, r, n) => fn(q, r, n).catch(e => { console.error(e.message); r.status(e.code === 404 ? 404 : 500).json({ error: e.code === 404 ? 'user not found' : 'internal' }); });
-app.use(['/push', '/coins', '/age', '/config', '/admin', '/superadmin', '/me', '/match', '/bot', '/ui', '/chats', '/swipe', '/posts', '/feed', '/friends', '/radar', '/shake', '/limits', '/quota', '/search', '/users', '/interests', '/bots', '/gifts', '/rooms', '/reports', '/creator', '/blocks', '/chat-rules', '/companion-apply', '/companion', '/shop', '/follow', '/views', '/withdraw', '/onboarding', '/idv', '/chat-send', '/rtc', '/calls', '/lives'], w(auth));
+app.use(['/push', '/coins', '/age', '/config', '/admin', '/superadmin', '/me', '/match', '/bot', '/ui', '/chats', '/swipe', '/posts', '/feed', '/friends', '/radar', '/shake', '/limits', '/quota', '/search', '/users', '/interests', '/bots', '/gifts', '/rooms', '/reports', '/creator', '/blocks', '/chat-rules', '/companion-apply', '/companion', '/shop', '/follow', '/views', '/withdraw', '/onboarding', '/idv', '/chat-send', '/rtc', '/calls', '/lives', '/vip'], w(auth));
 app.get('/me', w(async (q, r) => {
   const dh = String(q.get('X-Device-Hash') || ''); if (/^[a-f0-9]{16,64}$/.test(dh)) { db.ref(`deviceOf/${q.uid}`).set(dh).catch(() => {}); db.ref(`devices/${dh}/${q.uid}`).set(Date.now()).catch(() => {}); }
   // Safeguard: if /roles has no superadmin at all (data loss), re-seed it for the configured owner email (verified Google sign-in only; server-side).
@@ -1023,6 +1023,29 @@ app.put('/admin/vip/:uid', perm('config_edit'), w(notBanned), w(async (q, r) => 
   if (!Number.isInteger(until) || until < Date.now()) return r.status(400).json({ error: 'until must be a future ms timestamp or null' });
   await db.ref(`vip/${uid}`).set({ until, by: q.uid, at: Date.now() });
   r.json({ uid, vip: true, until });
+}));
+// ===== VIP self-purchase with diamonds (appConfig/vipPlans, admin-editable) =====
+const VIP_PLANS_SEED = { enabled: true, plans: [{ id: 'd7', days: 7, price: 300 }, { id: 'd30', days: 30, price: 990 }, { id: 'd90', days: 90, price: 2490 }] };
+async function vipPlans() { const v = (await db.ref('appConfig/vipPlans').get()).val(); return v && Array.isArray(v.plans) ? { enabled: v.enabled !== false, plans: v.plans } : VIP_PLANS_SEED; }
+app.get('/vip/plans', w(async (q, r) => { const p = await vipPlans(), t = await tierOf(q.uid); r.json({ ...p, tier: t.tier, vipUntil: t.vipUntil }); }));
+app.post('/vip/buy', w(notBanned), w(async (q, r) => {
+  const cfg = await vipPlans(); if (!cfg.enabled) return r.status(403).json({ error: 'ยังไม่เปิดให้สมัคร VIP ในแอป' });
+  const plan = cfg.plans.find(p => p.id === q.body?.planId); if (!plan) return r.status(404).json({ error: 'ไม่พบแพ็กเกจนี้' });
+  const price = num(plan.price), days = num(plan.days); if (!(price > 0) || !(days > 0)) return r.status(400).json({ error: 'แพ็กเกจไม่ถูกต้อง' });
+  const pend = await pendingSum(q.uid);
+  const d = await db.ref(`wallets/${q.uid}/diamonds`).transaction(c => (c === null ? null : num(c) - pend >= price ? num(c) - price : undefined));
+  if (!d.committed || d.snapshot.val() === null) return r.status(402).json({ code: 'insufficient', error: `เพชรไม่พอ (ต้องการ 💎${price})`, price });
+  const t = Date.now(); let until = 0;
+  await db.ref(`vip/${q.uid}`).transaction(v => { const base = v && v.until > t ? v.until : t; until = base + days * 864e5; return { ...(v || {}), until, by: 'self', at: t }; });
+  await Promise.all([db.ref('wallets/_system/diamonds').transaction(c => num(c) + price),
+    db.ref(`vipPurchases/${q.uid}`).push({ planId: plan.id, days, price, at: t, until })]);
+  r.json({ ok: true, until, diamonds: d.snapshot.val() });
+}));
+app.put('/admin/vip-plans', perm('config_edit'), w(notBanned), w(async (q, r) => {
+  const b = q.body || {}, plans = (Array.isArray(b.plans) ? b.plans : []).slice(0, 6).map((p, i) => ({ id: /^[a-z0-9_]{1,20}$/.test(p?.id) ? p.id : `p${i}`, days: parseInt(p?.days), price: parseInt(p?.price) }));
+  if (!plans.length || plans.some(p => !(p.days >= 1 && p.days <= 365) || !(p.price >= 1 && p.price <= 1e6))) return r.status(400).json({ error: 'ต้องมีอย่างน้อย 1 แพ็กเกจ: วัน 1–365, ราคา 1–1,000,000 เพชร' });
+  const v = { enabled: b.enabled !== false, plans, by: q.uid, at: Date.now() };
+  await db.ref('appConfig/vipPlans').set(v); r.json(v);
 }));
 // Ad offers the user can pick from (admin-editable). AdMob picks the creative; an offer = format + est. duration label + reward.
 const SEED_AD_OFFERS = [
