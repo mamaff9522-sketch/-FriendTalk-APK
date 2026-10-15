@@ -247,10 +247,12 @@ private fun LiveGiftSheet(liveId: String, onDismiss: () -> Unit) {
     LaunchedEffect(items) { if (sel == null) sel = items?.let { l -> (l.firstOrNull { it.id == "gift_flower" } ?: l.minByOrNull { it.price })?.id } }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxSize().clickable(onClick = onDismiss)) {
-            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)).background(Color(0xFF15102F))
+            // sheet never taller than 72% of the screen: gift grid scrolls, the send button is always visible at the bottom
+            val maxH = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * 0.72f).dp
+            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().heightIn(max = maxH).clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)).background(Color(0xFF15102F))
                 .clickable(enabled = false) {}.dialogNavPadding().navigationBarsPadding().padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("ส่งของขวัญ", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text("ส่งของขวัญ"", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     Text("💎 ${wallet?.third ?: "…"}", color = Color(0xFF7AF5FF), fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 }
                 Text("หักเพชรทันทีเมื่อส่ง สตรีมเมอร์ได้รับส่วนแบ่งเป็นเพชร", color = Color.White.copy(alpha = 0.55f), fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp, bottom = 12.dp))
@@ -259,21 +261,19 @@ private fun LiveGiftSheet(liveId: String, onDismiss: () -> Unit) {
                     l == null -> CircularProgressIndicator(color = Neon)
                     l.isEmpty() -> Text("ยังไม่มีของขวัญไลฟ์ (แอดมินเพิ่มได้)", color = Color.White.copy(alpha = 0.6f))
                     // many gifts → scroll inside the sheet (send button stays visible below)
-                    else -> Column(Modifier.heightIn(max = 340.dp).verticalScroll(rememberScrollState())) { l.chunked(4).forEach { row ->
-                        Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            row.forEach { g ->
-                                val on = sel == g.id
-                                Column(Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).background(if (on) Color(0x33FF2FA8) else Color(0x14FFFFFF))
-                                    .border(1.5.dp, if (on) Neon else Color.Transparent, RoundedCornerShape(14.dp)).clickable { sel = g.id }.padding(vertical = 8.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Box(Modifier.size(44.dp)) { com.example.ui.social.StickerImage(g) }
-                                    Text(g.name, color = Color.White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text("💎 ${g.price}", color = Color(0xFF7AF5FF), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                }
+                    else -> androidx.compose.foundation.lazy.grid.LazyVerticalGrid(androidx.compose.foundation.lazy.grid.GridCells.Fixed(4),
+                        Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(l.size) { i -> val g = l[i]
+                            val on = sel == g.id
+                            Column(Modifier.clip(RoundedCornerShape(14.dp)).background(if (on) Color(0x33FF2FA8) else Color(0x14FFFFFF))
+                                .border(1.5.dp, if (on) Neon else Color.Transparent, RoundedCornerShape(14.dp)).clickable { sel = g.id }.padding(vertical = 8.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally) {
+                                Box(Modifier.size(44.dp)) { com.example.ui.social.StickerImage(g) }
+                                Text(g.name, color = Color.White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text("💎 ${g.price}", color = Color(0xFF7AF5FF), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
-                            repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
                         }
-                    } }
+                    }
                 }
                 if (msg.isNotBlank()) Text(msg, color = Color(0xFFFFC94D), fontSize = 12.sp, modifier = Modifier.padding(vertical = 4.dp))
                 Box(Modifier.fillMaxWidth().padding(top = 6.dp).height(48.dp).clip(RoundedCornerShape(24.dp))
