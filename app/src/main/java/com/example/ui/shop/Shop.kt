@@ -109,6 +109,11 @@ private fun ShopDialog(initial: String, onClose: () -> Unit) {
                     loading -> CircularProgressIndicator(color = Pink500)
                     // Google Play billing not available (app not on Play yet / no products) → bank-transfer top-up checked by admins
                     !enabled || list.isEmpty() -> TopupSection(tab)
+                    // Play products configured but this copy was not installed from Google Play (test APK) → offer the other way
+                    details.isEmpty() -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("ℹ️ " + tr("ซื้อผ่าน Google Play ได้เมื่อติดตั้งแอปจาก Play Store — ตอนนี้เติมแบบโอนหรือให้แอดมินเติมให้ได้"), color = Slate400, fontSize = 12.sp)
+                        TopupSection(tab)
+                    }
                     else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(list) { p ->
                             val d = details[p.productId]

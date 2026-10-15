@@ -117,6 +117,7 @@ fun AdminConsole(onDismiss: () -> Unit, onOpenUiBuilder: () -> Unit, onOpenApkDo
                             "packs" -> com.example.ui.social.AdminShopPacksPane()
                             "rates" -> com.example.ui.social.AdminCompanionRatesPane()
                             "vipplans" -> VipPlansPane()
+                            "grant" -> GrantPane()
                             "placements" -> AdPlacementsCard()
                             "limits" -> AdminLimitsTab()
                             "gifts" -> AdminGiftsTab()
@@ -410,8 +411,8 @@ private fun adminSections(p: Perms): List<AdminSection> {
         AdminSection("people", "👥", "ผู้ใช้ & ทีมงาน", "ค้นหาผู้ใช้ แบน ให้ VIP/เหรียญ ตั้งสิทธิ์แอดมิน", Color(0xFF9B3DFF), subs(("members" to "สมาชิก & สิทธิ์") to true)),
         AdminSection("safety", "🛡", "ตรวจสอบ & ใบสมัคร", "รายงานจากผู้ใช้ และใบสมัครเพื่อนคุย/ครีเอเตอร์", Color(0xFFFF4D6D),
             subs(("reports" to "รายงาน") to content, ("applications" to "ใบสมัคร") to content), badge = "openReports"),
-        AdminSection("money", "💳", "การเงิน & ราคา", "ยืนยันการโอน ตั้งราคาแพ็กเพชร/เหรียญ และค่าเพื่อนคุย", Color(0xFF10B981),
-            subs(("topup" to "เติมเงิน (โอน)") to p.has("coins_confirm"), ("packs" to "ราคาแพ็กเพชร/เหรียญ") to cfg, ("rates" to "ค่าเพื่อนคุย") to cfg, ("vipplans" to "แพ็กเกจ VIP") to cfg),
+        AdminSection("money", "💳", "การเงิน & ราคา", "เติมเพชร/เหรียญให้ผู้ใช้ ยืนยันการโอน ตั้งราคาแพ็ก VIP และค่าเพื่อนคุย", Color(0xFF10B981),
+            subs(("grant" to "เติมให้ผู้ใช้") to p.has("coins_confirm"), ("topup" to "เติมเงิน (โอน)") to p.has("coins_confirm"), ("packs" to "ราคาแพ็กเพชร/เหรียญ") to cfg, ("rates" to "ค่าเพื่อนคุย") to cfg, ("vipplans" to "แพ็กเกจ VIP") to cfg),
             note = com.example.ui.social.AD_REVENUE_NOTE, badge = "pendingCoinRequests"),
         AdminSection("ads", "📢", "โฆษณา & โควตา", "จุดวางแบนเนอร์ การ์ด VIP โควตาฟรี/VIP และโฆษณารับรางวัล", Color(0xFFFF9F43),
             subs(("placements" to "ตำแหน่งโฆษณา & การ์ด VIP") to cfg, ("limits" to "โควตา & โฆษณา") to cfg)),
@@ -636,5 +637,92 @@ private fun VipPlansPane() {
             }
         }, colors = ButtonDefaults.buttonColors(containerColor = Pink500)) { Text("บันทึก") }
         if (status.isNotBlank()) Text(status, color = Amber400, fontSize = 12.sp)
+    }
+}
+
+/** Admin: give diamonds / coins to any user (search → pick → amount → confirm). Logged in adminCoinLedger, user gets a push. */
+@Composable
+private fun GrantPane() {
+    val scope = rememberCoroutineScope()
+    var q by remember { mutableStateOf("") }
+    var results by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var picked by remember { mutableStateOf<JSONObject?>(null) }
+    var cur by remember { mutableStateOf("diamonds") }
+    var amount by remember { mutableStateOf("") }
+    var reason by remember { mutableStateOf("แอดมินเติมให้") }
+    var confirm by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf("") }
+    var ledger by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var tick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(tick) { val r = api("GET", "/admin/coin-ledger"); val a = r.json?.optJSONArray("items"); ledger = (0 until (a?.length() ?: 0)).map { a!!.getJSONObject(it) } }
+    fun search() { scope.launch {
+        val r = api("GET", "/admin/users?q=" + android.net.Uri.encode(q.trim()) + "&role=all&offset=0")
+        val a = r.json?.optJSONArray("users"); results = (0 until (a?.length() ?: 0)).map { a!!.getJSONObject(it) }.take(8)
+        status = if (r.code != 200) err(r) else if (results.isEmpty()) "ไม่พบผู้ใช้" else ""
+    } }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("🎁 เติมเพชร / เหรียญให้ผู้ใช้", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+        Text("ใช้ตอนผู้ใช้จ่ายนอกแอป แจกรางวัล หรือชดเชย · ทุกครั้งถูกบันทึกพร้อมชื่อแอดมินและเหตุผล · ผู้ใช้ได้รับแจ้งเตือน", color = Slate400, fontSize = 11.sp)
+        val u = picked
+        if (u == null) {
+            OutlinedTextField(q, { q = it.take(60) }, singleLine = true, placeholder = { Text("ชื่อ, @username หรือ UID", color = Slate400) },
+                trailingIcon = { TextButton(onClick = { search() }) { Text("ค้นหา", color = Pink400) } }, shape = RoundedCornerShape(14.dp),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { search() }), keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
+                colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White), modifier = Modifier.fillMaxWidth())
+            results.forEach { x ->
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Slate900).clickable { picked = x; status = "" }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Avatar(x.optString("avatar"), x.optString("displayName").ifBlank { "?" }, 36); Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(x.optString("displayName").ifBlank { "(ไม่มีชื่อ)" }, color = White, fontWeight = FontWeight.Bold)
+                        Text((x.optString("username").takeIf { it.isNotBlank() }?.let { "@$it · " } ?: "") + x.optString("uid").take(10) + "…", color = Slate400, fontSize = 11.sp)
+                    }
+                    Text("เลือก ›", color = Pink400, fontSize = 13.sp)
+                }
+            }
+        } else {
+            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Slate900).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Avatar(u.optString("avatar"), u.optString("displayName").ifBlank { "?" }, 42); Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(u.optString("displayName").ifBlank { "(ไม่มีชื่อ)" }, color = White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Text(u.optString("uid").take(14) + "…", color = Slate400, fontSize = 11.sp)
+                }
+                TextButton(onClick = { picked = null; amount = "" }) { Text("เปลี่ยน", color = Pink400) }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = cur == "diamonds", onClick = { cur = "diamonds" }, label = { Text("💎 เพชร") })
+                FilterChip(selected = cur == "coins", onClick = { cur = "coins" }, label = { Text("🪙 เหรียญ") })
+            }
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(100, 300, 500, 1000, 5000).forEach { n -> FilterChip(selected = amount == n.toString(), onClick = { amount = n.toString() }, label = { Text("+$n") }) }
+            }
+            OutlinedTextField(amount, { amount = it.filter { c -> c.isDigit() || c == '-' }.take(7) }, label = { Text("จำนวน (ติดลบ = หักออก เฉพาะซูเปอร์แอดมิน)") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White))
+            OutlinedTextField(reason, { reason = it.take(200) }, label = { Text("เหตุผล (บันทึกในสมุดบัญชี)") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White))
+            Button(onClick = { if ((amount.toIntOrNull() ?: 0) == 0) status = "ใส่จำนวนก่อน" else if (reason.trim().length < 3) status = "ใส่เหตุผลอย่างน้อย 3 ตัวอักษร" else confirm = true },
+                modifier = Modifier.fillMaxWidth().height(48.dp), colors = ButtonDefaults.buttonColors(containerColor = Pink500)) {
+                Text((if ((amount.toIntOrNull() ?: 0) < 0) "หัก " else "เติม ") + (if (cur == "diamonds") "💎 " else "🪙 ") + amount.removePrefix("-").ifBlank { "0" }, fontWeight = FontWeight.Bold)
+            }
+            if (confirm) AlertDialog(onDismissRequest = { confirm = false },
+                title = { Text("ยืนยันการ" + if ((amount.toIntOrNull() ?: 0) < 0) "หัก" else "เติม") },
+                text = { Text("${u.optString("displayName")} จะ" + (if ((amount.toIntOrNull() ?: 0) < 0) "ถูกหัก " else "ได้รับ ") + (if (cur == "diamonds") "💎 " else "🪙 ") + amount.removePrefix("-") + "\nเหตุผล: " + reason) },
+                confirmButton = { TextButton(onClick = {
+                    confirm = false; status = "กำลังบันทึก…"
+                    scope.launch {
+                        val r = api("POST", "/admin/users/${u.optString("uid")}/coins", JSONObject().put("amount", amount.toInt()).put("reason", reason.trim()).put("currency", cur))
+                        status = if (r.code == 200) "✅ สำเร็จ — ยอดใหม่ " + (if (cur == "diamonds") "💎 " else "🪙 ") + (r.json?.optLong(cur) ?: 0) else err(r)
+                        if (r.code == 200) { amount = ""; tick++ }
+                    }
+                }) { Text("ยืนยัน") } },
+                dismissButton = { TextButton(onClick = { confirm = false }) { Text("ยกเลิก") } })
+        }
+        if (status.isNotBlank()) Text(status, color = Amber400, fontSize = 13.sp)
+        HorizontalDivider(color = Slate800, modifier = Modifier.padding(vertical = 4.dp))
+        Text("ประวัติการเติมล่าสุด", color = White, fontWeight = FontWeight.Bold)
+        if (ledger.isEmpty()) Text("ยังไม่มี", color = Slate400, fontSize = 12.sp)
+        ledger.forEach { x ->
+            val n = x.optInt("amount"); val c = if (x.optString("currency") == "diamonds") "💎" else "🪙"
+            Text("${if (n > 0) "+" else ""}$n $c · ${x.optString("name")} · ${x.optString("reason")} · ${ts(x.optLong("at"))}", color = if (n > 0) Emerald400 else Rose500, fontSize = 12.sp)
+        }
     }
 }

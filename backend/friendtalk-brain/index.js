@@ -2461,7 +2461,15 @@ app.post('/admin/users/:uid/coins', perm('coins_confirm'), w(notBanned), w(async
   const res = await db.ref(`wallets/${uid}/${cur}`).transaction(c => { const v = Number(c) || 0; if (v + amount < 0) { insufficient = true; return; } insufficient = false; return v + amount; });
   if (!res.committed) return r.status(409).json({ error: insufficient ? 'balance would go negative' : 'busy, retry' });
   await db.ref('adminCoinLedger').push({ uid, amount, currency: cur, reason, by: q.uid, at: Date.now() });
+  if (amount > 0) sendPush(uid, 'ได้รับ' + (cur === 'diamonds' ? 'เพชร 💎' : 'เหรียญ 🪙'), `แอดมินเติม${cur === 'diamonds' ? 'เพชร' : 'เหรียญ'}ให้คุณ ${amount} ${reason ? '· ' + reason : ''}`.trim(), { type: 'wallet' });
   r.json({ uid, currency: cur, [cur]: res.snapshot.val() });
+}));
+// Recent manual grants (newest first) for the admin 'เติมให้ผู้ใช้' screen.
+app.get('/admin/coin-ledger', perm('coins_confirm'), w(async (_q, r) => {
+  const v = (await db.ref('adminCoinLedger').orderByKey().limitToLast(30).get()).val() || {};
+  const items = Object.entries(v).reverse().map(([id, x]) => ({ id, ...x }));
+  const names = {}; await Promise.all([...new Set(items.map(x => x.uid))].map(async u => { names[u] = await nameOf(u); }));
+  r.json({ items: items.map(x => ({ ...x, name: names[x.uid] })) });
 }));
 // superadmin: set role user|moderator|admin with permissions (superadmin roles are not changeable here)
 app.put('/superadmin/users/:uid/role', w(notBanned), w(async (q, r) => {
