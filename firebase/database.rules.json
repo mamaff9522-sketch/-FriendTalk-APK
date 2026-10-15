@@ -163,10 +163,6 @@
         ".write": false
       }
     },
-    "liveViewers": {
-      ".read": false,
-      ".write": false
-    },
     "calls": {
       "$callId": {
         ".read": "auth != null && (data.child('callerUid').val() === auth.uid || data.child('calleeUid').val() === auth.uid)",
