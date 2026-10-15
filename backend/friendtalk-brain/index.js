@@ -2,6 +2,7 @@ import express from 'express';
 import admin from 'firebase-admin';
 import crypto from 'node:crypto';
 import { fetchKeys, verifySsv } from './ssv.js';
+import agoraToken from 'agora-token';
 admin.initializeApp({ databaseURL: process.env.DATABASE_URL || 'https://friendtalk-4e623-default-rtdb.asia-southeast1.firebasedatabase.app' });
 const dbProxy = () => admin.database();
 const db = { ref: p => dbProxy().ref(p) };
@@ -57,7 +58,7 @@ async function isSuper(req, res, next) {
   req.role = r; next();
 }
 const w = fn => (q, r, n) => fn(q, r, n).catch(e => { console.error(e.message); r.status(e.code === 404 ? 404 : 500).json({ error: e.code === 404 ? 'user not found' : 'internal' }); });
-app.use(['/push', '/coins', '/age', '/config', '/admin', '/superadmin', '/me', '/match', '/bot', '/ui', '/chats', '/swipe', '/posts', '/feed', '/friends', '/radar', '/shake', '/limits', '/quota', '/search', '/users', '/interests', '/bots', '/gifts', '/rooms', '/reports', '/creator', '/blocks', '/chat-rules', '/companion-apply', '/companion', '/shop', '/follow', '/views', '/withdraw', '/onboarding', '/idv', '/chat-send'], w(auth));
+app.use(['/push', '/coins', '/age', '/config', '/admin', '/superadmin', '/me', '/match', '/bot', '/ui', '/chats', '/swipe', '/posts', '/feed', '/friends', '/radar', '/shake', '/limits', '/quota', '/search', '/users', '/interests', '/bots', '/gifts', '/rooms', '/reports', '/creator', '/blocks', '/chat-rules', '/companion-apply', '/companion', '/shop', '/follow', '/views', '/withdraw', '/onboarding', '/idv', '/chat-send', '/rtc', '/calls', '/lives'], w(auth));
 app.get('/me', w(async (q, r) => {
   const dh = String(q.get('X-Device-Hash') || ''); if (/^[a-f0-9]{16,64}$/.test(dh)) { db.ref(`deviceOf/${q.uid}`).set(dh).catch(() => {}); db.ref(`devices/${dh}/${q.uid}`).set(Date.now()).catch(() => {}); }
   // Safeguard: if /roles has no superadmin at all (data loss), re-seed it for the configured owner email (verified Google sign-in only; server-side).
@@ -100,6 +101,8 @@ const PART_OF = q => {
   if (/^\/(bot|bots)(\/|$)/.test(p)) return 'ai';
   if (/^\/(quota|admob)(\/|$)/.test(p)) return 'ads';
   if (/^\/rooms(\/|$)/.test(p)) return 'decor';
+  if (/^\/lives(\/|$)/.test(p)) return 'live';
+  if (/^\/calls(\/|$)/.test(p)) return 'chat';
   if (/^\/gifts(\/|$)/.test(p)) return 'gifts';
   return null;
 };
@@ -2116,6 +2119,118 @@ app.get('/gifts/wallet', w(async (q, r) => {
   // Gifts are priced/paid in diamonds; pending = diamonds reserved by unaccepted gifts.
   r.json({ coins: num(c.val()), diamonds: num(dm.val()), pending: p, available: num(dm.val()) - p, currency: 'diamonds' });
 }));
+// ===== Voice/video calls + live streaming (Agora RTC; free 10,000 min/month on the Free package, service pauses instead of billing) =====
+// Env (set on Cloud Run, never in the app): AGORA_APP_ID, AGORA_APP_CERTIFICATE. Clients only ever get a short-lived token from here.
+const AGORA_APP_ID = process.env.AGORA_APP_ID || '', AGORA_CERT = process.env.AGORA_APP_CERTIFICATE || '';
+const rtcReady = () => !!(AGORA_APP_ID && AGORA_CERT);
+// Stable 31-bit numeric Agora uid per Firebase uid (Agora needs ints; 0 is reserved).
+const agoraUid = uid => (crypto.createHash('sha256').update(String(uid)).digest().readUInt32BE(0) & 0x7fffffff) || 1;
+function rtcToken(channel, uid, publisher, ttlSec = 3600) {
+  const { RtcTokenBuilder, RtcRole } = agoraToken;
+  return RtcTokenBuilder.buildTokenWithUid(AGORA_APP_ID, AGORA_CERT, channel, agoraUid(uid), publisher ? RtcRole.PUBLISHER : RtcRole.SUBSCRIBER, ttlSec, ttlSec);
+}
+const rtcOff = r => r.status(503).json({ code: 'rtc_not_configured', error: 'ระบบโทร/ไลฟ์ยังไม่ได้ตั้งค่า (แอดมินต้องใส่ AGORA_APP_ID และ AGORA_APP_CERTIFICATE)' });
+const CALL_ID = /^c[0-9a-z]{6,30}$/, LIVE_ID = /^l[0-9a-z]{6,30}$/;
+const newId = p => p + Date.now().toString(36) + crypto.randomBytes(3).toString('hex');
+
+app.get('/rtc/status', w(async (_q, r) => r.json({ ready: rtcReady() })));
+
+// Calls: calls/{id} {callerUid, calleeUid, chatId, video, status ringing|accepted|declined|missed|ended, at, answeredAt, endedAt}
+// callInbox/{uid} = {callId, fromUid, fromName, video, at} while ringing (the callee's app listens to it).
+app.post('/calls', w(notBanned), w(async (q, r) => {
+  if (!rtcReady()) return rtcOff(r);
+  const chatId = String(q.body?.chatId || ''); const video = q.body?.video === true;
+  if (!/^[A-Za-z0-9_-]{1,300}$/.test(chatId)) return r.status(400).json({ error: 'bad chatId' });
+  const other = await chatOther(chatId, q.uid); if (!other) return r.status(403).json({ error: 'not a member' });
+  if ((await db.ref(`chats/${chatId}/closed`).get()).exists()) return r.status(403).json({ error: 'แชทนี้ถูกปิดอยู่' });
+  if (await blockedEither(q.uid, other)) return r.status(403).json({ error: 'โทรหาผู้ใช้นี้ไม่ได้' });
+  if (!(await bump(`rate/calls/${q.uid}/${new Date().toISOString().slice(0, 13)}`, 30))) return r.status(429).json({ error: 'โทรบ่อยเกินไป ลองใหม่ภายหลัง' });
+  const busy = (await db.ref(`callInbox/${other}`).get()).val();
+  if (busy && Date.now() - (busy.at || 0) < 60e3) return r.status(409).json({ code: 'busy', error: 'ปลายสายกำลังมีสายอื่นอยู่' });
+  const id = newId('c'), t = Date.now(), fromName = await nameOf(q.uid);
+  await db.ref().update({
+    [`calls/${id}`]: { callerUid: q.uid, calleeUid: other, chatId, video, status: 'ringing', at: t },
+    [`callInbox/${other}`]: { callId: id, fromUid: q.uid, fromName, video, chatId, at: t }
+  });
+  sendPush(other, video ? '📹 วิดีโอคอลเข้า' : '📞 สายเข้า', `${fromName} กำลังโทรหาคุณ`, { type: 'call', callId: id, chatId });
+  r.json({ callId: id, appId: AGORA_APP_ID, channel: id, uid: agoraUid(q.uid), peerUid: agoraUid(other), token: rtcToken(id, q.uid, true), video });
+}));
+app.post('/calls/:id/answer', w(notBanned), w(async (q, r) => {
+  if (!rtcReady()) return rtcOff(r);
+  const id = q.params.id; if (!CALL_ID.test(id)) return r.status(400).json({ error: 'bad id' });
+  const c = (await db.ref(`calls/${id}`).get()).val(); if (!c || c.calleeUid !== q.uid) return r.status(404).json({ error: 'not found' });
+  await db.ref(`callInbox/${q.uid}`).remove();
+  if (c.status !== 'ringing') return r.status(409).json({ error: 'สายนี้จบไปแล้ว', status: c.status });
+  const accept = q.body?.accept === true, t = Date.now();
+  await db.ref(`calls/${id}`).update(accept ? { status: 'accepted', answeredAt: t } : { status: 'declined', endedAt: t });
+  if (!accept) return r.json({ status: 'declined' });
+  r.json({ status: 'accepted', callId: id, appId: AGORA_APP_ID, channel: id, uid: agoraUid(q.uid), peerUid: agoraUid(c.callerUid), token: rtcToken(id, q.uid, true), video: c.video === true });
+}));
+app.post('/calls/:id/end', w(async (q, r) => {
+  const id = q.params.id; if (!CALL_ID.test(id)) return r.status(400).json({ error: 'bad id' });
+  const c = (await db.ref(`calls/${id}`).get()).val(); if (!c || (c.callerUid !== q.uid && c.calleeUid !== q.uid)) return r.status(404).json({ error: 'not found' });
+  const t = Date.now(), status = c.status === 'ringing' ? (c.callerUid === q.uid ? 'missed' : 'declined') : c.status === 'accepted' ? 'ended' : c.status;
+  const inbox = (await db.ref(`callInbox/${c.calleeUid}`).get()).val();
+  await db.ref().update({ [`calls/${id}/status`]: status, [`calls/${id}/endedAt`]: c.endedAt || t, ...(inbox?.callId === id ? { [`callInbox/${c.calleeUid}`]: null } : {}) });
+  if (status === 'missed') sendPush(c.calleeUid, 'สายที่ไม่ได้รับ', `${await nameOf(c.callerUid)} โทรหาคุณ`, { type: 'chat', chatId: c.chatId });
+  r.json({ status, seconds: c.answeredAt ? Math.round(((c.endedAt || t) - c.answeredAt) / 1000) : 0 });
+}));
+
+// Live: lives/{id} {hostUid, name, avatar, title, category, status live|ended, viewers, startedAt, lastPing}; liveChat/{id}/{msgId} {uid, name, text, at}
+const LIVE_CATS = ['talk', 'music', 'sing', 'game', 'friend'];
+app.post('/lives', w(notBanned), w(async (q, r) => {
+  if (!rtcReady()) return rtcOff(r);
+  const title = String(q.body?.title || '').trim().slice(0, 60) || 'มาคุยกัน', cat = LIVE_CATS.includes(q.body?.category) ? q.body.category : 'talk';
+  const m = await moderateText(q.uid, title, { kind: 'live_title' }); if (!m.ok) return r.status(400).json({ error: m.message });
+  // one live per host: end any older one
+  const mine = (await db.ref('lives').orderByChild('hostUid').equalTo(q.uid).get()).val() || {};
+  const upd = {}; for (const [k, v] of Object.entries(mine)) if (v.status === 'live') { upd[`lives/${k}/status`] = 'ended'; upd[`lives/${k}/endedAt`] = Date.now(); }
+  const u = (await db.ref(`users/${q.uid}`).get()).val() || {};
+  const id = newId('l'), t = Date.now();
+  upd[`lives/${id}`] = { hostUid: q.uid, name: u.displayName || 'ผู้ใช้', avatar: u.avatar || '', cover: u.avatar || '', title, category: cat, status: 'live', viewers: 0, startedAt: t, lastPing: t, verified: u.isCreator === true };
+  await db.ref().update(upd);
+  r.json({ liveId: id, appId: AGORA_APP_ID, channel: id, uid: agoraUid(q.uid), token: rtcToken(id, q.uid, true, 4 * 3600) });
+}));
+app.post('/lives/:id/ping', w(async (q, r) => {
+  const id = q.params.id; if (!LIVE_ID.test(id)) return r.status(400).json({ error: 'bad id' });
+  const l = (await db.ref(`lives/${id}`).get()).val(); if (!l || l.hostUid !== q.uid) return r.status(404).json({ error: 'not found' });
+  if (l.status !== 'live') return r.status(409).json({ status: l.status });
+  await db.ref(`lives/${id}/lastPing`).set(Date.now()); r.json({ ok: true, viewers: l.viewers || 0 });
+}));
+app.post('/lives/:id/end', w(async (q, r) => {
+  const id = q.params.id; if (!LIVE_ID.test(id)) return r.status(400).json({ error: 'bad id' });
+  const l = (await db.ref(`lives/${id}`).get()).val(); if (!l) return r.status(404).json({ error: 'not found' });
+  if (l.hostUid !== q.uid && !can(await loadRole(q.uid), 'manage_content')) return r.status(403).json({ error: 'only the host' });
+  await db.ref(`lives/${id}`).update({ status: 'ended', endedAt: Date.now() }); r.json({ status: 'ended' });
+}));
+const liveAlive = l => l && l.status === 'live' && Date.now() - (l.lastPing || 0) < 90e3;
+app.post('/lives/:id/join', w(notBanned), w(async (q, r) => {
+  if (!rtcReady()) return rtcOff(r);
+  const id = q.params.id; if (!LIVE_ID.test(id)) return r.status(400).json({ error: 'bad id' });
+  const l = (await db.ref(`lives/${id}`).get()).val(); if (!liveAlive(l)) return r.status(410).json({ error: 'ไลฟ์นี้จบแล้ว' });
+  if (await blockedEither(q.uid, l.hostUid)) return r.status(403).json({ error: 'ดูไลฟ์นี้ไม่ได้' });
+  if (l.hostUid !== q.uid && !(await db.ref(`liveViewers/${id}/${q.uid}`).get()).exists()) {
+    await db.ref(`liveViewers/${id}/${q.uid}`).set(Date.now()); await db.ref(`lives/${id}/viewers`).transaction(v => (v || 0) + 1);
+  }
+  r.json({ liveId: id, appId: AGORA_APP_ID, channel: id, uid: agoraUid(q.uid), hostUid: agoraUid(l.hostUid), token: rtcToken(id, q.uid, false, 4 * 3600) });
+}));
+app.post('/lives/:id/leave', w(async (q, r) => {
+  const id = q.params.id; if (!LIVE_ID.test(id)) return r.status(400).json({ error: 'bad id' });
+  if ((await db.ref(`liveViewers/${id}/${q.uid}`).get()).exists()) {
+    await db.ref(`liveViewers/${id}/${q.uid}`).remove(); await db.ref(`lives/${id}/viewers`).transaction(v => Math.max(0, (v || 0) - 1));
+  }
+  r.json({ ok: true });
+}));
+app.post('/lives/:id/chat', w(notBanned), w(async (q, r) => {
+  const id = q.params.id; if (!LIVE_ID.test(id)) return r.status(400).json({ error: 'bad id' });
+  const text = String(q.body?.text || '').trim().slice(0, 200); if (!text) return r.status(400).json({ error: 'empty' });
+  const l = (await db.ref(`lives/${id}`).get()).val(); if (!liveAlive(l)) return r.status(410).json({ error: 'ไลฟ์นี้จบแล้ว' });
+  if (!(await bump(`rate/liveChat/${q.uid}/${Math.floor(Date.now() / 60e3)}`, 20))) return r.status(429).json({ error: 'ส่งเร็วเกินไป' });
+  const m = await moderateText(q.uid, text, { kind: 'live_chat', ref: id }); if (!m.ok) return r.status(400).json({ error: m.message });
+  await db.ref(`liveChat/${id}`).push({ uid: q.uid, name: await nameOf(q.uid), text, at: Date.now() });
+  r.json({ ok: true });
+}));
+
 // ===== VIP room decor for 1:1 chats =====
 const THEMES = ['royal_gold', 'diamond_luxury', 'galaxy', 'romantic', 'neon_vip', 'luxury_palace', 'sakura', 'ocean', 'sunset', 'midnight', 'mint_garden', 'rose_gold'];
 const FRAMES = ['none', 'diamond', 'gold', 'sparkle', 'neon', 'rose'], EFFECTS = ['none', 'sparkle', 'hearts', 'stars', 'snow', 'bubbles', 'petals', 'confetti', 'fireflies'], PATTERNS = ['none', 'dots', 'stripes', 'hearts', 'stars', 'diamonds'];

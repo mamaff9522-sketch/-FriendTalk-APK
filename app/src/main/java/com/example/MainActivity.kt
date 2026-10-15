@@ -552,6 +552,7 @@ fun FriendTalkApp(
     openChatId?.let { id -> com.example.ui.components.UiPage("chatroom") { com.example.ui.social.RealChatRoomDialog(chatId = id, onClose = { com.example.social.SocialRepo.openChat.value = null }) } }
 
     com.example.ads.AdRoomHost()
+    com.example.rtc.RtcHost()
     val askInterests by com.example.ui.social.InterestsPrompt.show.collectAsStateWithLifecycle()
     if (askInterests) com.example.ui.social.InterestsEditorDialog(onDismiss = { com.example.ui.social.InterestsPrompt.show.value = false }, skippable = true)
 

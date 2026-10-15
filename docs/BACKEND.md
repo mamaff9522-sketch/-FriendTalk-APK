@@ -76,3 +76,9 @@ Open:
 ## Coin / diamond top-up by bank transfer (2026-10-14)
 - Works without Google Play: Admin → เศรษฐกิจ → เติมเงิน (โอน) sets bank / PromptPay info and packages (`appConfig/topup`), users send a request with the transfer reference (`POST /coins/topup`), admins confirm (`/admin/coins/confirm`, now also credits diamonds) or reject (`/admin/coins/reject`). Users see their requests (`GET /coins/topup/mine`) and get a push when done.
 - Launch showcase: Admin → เศรษฐกิจ → รูปตัวอย่าง AI uploads sample images (via `/admin/ui/bg/sec_showcase_*`) and saves them with `PUT /admin/showcase` (`appConfig/showcase` = `{enabled, live[], nearby[]}`). The app shows them, labelled "ตัวอย่าง AI", only while the real live list / nearby list is empty, so they hide by themselves once real users appear.
+
+## Calls & live streaming (Agora)
+- Provider: Agora RTC (Free package: 10,000 standard minutes / month shared by calls + live; the service pauses instead of billing when it runs out).
+- Cloud Run env (set by the owner, never committed): `AGORA_APP_ID`, `AGORA_APP_CERTIFICATE`. Without them `/calls` and `/lives` answer 503 `rtc_not_configured`.
+- Endpoints: `POST /calls`, `/calls/:id/answer`, `/calls/:id/end`; `POST /lives`, `/lives/:id/ping|end|join|leave|chat`; `GET /rtc/status`.
+- RTDB: `calls/{id}`, `callInbox/{uid}` (ringing), `lives/{id}` (+`lastPing` heartbeat, 90 s), `liveChat/{id}`, `liveViewers/{id}` — all server-written; read rules in `firebase/database.rules.json` (deploy with `firebase deploy --only database`).

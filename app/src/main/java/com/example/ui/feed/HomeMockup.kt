@@ -135,12 +135,14 @@ object HomeRepo {
 
     /** lives/{id} with status == "live", most viewers first. */
     suspend fun lives(): List<LiveItem>? {
-        val s = get("lives") { it.orderByKey().limitToLast(50) } ?: return null
-        return s.children.filter { it.child("status").value == "live" }.map { l ->
+        val s = get("lives") { it.orderByChild("status").equalTo("live").limitToLast(50) } ?: return null
+        val now = System.currentTimeMillis()
+        // live + host still sending its 30 s heartbeat (a crashed host's room drops out after 90 s)
+        return s.children.filter { it.child("status").value == "live" && now - num(it, "lastPing") < 90_000 }.map { l ->
             val host = l.child("hostUid").value as? String ?: ""
             val u = user(host)
-            val cover = (l.child("coverUrl").value as? String)?.takeIf { it.isNotBlank() } ?: u.avatar
-            LiveItem(l.key ?: "", host, l.child("title").value as? String ?: "", u.name, cover, num(l, "viewerCount").toInt(), u.verified)
+            val cover = (l.child("coverUrl").value as? String)?.takeIf { it.isNotBlank() } ?: (l.child("cover").value as? String)?.takeIf { it.isNotBlank() } ?: u.avatar
+            LiveItem(l.key ?: "", host, l.child("title").value as? String ?: "", u.name, cover, maxOf(num(l, "viewers"), num(l, "viewerCount")).toInt(), u.verified)
         }.sortedByDescending { it.viewers }
     }
 
@@ -332,7 +334,7 @@ fun HomeLiveSection(onSeeAll: () -> Unit) {
             }
             l.isEmpty() -> if (!ShowcaseLiveRow(cardW, onSeeAll)) EmptyRow(if (failed) tr("โหลดไลฟ์ไม่สำเร็จ แตะเพื่อลองใหม่") else tr("ยังไม่มีใครไลฟ์ตอนนี้"), if (failed) ({ HomeRepo.reloadTick++ }) else null)
             else -> LazyRow(contentPadding = PaddingValues(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                itemsIndexed(l.take(10), key = { _, it -> it.id }) { i, it -> LiveCard(it, cardW, i == 0, onSeeAll) }
+                itemsIndexed(l.take(10), key = { _, it -> it.id }) { i, it -> LiveCard(it, cardW, i == 0) { com.example.rtc.LiveNav.watch = it.id } }
             }
         }
     }

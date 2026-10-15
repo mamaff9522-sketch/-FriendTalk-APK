@@ -24,6 +24,8 @@ android {
     buildConfigField("String", "ADMOB_TEST_BANNER_ID", "\"ca-app-pub-3940256099942544/6300978111\"")
     buildConfigField("String", "ADMOB_TEST_INTERSTITIAL_ID", "\"ca-app-pub-3940256099942544/1033173712\"")
     versionName = "1.2.0"
+    // Phones only (keeps the Agora voice/video native libs out of the x86 emulator ABIs → much smaller APK).
+    ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -89,6 +91,8 @@ googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.E
 
 dependencies {
   implementation("com.android.billingclient:billing-ktx:7.1.1")
+  // Voice/video calls + live streaming (Agora RTC, basic build without optional extensions).
+  implementation("io.agora.rtc:full-rtc-basic:4.6.4")
   implementation(platform(libs.androidx.compose.bom))
   implementation(platform(libs.firebase.bom))
 implementation("com.google.firebase:firebase-auth")

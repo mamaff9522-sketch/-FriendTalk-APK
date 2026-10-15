@@ -182,7 +182,13 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
         Surface(Modifier.fillMaxSize(), color = Slate950) {
             // Insets: the input row was drawn behind the navigation bar (edge-to-edge dialog window) → pad for system bars + keyboard.
             Column(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding().imePadding()) {
-                var callInfo by remember { mutableStateOf<String?>(null) }
+                val askCallPerm = com.example.rtc.rememberRtcPermission { status = tr("ต้องอนุญาตไมโครโฟน/กล้องก่อนโทร") }
+                fun startCall(video: Boolean) = askCallPerm(video) {
+                    status = if (video) tr("กำลังเริ่มวิดีโอคอล…") else tr("กำลังโทร…")
+                    com.example.rtc.RtcScope.launch {
+                        status = com.example.rtc.CallManager.start(context, chatId, video, otherUid, other?.displayName ?: "เพื่อน").orEmpty()
+                    }
+                }
                 Box(Modifier.fillMaxWidth().background(chatHeaderBrush())) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, tr("กลับ"), tint = PureWhite) }
@@ -198,8 +204,8 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                                 null -> {}
                             }
                         }
-                        IconButton(onClick = { callInfo = "voice" }, modifier = Modifier.size(40.dp)) { Icon(Icons.Filled.Call, tr("โทรเสียง"), tint = PureWhite) }
-                        IconButton(onClick = { callInfo = "video" }, modifier = Modifier.size(40.dp)) { Icon(Icons.Filled.Videocam, tr("วิดีโอคอล"), tint = PureWhite) }
+                        IconButton(onClick = { startCall(false) }, modifier = Modifier.size(40.dp)) { Icon(Icons.Filled.Call, tr("โทรเสียง"), tint = PureWhite) }
+                        IconButton(onClick = { startCall(true) }, modifier = Modifier.size(40.dp)) { Icon(Icons.Filled.Videocam, tr("วิดีโอคอล"), tint = PureWhite) }
                         IconButton(onClick = { giftSheet = true }, modifier = Modifier.size(40.dp)) { Icon(Icons.Filled.CardGiftcard, tr("ส่งของขวัญ"), tint = Color(0xFFFFC94D)) }
                         var menu by remember { mutableStateOf(false) }
                         Box {
@@ -233,12 +239,6 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                     Box(Modifier.clip(RoundedCornerShape(14.dp)).background(Brush.linearGradient(listOf(Color(0xFFFF2FA8), Color(0xFF9B3DFF))))
                         .clickable { scope.launch { status = if (com.example.social.NearbyRepo.requestFriend(otherUid) != null) tr("ส่งคำขอเป็นเพื่อนแล้ว") else tr("ส่งคำขอไม่สำเร็จ"); csTick++ } }
                         .padding(horizontal = 12.dp, vertical = 5.dp)) { Text(tr("➕ เพิ่มเพื่อน"), color = PureWhite, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-                }
-                callInfo?.let { kind ->
-                    // No call service is connected yet (needs WebRTC/TURN or a provider) — say so instead of showing a fake call screen.
-                    AlertDialog(onDismissRequest = { callInfo = null }, confirmButton = { TextButton(onClick = { callInfo = null }) { Text(tr("ตกลง")) } },
-                        title = { Text(if (kind == "video") tr("🎥 วิดีโอคอล") else tr("📞 โทรเสียง")) },
-                        text = { Text(tr("ระบบโทรผ่านแอปกำลังพัฒนา ยังใช้งานไม่ได้ — ตอนนี้คุยกันผ่านข้อความ รูป สติกเกอร์ และของขวัญได้")) })
                 }
                 decorState?.hiddenReason?.takeIf { it.isNotBlank() }?.let { Text("✨ $it", color = Slate400, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 12.dp)) }
                 Box(Modifier.weight(1f).background(chatPageBrush())) {
