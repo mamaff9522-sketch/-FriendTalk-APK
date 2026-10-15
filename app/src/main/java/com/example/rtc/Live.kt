@@ -1,5 +1,6 @@
 package com.example.rtc
 
+import com.example.ui.components.dialogNavPadding
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -185,7 +186,7 @@ fun LiveHostScreen(onClose: () -> Unit) {
                 Box(Modifier.fillMaxWidth().height(320.dp).align(Alignment.BottomCenter).background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xB3000000)))))
                 var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
                 LaunchedEffect(Unit) { while (true) { delay(1000); now = System.currentTimeMillis() } }
-                Column(Modifier.fillMaxSize().systemBarsPadding().imePadding().padding(14.dp)) {
+                Column(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding().imePadding().padding(14.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         LivePill(viewers)
                         Spacer(Modifier.width(8.dp))
@@ -207,7 +208,7 @@ fun LiveHostScreen(onClose: () -> Unit) {
                     title = { Text("จบไลฟ์ตอนนี้?") }, text = { Text("ผู้ชมจะออกจากห้องทั้งหมด") })
             } else {
                 // pre-live setup
-                Column(Modifier.fillMaxSize().systemBarsPadding().imePadding().padding(20.dp)) {
+                Column(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding().imePadding().padding(20.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(40.dp).clip(CircleShape).background(Color(0x33FFFFFF)).clickable(onClick = onClose), contentAlignment = Alignment.Center) {
                             Icon(Icons.Filled.Close, "ปิด", tint = Color.White) }
@@ -298,7 +299,7 @@ fun LiveViewerScreen(liveId: String, onClose: () -> Unit) {
             }
             Box(Modifier.fillMaxWidth().height(160.dp).background(Brush.verticalGradient(listOf(Color(0x99000000), Color.Transparent))))
             Box(Modifier.fillMaxWidth().height(320.dp).align(Alignment.BottomCenter).background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xB3000000)))))
-            Column(Modifier.fillMaxSize().systemBarsPadding().imePadding().padding(14.dp)) {
+            Column(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding().imePadding().padding(14.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Row(Modifier.clip(RoundedCornerShape(24.dp)).background(Color(0x66000000)).padding(4.dp).padding(end = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         com.example.ui.social.Avatar(avatar, name.ifBlank { "?" }, 34)

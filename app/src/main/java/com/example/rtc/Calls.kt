@@ -1,5 +1,6 @@
 package com.example.rtc
 
+import com.example.ui.components.dialogNavPadding
 import android.content.Context
 import android.media.RingtoneManager
 import androidx.compose.foundation.background
@@ -170,7 +171,7 @@ private fun IncomingCallScreen(inc: CallManager.Incoming) {
         onDispose { runCatching { tone?.stop() } }
     }
     Dialog(onDismissRequest = {}, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnBackPress = false, dismissOnClickOutside = false)) {
-        Box(Modifier.fillMaxSize().background(CallBg).systemBarsPadding()) {
+        Box(Modifier.fillMaxSize().background(CallBg).systemBarsPadding().dialogNavPadding()) {
             Column(Modifier.fillMaxWidth().align(Alignment.TopCenter).padding(top = 80.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 PulseAvatar(avatar, inc.fromName, 120.dp)
                 Spacer(Modifier.height(20.dp))
@@ -209,7 +210,7 @@ private fun CallScreen(a: CallManager.Active) {
         val ctx = LocalContext.current
         Box(Modifier.fillMaxSize().background(CallBg)) {
             if (a.video && remote != null) key(remote) { AndroidView(factory = { Rtc.remoteView(it, remote) }, modifier = Modifier.fillMaxSize()) }
-            Column(Modifier.fillMaxSize().systemBarsPadding()) {
+            Column(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding()) {
                 if (!a.video || remote == null) {
                     Column(Modifier.fillMaxWidth().padding(top = 80.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         PulseAvatar(avatar, a.name, 120.dp)
