@@ -99,11 +99,12 @@ object Rtc {
     fun toggleSpeaker() { val e = engine ?: return; speakerOn = !speakerOn; e.setEnableSpeakerphone(speakerOn) }
     fun switchCamera() { engine?.switchCamera() }
 
-    fun localView(ctx: Context, overlay: Boolean): SurfaceView = SurfaceView(ctx).also {
-        if (overlay) it.setZOrderMediaOverlay(true)
+    // TextureView (not SurfaceView) so rounded corners / overlays from Compose apply to the video too.
+    @Suppress("UNUSED_PARAMETER")
+    fun localView(ctx: Context, overlay: Boolean): android.view.TextureView = android.view.TextureView(ctx).also {
         engine?.setupLocalVideo(VideoCanvas(it, VideoCanvas.RENDER_MODE_HIDDEN, 0))
     }
-    fun remoteView(ctx: Context, uid: Int): SurfaceView = SurfaceView(ctx).also {
+    fun remoteView(ctx: Context, uid: Int): android.view.TextureView = android.view.TextureView(ctx).also {
         engine?.setupRemoteVideo(VideoCanvas(it, VideoCanvas.RENDER_MODE_HIDDEN, uid))
     }
 }
