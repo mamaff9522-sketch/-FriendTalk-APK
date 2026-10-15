@@ -64,20 +64,21 @@ fun BottomNavBar(
     // Clean floating bar: solid surface (dark / light), icons in an M3-style indicator pill, gradient pill on the active tab,
     // raised gradient ＋ ringed with the bar colour. Labels use the plain Material Text so UI-Builder text overrides can't restyle them.
     val dark = AppThemeMode.dark
-    val barBg = if (dark) Color(0xF5161132) else Color(0xFAFFFFFF)
+    val barBg = if (dark) Color(0xFF161132) else Color(0xFFFFFFFF)
     val idle = if (dark) Color(0xFF9A90C2) else Color(0xFF8A7BA8)
     val activeLabel = if (dark) Color(0xFFFF6CC4) else Color(0xFFD12C8A)
-    val shape = RoundedCornerShape(22.dp)
-    Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 16.dp, end = 16.dp, bottom = 6.dp)) {
+    val shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
+    // Docked edge-to-edge bar: fills the full width and continues under the system navigation bar.
+    Box(Modifier.fillMaxWidth()) {
         Box(
             Modifier.fillMaxWidth()
-                .shadow(16.dp, shape, ambientColor = Color(0x66B04DFF), spotColor = Color(0x66FF2FA8))
+                .shadow(14.dp, shape, ambientColor = Color(0x55B04DFF), spotColor = Color(0x55FF2FA8))
                 .clip(shape)
                 .background(barBg)
                 .border(1.dp, if (dark) Color(0x26FFFFFF) else Color(0x1F6B2FB0), shape)
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp),
+                modifier = Modifier.fillMaxWidth().navigationBarsPadding().height(58.dp).padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // 5 equal columns: 2 tabs · ＋ · 2 tabs
