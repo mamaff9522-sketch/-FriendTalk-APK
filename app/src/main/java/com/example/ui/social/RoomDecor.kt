@@ -71,10 +71,38 @@ val DECOR_BUILTIN_STICKERS: List<com.example.social.CatalogItem> = com.example.s
     "moon" to "🌙", "butterfly" to "🦋", "sparkles" to "✨", "cake" to "🎂", "teddy" to "🧸", "rainbow" to "🌈"
 ).mapIndexed { i, (id, e) -> com.example.social.CatalogItem("d_$id", id, 0, "", e, "ตกแต่ง", true, 100 + i) }
 fun hexColor(h: String, fb: Color = Color.Transparent): Color = runCatching { Color(android.graphics.Color.parseColor(h)) }.getOrDefault(fb)
-fun frameColors(f: String) = when (f) {
+/** Decor options the admin adds later (RTDB appConfig/decorOptions, live). Built-in options stay in code; these are appended. */
+object DecorOptions {
+    data class Opt(val id: String, val name: String, val colors: List<Color> = emptyList(), val glyphs: List<String> = emptyList(), val enabled: Boolean = true, val hex: List<String> = emptyList())
+    var themes by mutableStateOf<List<Opt>>(emptyList())
+    var frames by mutableStateOf<List<Opt>>(emptyList())
+    var effects by mutableStateOf<List<Opt>>(emptyList())
+    private var started = false
+    fun start() {
+        if (started) return; started = true
+        com.google.firebase.database.FirebaseDatabase.getInstance(com.example.social.SocialRepo.DB_URL).getReference("appConfig/decorOptions")
+            .addValueEventListener(object : com.google.firebase.database.ValueEventListener {
+                override fun onDataChange(s: com.google.firebase.database.DataSnapshot) {
+                    fun list(k: String) = s.child(k).children.mapNotNull { c ->
+                        val name = c.child("name").getValue(String::class.java) ?: return@mapNotNull null
+                        val hex = c.child("colors").children.mapNotNull { it.getValue(String::class.java) }
+                        Opt(c.key ?: return@mapNotNull null, name, hex.map { hexColor(it, Color.Gray) }, c.child("glyphs").children.mapNotNull { it.getValue(String::class.java) },
+                            c.child("enabled").getValue(Boolean::class.java) != false, hex)
+                    }
+                    themes = list("themes"); frames = list("frames"); effects = list("effects")
+                }
+                override fun onCancelled(e: com.google.firebase.database.DatabaseError) { started = false }
+            })
+    }
+}
+/** Theme name + gradient: built-in first, then the admin's (disabled ones still render for rooms that already use them). */
+fun themeOf(id: String): Pair<String, List<Color>>? = DECOR_THEMES[id] ?: DecorOptions.themes.firstOrNull { it.id == id }?.let { it.name to (if (it.colors.size >= 2) it.colors else listOf(it.colors.firstOrNull() ?: Color.Gray, Color.Black)) }
+fun frameColors(f: String): List<Color> = when (f) {
     "diamond" -> listOf(Color(0xFFB9F2FF), Color.White, Color(0xFF5CC8E8)); "gold" -> listOf(Color(0xFFFFD700), Color(0xFFB8860B), Color(0xFFFFF3B0))
     "sparkle" -> listOf(Color(0xFFFF6FD8), Color(0xFFFFD700), Color(0xFF7AF5FF))
-    "neon" -> listOf(Color(0xFF00E5FF), Color(0xFFFF00C8), Color(0xFF00E5FF)); "rose" -> listOf(Color(0xFFFFB3C7), Color(0xFFE8A598), Color(0xFFFF6F91)); else -> emptyList()
+    "neon" -> listOf(Color(0xFF00E5FF), Color(0xFFFF00C8), Color(0xFF00E5FF)); "rose" -> listOf(Color(0xFFFFB3C7), Color(0xFFE8A598), Color(0xFFFF6F91))
+    "none" -> emptyList()
+    else -> DecorOptions.frames.firstOrNull { it.id == f }?.colors?.takeIf { it.size >= 2 } ?: emptyList()
 }
 fun contrastRatio(a: Color, b: Color): Double { val x = a.luminance() + 0.05; val y = b.luminance() + 0.05; return (maxOf(x, y) / minOf(x, y)).toDouble() }
 
@@ -87,7 +115,8 @@ fun rememberGifLoader(): ImageLoader {
 /** Chat list mini preview: theme gradient + frame, no GIF. */
 @Composable
 fun DecorMiniPreview(d: Decor) {
-    val cols = DECOR_THEMES[d.theme]?.second ?: return
+    LaunchedEffect(Unit) { DecorOptions.start() }
+    val cols = themeOf(d.theme)?.second ?: return
     val fc = frameColors(d.frame)
     Box(Modifier.size(width = 30.dp, height = 40.dp).clip(RoundedCornerShape(6.dp)).background(Brush.verticalGradient(cols))
         .then(if (fc.isNotEmpty()) Modifier.border(2.dp, Brush.linearGradient(fc), RoundedCornerShape(6.dp)) else Modifier)) {
@@ -99,7 +128,8 @@ fun DecorMiniPreview(d: Decor) {
 @Composable
 fun DecorBackground(chatId: String, d: Decor, token: String?, stickers: Map<String, com.example.social.CatalogItem>, lite: Boolean, modifier: Modifier = Modifier) {
     val ctx = LocalContext.current
-    val cols = DECOR_THEMES[d.theme]?.second ?: listOf(Slate950, Slate950)
+    LaunchedEffect(Unit) { DecorOptions.start() }
+    val cols = themeOf(d.theme)?.second ?: listOf(Slate950, Slate950)
     val fc = frameColors(d.frame)
     val gif = rememberGifLoader()
     Box(modifier.fillMaxSize().background(Brush.verticalGradient(cols))) {
@@ -127,7 +157,8 @@ private fun PatternLayer(p: String) {
 @Composable
 private fun EffectLayer(effect: String) {
     val glyphs = when (effect) { "hearts" -> listOf("💗"); "stars" -> listOf("⭐"); "snow" -> listOf("❄"); "bubbles" -> listOf("○"); "petals" -> listOf("🌸", "🌺")
-        "confetti" -> listOf("🎉", "🎊", "✦"); "fireflies" -> listOf("•"); else -> listOf("✨") }
+        "confetti" -> listOf("🎉", "🎊", "✦"); "fireflies" -> listOf("•"); "sparkle" -> listOf("✨")
+        else -> DecorOptions.effects.firstOrNull { it.id == effect }?.glyphs?.takeIf { it.isNotEmpty() } ?: listOf("✨") }
     val tint = if (effect == "fireflies") Color(0xFFFFF59D) else Color.White
     val t by rememberInfiniteTransition(label = "fx").animateFloat(0f, 1f, infiniteRepeatable(tween(9000, easing = LinearEasing)), label = "t")
     val seeds = remember { List(12) { Random.nextFloat() to Random.nextFloat() } }
@@ -162,6 +193,7 @@ fun StickerImage(s: com.example.social.CatalogItem, modifier: Modifier = Modifie
 fun RoomDecorEditor(chatId: String, initial: Decor?, token: String?, onClose: (saved: Boolean) -> Unit) {
     val scope = rememberCoroutineScope()
     val ctx = LocalContext.current
+    LaunchedEffect(Unit) { DecorOptions.start() }
     var d by remember { mutableStateOf(initial ?: Decor()) }
     var msg by remember { mutableStateOf("") }
     var saving by remember { mutableStateOf(false) }
@@ -247,7 +279,7 @@ fun RoomDecorEditor(chatId: String, initial: Decor?, token: String?, onClose: (s
                             0 -> {
                                 Section("ธีมห้อง")
                                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    DECOR_THEMES.forEach { (k, v) ->
+                                    (DECOR_THEMES.entries.map { it.key to it.value } + DecorOptions.themes.filter { it.enabled || it.id == d.theme }.mapNotNull { o -> themeOf(o.id)?.let { o.id to it } }).forEach { (k, v) ->
                                         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(70.dp).clickable { d = d.copy(theme = k) }) {
                                             Box(Modifier.size(width = 64.dp, height = 88.dp).clip(RoundedCornerShape(14.dp)).background(Brush.verticalGradient(v.second))
                                                 .border(if (d.theme == k) 2.5.dp else 1.dp, if (d.theme == k) gold else Color(0x33FFFFFF), RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
@@ -259,7 +291,8 @@ fun RoomDecorEditor(chatId: String, initial: Decor?, token: String?, onClose: (s
                                     }
                                 }
                                 Section("กรอบห้อง")
-                                OptionRow(listOf("none" to "ไม่มี", "gold" to "ทอง", "diamond" to "เพชร", "sparkle" to "วิบวับ", "neon" to "นีออน", "rose" to "โรส"), d.frame,
+                                OptionRow(listOf("none" to "ไม่มี", "gold" to "ทอง", "diamond" to "เพชร", "sparkle" to "วิบวับ", "neon" to "นีออน", "rose" to "โรส") +
+                                    DecorOptions.frames.filter { it.enabled || it.id == d.frame }.map { it.id to it.name }, d.frame,
                                     swatch = { k -> frameColors(k).ifEmpty { listOf(Color(0x33FFFFFF), Color(0x33FFFFFF)) } }) { d = d.copy(frame = it) }
                             }
                             1 -> {
@@ -290,7 +323,8 @@ fun RoomDecorEditor(chatId: String, initial: Decor?, token: String?, onClose: (s
                             3 -> {
                                 Section("เอฟเฟกต์เคลื่อนไหว")
                                 OptionRow(listOf("none" to "ไม่มี", "sparkle" to "✨ วิบวับ", "hearts" to "💗 หัวใจ", "stars" to "⭐ ดาว", "snow" to "❄ หิมะ", "bubbles" to "○ ฟอง",
-                                    "petals" to "🌸 กลีบซากุระ", "confetti" to "🎉 ปาร์ตี้", "fireflies" to "• หิ่งห้อย"), d.effect) { d = d.copy(effect = it) }
+                                    "petals" to "🌸 กลีบซากุระ", "confetti" to "🎉 ปาร์ตี้", "fireflies" to "• หิ่งห้อย") +
+                                    DecorOptions.effects.filter { it.enabled || it.id == d.effect }.map { it.id to (it.glyphs.firstOrNull().orEmpty() + " " + it.name).trim() }, d.effect) { d = d.copy(effect = it) }
                                 Text("ผู้รับเลือก 'โหมดประหยัด' เพื่อหยุดเอฟเฟกต์ได้", color = Slate400, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
                             }
                             else -> {

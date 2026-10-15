@@ -127,6 +127,43 @@ app.put('/admin/ad-placements', perm('config_edit'), w(notBanned), w(async (q, r
   v.inFeedEvery = Math.max(2, Math.min(50, parseInt(b.inFeedEvery) || 5)); v.by = q.uid; v.at = Date.now();
   await db.ref('appConfig/adPlacements').set(v); r.json(v);
 }));
+// Room-decor options the admin adds later (appConfig/decorOptions; clients read it directly):
+// themes {id:{name, colors[2-3 hex], enabled}}, frames {id:{name, colors[2-3 hex], enabled}}, effects {id:{name, glyphs[1-3 emoji], enabled}}.
+const DECOR_OPT_ID = /^[a-z0-9_]{2,30}$/;
+app.put('/admin/decor-options', perm('config_edit'), w(notBanned), w(async (q, r) => {
+  const b = q.body || {}, out = { themes: {}, frames: {}, effects: {} };
+  const builtIn = { themes: THEMES, frames: FRAMES, effects: EFFECTS };
+  for (const kind of ['themes', 'frames', 'effects']) {
+    const src = b[kind] && typeof b[kind] === 'object' ? b[kind] : {};
+    const ids = Object.keys(src); if (ids.length > 40) return r.status(400).json({ error: `${kind}: ไม่เกิน 40 รายการ` });
+    for (const id of ids) {
+      const v = src[id] || {};
+      if (!DECOR_OPT_ID.test(id) || builtIn[kind].includes(id)) return r.status(400).json({ error: `${kind}: รหัส '${id}' ใช้ไม่ได้ (a-z 0-9 _ และห้ามซ้ำของในระบบ)` });
+      const name = String(v.name || '').trim().slice(0, 30); if (!name) return r.status(400).json({ error: `${kind}.${id}: ต้องมีชื่อ` });
+      const o = { name, enabled: v.enabled !== false };
+      if (kind === 'effects') {
+        const g = (Array.isArray(v.glyphs) ? v.glyphs : []).map(x => String(x).trim()).filter(x => x && [...x].length <= 4).slice(0, 3);
+        if (!g.length) return r.status(400).json({ error: `effects.${id}: ใส่อีโมจิอย่างน้อย 1 ตัว` }); o.glyphs = g;
+      } else {
+        const c = (Array.isArray(v.colors) ? v.colors : []).filter(x => /^#[0-9A-Fa-f]{6}$/.test(x)).slice(0, 3);
+        if (c.length < 2) return r.status(400).json({ error: `${kind}.${id}: ต้องมีสีอย่างน้อย 2 สี (#RRGGBB)` }); o.colors = c;
+      }
+      out[kind][id] = o;
+    }
+  }
+  out.by = q.uid; out.at = Date.now();
+  await db.ref('appConfig/decorOptions').set(out); decorOptCache = { at: 0, v: null };
+  await db.ref('adminLog').push({ action: 'decor_options', by: q.uid, at: Date.now(), message: ['themes', 'frames', 'effects'].map(k => `${k}:${Object.keys(out[k]).length}`).join(' ') });
+  r.json(out);
+}));
+let decorOptCache = { at: 0, v: null };
+async function decorOptions() {
+  if (decorOptCache.v && Date.now() - decorOptCache.at < 30000) return decorOptCache.v;
+  const v = (await db.ref('appConfig/decorOptions').get()).val() || {};
+  const on = k => Object.entries(v[k] || {}).filter(([, o]) => o && o.enabled !== false).map(([id]) => id);
+  decorOptCache = { at: Date.now(), v: { themes: on('themes'), frames: on('frames'), effects: on('effects') } };
+  return decorOptCache.v;
+}
 // ===== Creator applications: creatorApplications/{uid} {status pending|approved|rejected, ...}; creators/{uid} = approved.
 const CR_CATS = ['music', 'singing', 'talk', 'gaming', 'dance', 'art', 'cooking', 'fitness', 'education', 'lifestyle', 'other'];
 const DEFAULT_CR_RULES = ['ต้องลงคลิปอย่างต่อเนื่อง', 'ลงคลิปสม่ำเสมอ อย่างน้อยวันละ 1 คลิป (ประมาณ 30 คลิป/เดือน) และห้ามเว้นเกิน 2 วัน', 'ภายใน 30 วัน ต้องมีผู้ชมไม่ซ้ำกัน 100,000 คน (1 คน = 1 วิว ไม่นับซ้ำ ไม่ว่าดูกี่ครั้ง)', 'สิทธิ์รับรายได้จากโฆษณาเฉพาะครีเอเตอร์ที่ได้รับอนุมัติและผ่านเกณฑ์เท่านั้น เริ่มตั้งแต่วันถัดไปหลังได้รับอนุมัติ (ผู้ใช้ทั่วไปไม่มีรายได้จากโฆษณา เป็นผู้ชมโฆษณาเท่านั้น)', 'ต้องมีผู้ติดตาม 5,000 คน', 'คลิปต้องเป็นผลงานของตัวเอง', 'ครีเอเตอร์เป็นผู้รับผิดชอบลิขสิทธิ์ทั้งหมดด้วยตนเอง แอปและผู้โฆษณาไม่รับผิดชอบ', 'โฆษณาหรือเนื้อหาโปรโมตที่ครีเอเตอร์ลง ต้องไม่ละเมิดลิขสิทธิ์', 'หากปฏิบัติตามกติกาครบทุกข้อ ครีเอเตอร์จึงเริ่มได้รับการพิจารณารายได้จากโฆษณา', 'จ่ายรายได้ทุกสิ้นเดือน', 'ยอดขั้นต่ำในการถอน 100 {currency} หากยังไม่ถึงจะสะสมยกยอดไปเดือนถัดไปจนครบ 100 {currency} จึงถอนได้', 'ฉันอายุ 18 ปีขึ้นไป', 'ยอมรับกติกาชุมชน: ไม่มีเนื้อหาลามก ความรุนแรง หลอกลวง หรือละเมิดลิขสิทธิ์'];
@@ -2089,11 +2126,11 @@ const DECOR_BUILTIN = new Set(['hi', 'love', 'lol', 'ok', 'thanks', 'sad', 'wow'
 const DHEX = /^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/;
 function lum(hex) { const c = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255).map(v => v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; }
 const contrast = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
-function validDecor(chatId, d) {
+function validDecor(chatId, d, extra = { themes: [], frames: [], effects: [] }) {
   if (!d || typeof d !== 'object') return 'decor required';
-  if (!THEMES.includes(d.theme)) return 'theme invalid';
+  if (!THEMES.includes(d.theme) && !extra.themes.includes(d.theme)) return 'theme invalid';
   const bg = d.bg || {}, out = { theme: d.theme, bg: { color: DHEX.test(bg.color || '') ? bg.color : '', pattern: PATTERNS.includes(bg.pattern) ? bg.pattern : 'none', imagePath: '' },
-    frame: FRAMES.includes(d.frame) ? d.frame : 'none', effect: EFFECTS.includes(d.effect) ? d.effect : 'none',
+    frame: FRAMES.includes(d.frame) || extra.frames.includes(d.frame) ? d.frame : 'none', effect: EFFECTS.includes(d.effect) || extra.effects.includes(d.effect) ? d.effect : 'none',
     bubble: { style: BUBBLES.includes(d.bubble?.style) ? d.bubble.style : 'default', color: DHEX.test(d.bubble?.color || '') ? d.bubble.color : '#7C3AED', textColor: DHEX.test(d.bubble?.textColor || '') ? d.bubble.textColor : '#FFFFFF' }, items: [] };
   if (bg.imagePath) { if (typeof bg.imagePath !== 'string' || !bg.imagePath.startsWith(`roomDecor/${chatId}/`) || bg.imagePath.includes('..')) return 'bg.imagePath invalid'; out.bg.imagePath = bg.imagePath; out.bg.animated = bg.animated === true; }
   if (contrast(out.bubble.color.slice(0, 7), out.bubble.textColor.slice(0, 7)) < 4.5) return 'สีตัวอักษรกับสีบับเบิลตัดกันไม่พอ (contrast < 4.5)';
@@ -2130,7 +2167,7 @@ app.put('/rooms/:chatId/decor', w(notBanned), w(async (q, r) => {
   if (!(await isVipNow(q.uid))) return r.status(403).json({ code: 'vip_required', error: 'เฉพาะสมาชิก VIP' });
   const cur = (await db.ref(`roomDecor/${chatId}`).get()).val();
   if (cur && cur.ownerUid !== q.uid) return r.status(403).json({ code: 'not_owner', error: 'ห้องนี้ถูกตกแต่งโดยอีกฝ่าย ต้องให้เจ้าของรีเซ็ตก่อน' });
-  const d = validDecor(chatId, q.body?.decor); if (typeof d === 'string') return r.status(400).json({ error: d });
+  const d = validDecor(chatId, q.body?.decor, await decorOptions()); if (typeof d === 'string') return r.status(400).json({ error: d });
   if (d.items.some(i => !DECOR_BUILTIN.has(i.stickerId))) { const st = (await db.ref('catalog/stickers').get()).val() || {}; if (d.items.some(i => !DECOR_BUILTIN.has(i.stickerId) && (!st[i.stickerId] || st[i.stickerId].enabled === false))) return r.status(400).json({ error: 'unknown sticker' }); }
   const t = Date.now(); await db.ref(`roomDecor/${chatId}`).set({ ownerUid: q.uid, decor: d, updatedAt: t, rev: t });
   r.json({ saved: true, rev: t });
