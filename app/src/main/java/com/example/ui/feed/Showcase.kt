@@ -51,11 +51,12 @@ import java.io.ByteArrayOutputStream
  */
 object Showcase {
     data class Item(val url: String, val name: String, val res: Int = 0) { val model: Any get() = if (res != 0) res else url }
+    private val BUILT_IN_NAMES = listOf("มายด์", "เฟิร์น", "วิว", "พลอย", "ใบเตย", "กิ๊ฟ", "แพรวา", "มิ้นท์", "แคท", "เนย")
     /** Built-in AI sample faces (res/drawable-nodpi/showcase_XX.webp) used until the admin uploads their own set. */
     private val BUILT_IN = listOf(
         com.example.R.drawable.showcase_01, com.example.R.drawable.showcase_02, com.example.R.drawable.showcase_03, com.example.R.drawable.showcase_04, com.example.R.drawable.showcase_05,
         com.example.R.drawable.showcase_06, com.example.R.drawable.showcase_07, com.example.R.drawable.showcase_08, com.example.R.drawable.showcase_09, com.example.R.drawable.showcase_10,
-    ).map { Item("", "", it) }
+    ).mapIndexed { i, r -> Item("", BUILT_IN_NAMES[i], r) }
     var enabled by mutableStateOf(true)
     var live by mutableStateOf(BUILT_IN.take(5))
     var nearby by mutableStateOf(BUILT_IN.drop(5))
@@ -78,10 +79,53 @@ object Showcase {
     }
 }
 
+private val TileRed = Color(0xFFFF2D55)
+private val TileNeon = Color(0xFFFF2FA8)
+private val TileRing = Brush.sweepGradient(listOf(Color(0xFFFF2FA8), Color(0xFFB04DFF), Color(0xFF6D5BFF), Color(0xFFFF2FA8)))
+
+/** Small rounded pill used on live tiles (LIVE / viewers / AI sample). */
 @Composable
-private fun AiBadge(modifier: Modifier = Modifier) {
-    Box(modifier.clip(RoundedCornerShape(6.dp)).background(Color(0xB3000000)).padding(horizontal = 4.dp, vertical = 1.dp)) {
-        Text(tr("ตัวอย่าง AI"), color = PureWhite, fontSize = 8.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+fun TilePill(text: String, bg: Color, icon: (@Composable () -> Unit)? = null) {
+    Row(Modifier.clip(RoundedCornerShape(8.dp)).background(bg).padding(horizontal = 7.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (icon != null) { icon(); Spacer(Modifier.width(3.dp)) }
+        androidx.compose.material3.Text(text, color = PureWhite, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1, lineHeight = 12.sp)
+    }
+}
+
+/** Tall rounded live card: photo, LIVE pill top-left, extra pill top-right, name + subtitle on a dark gradient. */
+@Composable
+fun LiveTile(model: Any?, name: String, subtitle: String, w: Dp, highlight: Boolean, topLeft: @Composable () -> Unit, topRight: (@Composable () -> Unit)? = null, verified: Boolean = false, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(18.dp)
+    Box(Modifier.width(w).aspectRatio(0.72f).clip(shape)
+        .then(if (highlight) Modifier.border(2.dp, Brush.linearGradient(listOf(TileNeon, Color(0xFFB04DFF))), shape) else Modifier.border(1.dp, Color(0x33FFFFFF), shape))
+        .background(Color(0xFF16123A)).clickable(onClick = onClick)) {
+        if (model != null && model != "") AsyncImage(model = model, contentDescription = name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.5f).background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xE6000000)))))
+        Box(Modifier.align(Alignment.TopStart).padding(8.dp)) { topLeft() }
+        if (topRight != null) Box(Modifier.align(Alignment.TopEnd).padding(8.dp)) { topRight() }
+        Column(Modifier.align(Alignment.BottomStart).padding(start = 10.dp, end = 10.dp, bottom = 10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                androidx.compose.material3.Text(name, color = PureWhite, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                if (verified) androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Filled.Verified, null, tint = Color(0xFF3D8BFF), modifier = Modifier.padding(start = 3.dp).size(14.dp))
+            }
+            if (subtitle.isNotBlank()) androidx.compose.material3.Text(subtitle, color = PureWhite.copy(alpha = 0.8f), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/** Round avatar with gradient ring, online dot, name and a second line (distance). */
+@Composable
+fun NearbyTile(w: Dp, name: String, sub: String, online: Boolean, onClick: () -> Unit, avatar: @Composable (Dp) -> Unit) {
+    Column(Modifier.width(w).clickable(onClick = onClick).padding(vertical = 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(Modifier.size(66.dp)) {
+            Box(Modifier.fillMaxSize().clip(CircleShape).background(TileRing).padding(2.5.dp).clip(CircleShape).background(AppThemeMode.bg).padding(2.dp).clip(CircleShape), contentAlignment = Alignment.Center) {
+                avatar(57.dp)
+            }
+            if (online) Box(Modifier.align(Alignment.BottomEnd).padding(end = 2.dp, bottom = 2.dp).size(15.dp).clip(CircleShape).background(AppThemeMode.bg).padding(2.5.dp).clip(CircleShape).background(Color(0xFF2BD96B)))
+        }
+        Spacer(Modifier.height(6.dp))
+        androidx.compose.material3.Text(name, color = AppThemeMode.text, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (sub.isNotBlank()) androidx.compose.material3.Text(sub, color = AppThemeMode.muted, fontSize = 11.sp, maxLines = 1)
     }
 }
 
@@ -91,14 +135,10 @@ fun ShowcaseLiveRow(cardW: Dp, onClick: () -> Unit): Boolean {
     LaunchedEffect(Unit) { Showcase.load() }
     val l = Showcase.live
     if (!Showcase.enabled || l.isEmpty()) return false
-    LazyRow(contentPadding = PaddingValues(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        itemsIndexed(l, key = { i, it -> "sl$i" + it.url + it.res }) { _, it ->
-            Box(Modifier.width(cardW).aspectRatio(0.75f).clip(RoundedCornerShape(12.dp)).border(1.dp, Color(0xFF3A2C72), RoundedCornerShape(12.dp)).background(Color(0xFF16123A)).clickable(onClick = onClick)) {
-                AsyncImage(model = it.model, contentDescription = it.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                AiBadge(Modifier.align(Alignment.TopStart).padding(3.dp))
-                Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.4f).background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xD9000000)))))
-                if (it.name.isNotBlank()) Text(it.name, color = PureWhite, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.align(Alignment.BottomStart).padding(4.dp))
-            }
+    LazyRow(contentPadding = PaddingValues(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        itemsIndexed(l, key = { i, it -> "sl$i" + it.url + it.res }) { i, it ->
+            LiveTile(it.model, it.name.ifBlank { tr("ตัวอย่าง") }, tr("ตัวอย่างไลฟ์"), cardW, highlight = i == 0,
+                topLeft = { TilePill(tr("ตัวอย่าง AI"), Color(0xB3000000)) }, onClick = onClick)
         }
     }
     return true
@@ -110,15 +150,10 @@ fun ShowcaseNearbyRow(itemW: Dp, onClick: () -> Unit): Boolean {
     LaunchedEffect(Unit) { Showcase.load() }
     val l = Showcase.nearby
     if (!Showcase.enabled || l.isEmpty()) return false
-    LazyRow(contentPadding = PaddingValues(horizontal = 6.dp)) {
+    LazyRow(contentPadding = PaddingValues(horizontal = 8.dp)) {
         itemsIndexed(l, key = { i, it -> "sn$i" + it.url + it.res }) { _, it ->
-            Column(Modifier.width(itemW).clickable(onClick = onClick), horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(Modifier.height(64.dp), contentAlignment = Alignment.TopCenter) {
-                    AsyncImage(model = it.model, contentDescription = it.name, contentScale = ContentScale.Crop, modifier = Modifier.size(56.dp).clip(CircleShape).border(2.dp, Color(0xFFBE5AFF), CircleShape))
-                    AiBadge(Modifier.align(Alignment.BottomCenter))
-                }
-                Spacer(Modifier.height(3.dp))
-                Text(it.name.ifBlank { tr("ตัวอย่าง") }, color = AppThemeMode.text, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            NearbyTile(itemW, it.name.ifBlank { tr("ตัวอย่าง") }, tr("ตัวอย่าง AI"), online = false, onClick = onClick) { d ->
+                AsyncImage(model = it.model, contentDescription = it.name, contentScale = ContentScale.Crop, modifier = Modifier.size(d).clip(CircleShape))
             }
         }
     }

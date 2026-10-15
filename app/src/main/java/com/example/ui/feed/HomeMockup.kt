@@ -321,18 +321,18 @@ fun HomeLiveSection(onSeeAll: () -> Unit) {
     var failed by remember { mutableStateOf(false) }
     // A database read can wait forever when the connection is slow; give up after 6 s so the section never stays on placeholders.
     LaunchedEffect(tick) { val r = kotlinx.coroutines.withTimeoutOrNull(6000) { HomeRepo.lives() }; failed = r == null; lives = r ?: emptyList() }
-    val cardW = ((LocalConfiguration.current.screenWidthDp - 44) / 4.75f).dp
+    val cardW = ((LocalConfiguration.current.screenWidthDp - 28) / 2.75f).dp
     Column(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 12.dp)) {
         HomeSectionTitle({ Icon(Icons.Filled.Videocam, null, tint = HNeon, modifier = Modifier.size(22.dp)) }, tr("ไลฟ์สดตอนนี้"), onSeeAll)
         Spacer(Modifier.height(10.dp))
         val l = lives
         when {
-            l == null -> Row(Modifier.padding(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                repeat(5) { Box(Modifier.width(cardW).aspectRatio(0.75f).clip(RoundedCornerShape(12.dp)).background(AppThemeMode.skeleton)) }
+            l == null -> Row(Modifier.padding(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                repeat(3) { Box(Modifier.width(cardW).aspectRatio(0.72f).clip(RoundedCornerShape(18.dp)).background(AppThemeMode.skeleton)) }
             }
             l.isEmpty() -> if (!ShowcaseLiveRow(cardW, onSeeAll)) EmptyRow(if (failed) tr("โหลดไลฟ์ไม่สำเร็จ แตะเพื่อลองใหม่") else tr("ยังไม่มีใครไลฟ์ตอนนี้"), if (failed) ({ HomeRepo.reloadTick++ }) else null)
-            else -> LazyRow(contentPadding = PaddingValues(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                items(l.take(10), key = { it.id }) { LiveCard(it, cardW, onSeeAll) }
+            else -> LazyRow(contentPadding = PaddingValues(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                itemsIndexed(l.take(10), key = { _, it -> it.id }) { i, it -> LiveCard(it, cardW, i == 0, onSeeAll) }
             }
         }
     }
@@ -340,25 +340,11 @@ fun HomeLiveSection(onSeeAll: () -> Unit) {
 }
 
 @Composable
-private fun LiveCard(l: HomeRepo.LiveItem, w: Dp, onClick: () -> Unit) {
-    Box(Modifier.width(w).aspectRatio(0.75f).clip(RoundedCornerShape(12.dp)).border(1.dp, Color(0xFF3A2C72), RoundedCornerShape(12.dp)).background(Color(0xFF16123A)).clickable(onClick = onClick)) {
-        if (l.cover.isNotBlank()) AsyncImage(model = l.cover, contentDescription = l.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-        Box(Modifier.align(Alignment.TopStart).clip(RoundedCornerShape(bottomEnd = 8.dp)).background(HNeon).padding(horizontal = 6.dp, vertical = 1.dp)) {
-            Text("LIVE", color = PureWhite, fontSize = 9.5.sp, fontWeight = FontWeight.Bold)
-        }
-        Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.55f).background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xD9000000)))))
-        Column(Modifier.align(Alignment.BottomStart).padding(4.dp)) {
-            Row(Modifier.clip(RoundedCornerShape(10.dp)).background(Color(0x73000000)).padding(horizontal = 5.dp, vertical = 1.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Outlined.Visibility, null, tint = PureWhite, modifier = Modifier.size(10.dp)); Spacer(Modifier.width(2.dp))
-                Text(com.example.ui.components.compactNum(l.viewers), color = PureWhite, fontSize = 9.5.sp)
-            }
-            Spacer(Modifier.height(2.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(l.name, color = PureWhite, fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                if (l.verified) Icon(Icons.Filled.Verified, null, tint = HNeon, modifier = Modifier.padding(start = 2.dp).size(12.dp))
-            }
-        }
-    }
+private fun LiveCard(l: HomeRepo.LiveItem, w: Dp, highlight: Boolean, onClick: () -> Unit) {
+    LiveTile(l.cover.ifBlank { null }, l.name, l.title, w, highlight,
+        topLeft = { TilePill("LIVE", HRed) },
+        topRight = { TilePill(com.example.ui.components.compactNum(l.viewers), Color(0x80000000)) { Icon(Icons.Outlined.Visibility, null, tint = PureWhite, modifier = Modifier.size(11.dp)) } },
+        verified = l.verified, onClick = onClick)
 }
 
 /** 'คนใกล้คุณ' — real radar result (one /radar/nearby call per app run, then cached). */
@@ -369,27 +355,19 @@ fun HomeNearbySection(onSeeAll: () -> Unit) {
     var done by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { HomeRepo.nearbyOnce(ctx); done = true }
     var open by remember { mutableStateOf<NearbyUser?>(null) }
-    val itemW = ((LocalConfiguration.current.screenWidthDp - 12) / 6f).dp
+    val itemW = ((LocalConfiguration.current.screenWidthDp - 16) / 5.2f).dp
     Column(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 10.dp)) {
         HomeSectionTitle({ Icon(Icons.Filled.LocationOn, null, tint = HNeon, modifier = Modifier.size(22.dp)) }, tr("คนใกล้คุณ"), onSeeAll)
         Spacer(Modifier.height(10.dp))
         val l = list
         when {
-            l == null && !done -> Row(Modifier.padding(horizontal = 6.dp)) { repeat(6) { Box(Modifier.width(itemW), contentAlignment = Alignment.Center) { Box(Modifier.size(54.dp).clip(CircleShape).background(AppThemeMode.skeleton)) } } }
+            l == null && !done -> Row(Modifier.padding(horizontal = 8.dp)) { repeat(5) { Box(Modifier.width(itemW), contentAlignment = Alignment.Center) { Box(Modifier.size(66.dp).clip(CircleShape).background(AppThemeMode.skeleton)) } } }
             l == null -> { if (!ShowcaseNearbyRow(itemW, onSeeAll)) EmptyRow(tr("เปิดเรดาร์เพื่อดูคนใกล้คุณ ›"), onSeeAll) }
             l.isEmpty() -> { if (!ShowcaseNearbyRow(itemW, onSeeAll)) EmptyRow(tr("ยังไม่พบคนใกล้คุณ"), onSeeAll) }
-            else -> LazyRow(contentPadding = PaddingValues(horizontal = 6.dp)) {
+            else -> LazyRow(contentPadding = PaddingValues(horizontal = 8.dp)) {
                 items(l.take(12), key = { it.profile.uid }) { n ->
-                    Column(Modifier.width(itemW).clickable { open = n }, horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(Modifier.height(64.dp), contentAlignment = Alignment.TopCenter) {
-                            RingAvatar(n.profile.avatar, n.profile.displayName, 56.dp)
-                            Box(Modifier.padding(start = 42.dp, top = 40.dp).size(12.dp).clip(CircleShape).background(HBg).padding(2.dp).clip(CircleShape).background(HOnline))
-                            Box(Modifier.align(Alignment.BottomCenter).clip(RoundedCornerShape(10.dp)).background(AppThemeMode.pill).border(1.dp, if (AppThemeMode.dark) Color(0xFF3B2F6E) else Color(0xFFE2CFF5), RoundedCornerShape(10.dp)).padding(horizontal = 5.dp)) {
-                                Text(thaiDistance(n.distance), color = HText, fontSize = 9.5.sp, maxLines = 1)
-                            }
-                        }
-                        Spacer(Modifier.height(3.dp))
-                        Text(n.profile.displayName, color = HText, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    NearbyTile(itemW, n.profile.displayName, thaiDistance(n.distance), online = true, onClick = { open = n }) { d ->
+                        Avatar(n.profile.avatar, n.profile.displayName, d.value.toInt())
                     }
                 }
             }
