@@ -268,7 +268,7 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                             else if (stickerId != null) {
                                 // sticker message: the picture itself, no bubble (falls back to text if the admin removed it)
                                 val st = chatStickerMap[stickerId]
-                                if (st != null) Box(Modifier.size(120.dp)) { StickerImage(st) }
+                                if (st != null) Box(Modifier.size(width = 180.dp, height = 112.dp)) { StickerImage(st) } // wide stickers keep their shape
                                 else Text(com.example.social.ChatSticker.PREVIEW, color = Slate400, fontSize = 13.sp, modifier = Modifier.padding(6.dp))
                             }
                             else if (decor != null && m.imagePath == null) DecorBubble(decor, m.text.orEmpty(), mine)
@@ -400,9 +400,11 @@ internal fun ChatStickerSheet(onDismiss: () -> Unit, onPick: (com.example.social
                             cats.forEach { c -> FilterChip(selected = cat == c, onClick = { cat = c }, label = { Text(c, fontSize = 12.sp) }) }
                         }
                         val shown = if (cat == null) l else l.filter { it.category == cat }
-                        androidx.compose.foundation.lazy.grid.LazyVerticalGrid(androidx.compose.foundation.lazy.grid.GridCells.Fixed(4), verticalArrangement = Arrangement.spacedBy(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        // picture stickers are wide (text + character) → 3 per row; emoji-only sets stay 4 square tiles
+                        val wide = shown.any { it.imageUrl.isNotBlank() }
+                        androidx.compose.foundation.lazy.grid.LazyVerticalGrid(androidx.compose.foundation.lazy.grid.GridCells.Fixed(if (wide) 3 else 4), verticalArrangement = Arrangement.spacedBy(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(shown.size) { i -> val it = shown[i]
-                                Box(Modifier.aspectRatio(1f).clip(RoundedCornerShape(12.dp)).background(Slate800).clickable { onPick(it) }.padding(6.dp)) { StickerImage(it) }
+                                Box(Modifier.aspectRatio(if (wide) 1.5f else 1f).clip(RoundedCornerShape(12.dp)).background(Slate800).clickable { onPick(it) }.padding(4.dp)) { StickerImage(it) }
                             }
                         }
                     }

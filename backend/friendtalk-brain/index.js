@@ -2052,6 +2052,36 @@ app.get('/gift-pack/:f', (q, r) => {
       if (v1) await db.ref('appConfig/giftPackV1').remove().catch(() => {}); if (v2) await db.ref('appConfig/giftPackV2').remove().catch(() => {}); throw e; });
   } catch (e) { console.error('seed gift pack', e.message); }
 })();
+// Built-in chat sticker packs (free, artwork in assets/stickers/sNN_MM.webp). Added once to catalog/chatStickers; admins own them afterwards.
+const STICKER_PACKS = [
+  ['คู่ซี้ 1', ['ตกลงตามนี้', 'ได้เลยจ้า', 'ขอเวลาแป๊บ', 'ฟินเว่อร์', 'ว้าวมาก', 'อย่าดื้อ', 'นอนก่อนนะ', 'รักนะจุ๊บๆ', 'คิดบวกไว้', 'วันนี้สู้ตาย']],
+  ['คู่ซี้ 2', ['สวัสดีจ้า', 'มาแล้ววว', 'คิดถึงนะ', 'โอเคเลย', 'จัดไป!', 'ปังมาก', 'เริ่ดสุด', 'จ๊านจริง', 'รักเลย', 'ขอบคุณน้า']],
+  ['คู่ซี้ 3', ['จริงดิ', 'ไม่ไหวแล้ว', 'ใครอยู่บ้าง', 'หายไปไหน', 'รับแอดหน่อย', 'แวะมาทัก', 'ลุยยาว', 'เดี๋ยวโทรหา', 'มีเรื่องจะบอก', 'คุยกันไหม']],
+  ['คู่ซี้ 4', ['หิวข้าวแล้ว', 'งานเข้า!', 'รอแป๊บ', 'มาเมาท์กัน', 'ส่งใจให้', 'สู้ๆนะ', 'โหดจัด', 'เท่มาก', 'น่ารักอะ', 'เขินนะ']],
+  ['คู่ซี้ 5', ['555+', 'ฮาไม่ไหว', 'งงเด้', 'ใจเย็นก่อน', 'เดี๋ยวมา', 'ไปก่อนน้า', 'ฝันดีนะ', 'ตื่นยัง', 'รับทราบ', 'โอ๊ยยย']],
+  ['สายฟิน', ['ดีต่อใจ', 'ฟินสุด', 'ว้าวซ่า', 'คอลเลย', 'อยู่เป็นเพื่อน', 'คิดบวกไว้', 'ช็อตฟีล', 'รักนะจ๊ะ', 'ผ่านฉลุย', 'เลิศมาก']],
+  ['ออฟฟิศ', ['รับทราบ', 'งานแน่น', 'รอแป๊บนึง', 'ตกใจหมด', 'เอ็นดู', 'สาธุ', 'โอ้โหเด็ด', 'อย่าหาทำ', 'ขำแรง', 'นอนก่อนนะ']],
+  ['สตรีท', ['โย่ว!', 'พร้อมลุย', 'โอ๊ยยย', 'คิดถึงเด้อ', 'เดี๋ยวมา', 'โอเคค้าบ', 'จี๊ดมาก', 'หิวอีกแล้ว', 'แอบงอน', 'ฝันดีน้า']],
+  ['แก๊งเท่', ['มาดิ', 'ปังไม่ไหว', 'จัดให้', 'ขอพักแป๊บ', 'น่ารักอ่า', 'เอาเรื่อง!', 'รีบตอบ', 'ยิ้มหน่อย', 'ขอบใจมาก', 'คืนนี้คุยกัน']],
+  ['สายลุย', ['สู้โว้ย', 'ลุยต่อ', 'เทพจัด', 'ง่วงแล้ว', 'รอรับเลย', 'แชมป์!', 'ใจฟู', 'ห้ามพลาด', 'เดือดจัด', 'บอกต่อด้วย']]];
+const STICKER_URL = 'https://friendtalk-brain-123224091480.asia-southeast1.run.app/sticker-pack/';
+app.get('/sticker-pack/:f', (q, r) => {
+  if (!/^s\d{2}_\d{2}\.webp$/.test(q.params.f)) return r.status(400).end();
+  r.set('Cache-Control', 'public, max-age=604800'); r.type('image/webp');
+  r.sendFile(new URL(`./assets/stickers/${q.params.f}`, import.meta.url).pathname, e => { if (e && !r.headersSent) r.status(404).end(); });
+});
+(async () => {
+  try {
+    const flag = await db.ref('appConfig/stickerPackV1').transaction(c => (c ? undefined : { at: Date.now() }));
+    if (!flag.committed) return; // added once; whatever admins change afterwards stays
+    let order = Object.keys((await db.ref('catalog/chatStickers').get()).val() || {}).length;
+    const upd = {}, t = Date.now(), pad = n => String(n).padStart(2, '0');
+    STICKER_PACKS.forEach(([cat, names], si) => names.forEach((name, k) => {
+      upd[`catalog/chatStickers/pk${pad(si)}_${pad(k)}`] = { name, icon: '', price: 0, animationEffect: 'POP', category: cat, enabled: true, order: order++, imagePath: '', imageUrl: `${STICKER_URL}s${pad(si)}_${pad(k)}.webp`, updatedAt: t, updatedBy: 'system' };
+    }));
+    await db.ref().update(upd).catch(async e => { await db.ref('appConfig/stickerPackV1').remove().catch(() => {}); throw e; });
+  } catch (e) { console.error('seed sticker pack', e.message); }
+})();
 const GIFT_CFG_SEED = { enabled: true, autoFriend: true, adminPercent: 20, recipientPercent: 80 };
 async function giftCfg() { return { ...GIFT_CFG_SEED, ...((await db.ref('appConfig/gifts').get()).val() || {}) }; }
 const assetUrl = id => `https://friendtalk-brain-123224091480.asia-southeast1.run.app/gift-assets/${id}`;
