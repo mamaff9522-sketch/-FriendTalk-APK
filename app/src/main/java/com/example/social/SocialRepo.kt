@@ -159,6 +159,7 @@ object SocialRepo {
     fun markRead(chatId: String) {
         val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
         db.getReference("readReceipts/$chatId/$uid").setValue(System.currentTimeMillis())
+        com.example.push.MessageWatcher.markRead(chatId)
     }
 
     suspend fun chatOther(chatId: String, myUid: String): String? =

@@ -92,6 +92,8 @@ class FtMessagingService : FirebaseMessagingService() {
     override fun onMessageReceived(message: RemoteMessage) {
         val title = message.notification?.title ?: message.data["title"] ?: "FriendTalk"
         val body = message.notification?.body ?: message.data["body"] ?: ""
+        // App open: MessageWatcher already plays the in-app sound and shows the unread badge → no duplicate notification.
+        if (MessageWatcher.foreground && message.data["kind"] == "message") return
         PushRepo.show(applicationContext, title, body, message.data)
     }
 }

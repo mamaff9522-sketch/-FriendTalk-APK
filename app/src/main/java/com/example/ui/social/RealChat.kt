@@ -111,12 +111,21 @@ private fun ChatRow(c: ChatSummary, decor: com.example.social.GiftRepo.Decor? = 
             if (showP) UserProfileDialog(c.otherUid) { showP = false }
             Box(Modifier.clip(CircleShape).border(2.5.dp, androidx.compose.ui.graphics.Brush.linearGradient(listOf(Amber400, Pink500, Purple500)), CircleShape).padding(4.dp).clip(CircleShape).clickable { showP = true }) { Avatar(p?.avatar.orEmpty(), p?.displayName ?: "?", 56) }
             Spacer(Modifier.width(10.dp))
+            val unread = com.example.push.MessageWatcher.unread[c.chatId] ?: 0
             Column(Modifier.weight(1f)) {
                 Text(p?.displayName ?: "…", color = White, fontWeight = FontWeight.Bold, fontSize = 17.sp, maxLines = 1)
-                Text(c.lastMessage.ifBlank { tr("เริ่มคุยกันได้เลย") }, color = Slate300, fontSize = 14.sp, maxLines = 1)
+                Text(c.lastMessage.ifBlank { tr("เริ่มคุยกันได้เลย") }, color = if (unread > 0) White else Slate300, fontSize = 14.sp, maxLines = 1,
+                    fontWeight = if (unread > 0) FontWeight.SemiBold else FontWeight.Normal, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
             }
             decor?.let { Box(Modifier.padding(end = 6.dp)) { DecorMiniPreview(it) } }
-            if (c.lastAt > 0) Text(fmt.format(Date(c.lastAt)), color = Slate300, fontSize = 12.sp, modifier = Modifier.align(Alignment.Top))
+            Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = 6.dp)) {
+                if (c.lastAt > 0) Text(fmt.format(Date(c.lastAt)), color = if (unread > 0) Pink400 else Slate300, fontSize = 12.sp)
+                if (unread > 0) Box(Modifier.padding(top = 6.dp).defaultMinSize(minWidth = 22.dp, minHeight = 22.dp).clip(CircleShape)
+                    .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(Color(0xFFFF2FA8), Color(0xFF9B3DFF)))).padding(horizontal = 6.dp),
+                    contentAlignment = Alignment.Center) {
+                    androidx.compose.material3.Text(if (unread > 99) "99+" else "$unread", color = PureWhite, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            }
         }
     }
 }

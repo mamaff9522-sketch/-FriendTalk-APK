@@ -2640,7 +2640,7 @@ app.post('/push/chat/:chatId', w(async (q, r) => {
   await rate.set(Date.now());
   const others = Object.keys((await db.ref(`chatMembers/${chatId}`).get()).val() || {}).filter(u => u !== q.uid);
   const me = await nameOf(q.uid); let sent = 0;
-  for (const u of others) { if (await blockedEither(q.uid, u)) continue; sent += await sendPush(u, me, String(c.lastMessage || 'ส่งข้อความถึงคุณ'), { type: 'chat', chatId }); }
+  for (const u of others) { if (await blockedEither(q.uid, u)) continue; sent += await sendPush(u, me, String(c.lastMessage || 'ส่งข้อความถึงคุณ'), { type: 'chat', kind: 'message', chatId }); }
   r.json({ sent });
 }));
 

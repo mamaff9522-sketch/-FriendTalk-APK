@@ -67,6 +67,13 @@ class MainActivity : ComponentActivity() {
             Log.w("MainActivity", "Firebase initialization on startup: ${e.message}")
         }
         com.example.push.PushRepo.ensureChannel(this)
+        lifecycle.addObserver(androidx.lifecycle.LifecycleEventObserver { _, e ->
+            when (e) {
+                androidx.lifecycle.Lifecycle.Event.ON_START -> com.example.push.MessageWatcher.foreground = true
+                androidx.lifecycle.Lifecycle.Event.ON_STOP -> com.example.push.MessageWatcher.foreground = false
+                else -> {}
+            }
+        })
         openFromNotification(intent)
         enableEdgeToEdge()
         setContent {
@@ -206,6 +213,8 @@ fun FriendTalkApp(
     val unreadNotificationsCount = uiState.notifications.count { !it.isRead }
     // Real unread chats (RTDB userChats + readReceipts), refreshed every minute
     val totalUnreadMessages by com.example.ui.feed.HomeRepo.unreadChats.collectAsState()
+    val appCtx = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(uiState.currentUser.id) { com.example.push.MessageWatcher.start(appCtx) }
     LaunchedEffect(uiState.currentUser.id) { while (true) { com.example.ui.feed.HomeRepo.refreshCounts(); kotlinx.coroutines.delay(60_000) } }
     var isHomeNotifsOpen by remember { mutableStateOf(false) }
     if (isHomeNotifsOpen) com.example.ui.feed.HomeNotificationsDialog { isHomeNotifsOpen = false }
