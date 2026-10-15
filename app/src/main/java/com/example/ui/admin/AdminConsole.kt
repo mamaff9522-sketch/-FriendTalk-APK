@@ -118,6 +118,7 @@ fun AdminConsole(onDismiss: () -> Unit, onOpenUiBuilder: () -> Unit, onOpenApkDo
                             "rates" -> com.example.ui.social.AdminCompanionRatesPane()
                             "vipplans" -> VipPlansPane()
                             "grant" -> GrantPane()
+                            "deletions" -> DeletionRequestsPane()
                             "placements" -> AdPlacementsCard()
                             "limits" -> AdminLimitsTab()
                             "gifts" -> AdminGiftsTab()
@@ -410,7 +411,7 @@ private fun adminSections(p: Perms): List<AdminSection> {
         AdminSection("overview", "📊", "ภาพรวม", "สถิติผู้ใช้ งานที่รอ และสิทธิ์ของคุณ", Color(0xFF3D8BFF), subs(("overview" to "ภาพรวม") to true)),
         AdminSection("people", "👥", "ผู้ใช้ & ทีมงาน", "ค้นหาผู้ใช้ แบน ให้ VIP/เหรียญ ตั้งสิทธิ์แอดมิน", Color(0xFF9B3DFF), subs(("members" to "สมาชิก & สิทธิ์") to true)),
         AdminSection("safety", "🛡", "ตรวจสอบ & ใบสมัคร", "รายงานจากผู้ใช้ และใบสมัครเพื่อนคุย/ครีเอเตอร์", Color(0xFFFF4D6D),
-            subs(("reports" to "รายงาน") to content, ("applications" to "ใบสมัคร") to content), badge = "openReports"),
+            subs(("reports" to "รายงาน") to content, ("applications" to "ใบสมัคร") to content, ("deletions" to "คำขอลบบัญชี") to p.has("ban_users")), badge = "openReports"),
         AdminSection("money", "💳", "การเงิน & ราคา", "เติมเพชร/เหรียญให้ผู้ใช้ ยืนยันการโอน ตั้งราคาแพ็ก VIP และค่าเพื่อนคุย", Color(0xFF10B981),
             subs(("grant" to "เติมให้ผู้ใช้") to p.has("coins_confirm"), ("topup" to "เติมเงิน (โอน)") to p.has("coins_confirm"), ("packs" to "ราคาแพ็กเพชร/เหรียญ") to cfg, ("rates" to "ค่าเพื่อนคุย") to cfg, ("vipplans" to "แพ็กเกจ VIP") to cfg),
             note = com.example.ui.social.AD_REVENUE_NOTE, badge = "pendingCoinRequests"),
@@ -659,6 +660,47 @@ private fun VipPlansPane() {
 }
 
 /** Admin: give diamonds / coins to any user (search → pick → amount → confirm). Logged in adminCoinLedger, user gets a push. */
+/** Account-deletion requests sent from the public web page (/delete-account). Check the requester owns the account, then delete. */
+@Composable
+private fun DeletionRequestsPane() {
+    val scope = rememberCoroutineScope()
+    var items by remember { mutableStateOf<List<JSONObject>>(emptyList()) }
+    var status by remember { mutableStateOf("") }
+    var confirm by remember { mutableStateOf<JSONObject?>(null) }
+    var tick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(tick) {
+        val r = api("GET", "/admin/deletion-requests"); val a = r.json?.optJSONArray("items")
+        items = (0 until (a?.length() ?: 0)).map { a!!.getJSONObject(it) }; if (r.code != 200) status = err(r)
+    }
+    confirm?.let { x ->
+        AlertDialog(onDismissRequest = { confirm = null }, title = { Text("ลบบัญชีถาวร?") },
+            text = { Text("บัญชีที่ใช้อีเมล ${x.optString("email")} จะถูกลบทั้งหมด กู้คืนไม่ได้ · ตรวจสอบก่อนว่าผู้ขอเป็นเจ้าของบัญชีจริง (เช่น ติดต่อกลับทางอีเมลนั้น)") },
+            confirmButton = { TextButton(onClick = { confirm = null; scope.launch {
+                val r = api("POST", "/admin/deletion-requests/${x.optString("id")}/done")
+                status = if (r.code == 200) (if (r.json?.optString("uid").isNullOrBlank()) "ไม่พบบัญชีของอีเมลนี้ — ปิดคำขอแล้ว" else "ลบบัญชีแล้ว ✅") else err(r); tick++
+            } }) { Text("ลบบัญชี", color = Rose500) } },
+            dismissButton = { TextButton(onClick = { confirm = null }) { Text("ยกเลิก") } })
+    }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("🗑 คำขอลบบัญชีจากเว็บ", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+        Text("ผู้ใช้ส่งจากหน้า /delete-account (กรณีเข้าแอปไม่ได้) · Google Play กำหนดให้ดำเนินการภายใน 30 วัน", color = Slate400, fontSize = 11.sp)
+        if (status.isNotBlank()) Text(status, color = Pink400, fontSize = 13.sp)
+        if (items.isEmpty()) Text("ยังไม่มีคำขอ", color = Slate400, fontSize = 13.sp)
+        items.forEach { x ->
+            val pending = x.optString("status") == "pending"
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Slate900).padding(12.dp)) {
+                Text(x.optString("email"), color = White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                val name = x.optString("name"); if (name.isNotBlank()) Text("ชื่อในแอป: $name", color = Slate300, fontSize = 12.sp)
+                val note = x.optString("note"); if (note.isNotBlank()) Text(note, color = Slate400, fontSize = 12.sp)
+                Text(java.text.SimpleDateFormat("d MMM yyyy HH:mm", java.util.Locale("th", "TH")).format(java.util.Date(x.optLong("at"))) + " · " +
+                    when (x.optString("status")) { "pending" -> "⏳ รอดำเนินการ"; "deleted" -> "✅ ลบแล้ว"; "no_account" -> "ไม่พบบัญชี"; else -> x.optString("status") },
+                    color = Slate400, fontSize = 11.sp)
+                if (pending) TextButton(onClick = { confirm = x }) { Text("ลบบัญชีนี้", color = Rose500, fontWeight = FontWeight.Bold) }
+            }
+        }
+    }
+}
+
 @Composable
 private fun GrantPane() {
     val scope = rememberCoroutineScope()
