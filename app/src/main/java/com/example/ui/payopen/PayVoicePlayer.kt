@@ -53,12 +53,13 @@ object PayVoicePlayer {
     }
 
     fun speak(ctx: Context, text: String, gender: String) {
-        val say = {
+        val say: () -> Unit = {
             tts?.let { t ->
                 t.setPitch(if (gender == "male") 0.75f else 1.55f)
                 t.setSpeechRate(if (gender == "male") 0.95f else 1.1f)
                 t.speak(text.replace("~", ""), TextToSpeech.QUEUE_FLUSH, null, "payopen")
             }
+            Unit
         }
         if (ttsReady) { say(); return }
         pending = say
