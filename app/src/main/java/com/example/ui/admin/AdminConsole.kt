@@ -123,6 +123,7 @@ fun AdminConsole(onDismiss: () -> Unit, onOpenUiBuilder: () -> Unit, onOpenApkDo
                             "limits" -> AdminLimitsTab()
                             "gifts" -> AdminGiftsTab()
                             "decor" -> AdminDecorOptionsPane()
+                            "randomcard" -> AdminRandomCardPane()
                             "uibuilder" -> Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Text("ปรับหน้าตาแอปทั้งหมดในที่เดียว: ลากวางหน้าแรก, ธีม & สี, จัด Feed, ชื่อแอป/คำโปรย, โหมดปิดปรับปรุง, ประวัติเวอร์ชัน", color = Slate300, fontSize = 13.sp)
                                 Button(onClick = onOpenUiBuilder, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Purple600)) { Text("เปิด UI Builder") }
@@ -418,7 +419,7 @@ private fun adminSections(p: Perms): List<AdminSection> {
         AdminSection("ads", "📢", "โฆษณา & โควตา", "จุดวางแบนเนอร์ การ์ด VIP โควตาฟรี/VIP และโฆษณารับรางวัล", Color(0xFFFF9F43),
             subs(("placements" to "ตำแหน่งโฆษณา & การ์ด VIP") to cfg, ("limits" to "โควตา & โฆษณา") to cfg)),
         AdminSection("gifts", "🎁", "ของขวัญ & ตกแต่ง", "ของขวัญ สติกเกอร์ และธีม/กรอบ/เอฟเฟกต์ห้อง VIP", Color(0xFFFF2FA8),
-            subs(("gifts" to "ของขวัญ & สติกเกอร์") to content, ("decor" to "ตกแต่งห้อง VIP") to cfg)),
+            subs(("gifts" to "ของขวัญ & สติกเกอร์") to content, ("decor" to "ตกแต่งห้อง VIP") to cfg, ("randomcard" to "การ์ดสุ่ม VIP") to cfg)),
         AdminSection("look", "🎨", "หน้าตาแอป", "UI Builder รูปตัวอย่าง AI และป้าย 'เร็ว ๆ นี้'", Color(0xFF6D5BFF),
             subs(("uibuilder" to "UI Builder") to cfg, ("showcase" to "รูปตัวอย่าง AI") to cfg, ("comingsoon" to "ป้าย 'เร็ว ๆ นี้'") to cfg)),
         AdminSection("bots", "🤖", "บอท AI", "ตัวละคร AI สำหรับคุยและเติมคนใกล้คุณ", Color(0xFF00B8D9), subs(("bots" to "บอท AI") to cfg)),

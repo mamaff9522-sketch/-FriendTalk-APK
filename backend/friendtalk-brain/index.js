@@ -58,7 +58,7 @@ async function isSuper(req, res, next) {
   req.role = r; next();
 }
 const w = fn => (q, r, n) => fn(q, r, n).catch(e => { console.error(e.message); r.status(e.code === 404 ? 404 : 500).json({ error: e.code === 404 ? 'user not found' : 'internal' }); });
-app.use(['/push', '/coins', '/age', '/config', '/admin', '/superadmin', '/me', '/match', '/bot', '/ui', '/chats', '/swipe', '/posts', '/feed', '/friends', '/radar', '/shake', '/limits', '/quota', '/search', '/users', '/interests', '/bots', '/gifts', '/rooms', '/reports', '/creator', '/blocks', '/chat-rules', '/companion-apply', '/companion', '/shop', '/follow', '/views', '/withdraw', '/onboarding', '/idv', '/chat-send', '/rtc', '/calls', '/lives', '/vip', '/discover', '/anon', '/notifications'], w(auth));
+app.use(['/push', '/coins', '/age', '/config', '/admin', '/superadmin', '/me', '/match', '/bot', '/ui', '/chats', '/swipe', '/posts', '/feed', '/friends', '/radar', '/shake', '/limits', '/quota', '/search', '/users', '/interests', '/bots', '/gifts', '/rooms', '/reports', '/creator', '/blocks', '/chat-rules', '/companion-apply', '/companion', '/shop', '/follow', '/views', '/withdraw', '/onboarding', '/idv', '/chat-send', '/rtc', '/calls', '/lives', '/vip', '/discover', '/anon', '/notifications', '/random', '/randomcard'], w(auth));
 app.get('/me', w(async (q, r) => {
   const dh = String(q.get('X-Device-Hash') || ''); if (/^[a-f0-9]{16,64}$/.test(dh)) { db.ref(`deviceOf/${q.uid}`).set(dh).catch(() => {}); db.ref(`devices/${dh}/${q.uid}`).set(Date.now()).catch(() => {}); }
   // Safeguard: if /roles has no superadmin at all (data loss), re-seed it for the configured owner email (verified Google sign-in only; server-side).
@@ -90,7 +90,7 @@ const PART_OF = q => {
   const p = q.path;
   if (/^\/posts\/?$/.test(p) && q.method === 'POST') return 'posting';
   if (/^\/(posts|feed)(\/|$)/.test(p)) return 'home';
-  if (/^\/match(\/|$)/.test(p)) return 'random';
+  if (/^\/(match|random)(\/|$)/.test(p)) return 'random';
   if (/^\/(shake|anon)(\/|$)/.test(p)) return 'shake';
   if (/^\/radar(\/|$)/.test(p)) return 'radar';
   if (/^\/swipe(\/|$)/.test(p)) return 'swipe';
@@ -2068,6 +2068,157 @@ app.get('/notifications', w(async (q, r) => {
   r.json({ items: out, unseen: out.filter(i => i.unseen).length, requests: Object.keys(reqs).length, seenAt });
 }));
 app.post('/notifications/seen', w(async (q, r) => { await db.ref(`notifSeen/${q.uid}`).set(Date.now()); r.json({ ok: true }); }));
+// ===== สุ่มหาเพื่อน card (VIP decorated intro card) =====
+// Card: randomCards/{uid} (server-only). Prices: appConfig/randomCardCatalog (admin, live — no APK update needed).
+// Free: profile/background images, intro text, positions. Paid (diamonds): frame, name frame, effect, intro video, voice greeting —
+// charged EVERY time the chosen paid item changes (switching back to an item used before is charged again).
+const RC_KINDS = ['frames', 'nameFrames', 'effects'];
+const RC_SEED = {
+  enabled: true, videoPrice: 80, audioPrice: 40,
+  frames: { gold: { name: 'ทอง', price: 30, colors: ['#FFD700', '#B8860B', '#FFF3B0'] }, diamond: { name: 'เพชร', price: 50, colors: ['#B9F2FF', '#FFFFFF', '#5CC8E8'] },
+    neon: { name: 'นีออน', price: 40, colors: ['#00E5FF', '#FF00C8', '#00E5FF'] }, rose: { name: 'กุหลาบ', price: 30, colors: ['#FFB3C7', '#E8A598', '#FF6F91'] },
+    rainbow: { name: 'สายรุ้ง', price: 60, colors: ['#FF5F6D', '#FFC371', '#47E891', '#4FACFE', '#B06AB3'] } },
+  nameFrames: { gold: { name: 'ป้ายทอง', price: 20, colors: ['#FFD700', '#B8860B'] }, neon: { name: 'ป้ายนีออน', price: 25, colors: ['#00E5FF', '#FF00C8'] },
+    rose: { name: 'ป้ายชมพู', price: 20, colors: ['#FF6FD8', '#FF9A8B'] }, galaxy: { name: 'ป้ายกาแล็กซี', price: 35, colors: ['#3A1C71', '#D76D77', '#FFAF7B'] } },
+  effects: { hearts: { name: 'หัวใจลอย', price: 30, glyphs: ['💗', '💖'] }, stars: { name: 'ดาวระยิบ', price: 30, glyphs: ['⭐', '✨'] },
+    sparkle: { name: 'ประกายวิ้ง', price: 40, glyphs: ['✨'] }, petals: { name: 'กลีบซากุระ', price: 30, glyphs: ['🌸', '🌺'] },
+    confetti: { name: 'พลุฉลอง', price: 50, glyphs: ['🎉', '🎊', '✦'] }, fireflies: { name: 'หิ่งห้อย', price: 40, glyphs: ['•'] } }
+};
+(async () => { try { await db.ref('appConfig/randomCardCatalog').transaction(c => (c === null ? RC_SEED : undefined)); } catch (e) { console.error('seed rc', e.message); } })();
+async function rcCatalog() { const c = (await db.ref('appConfig/randomCardCatalog').get()).val() || RC_SEED; return { ...RC_SEED, ...c, frames: c.frames || {}, nameFrames: c.nameFrames || {}, effects: c.effects || {} }; }
+const rcItem = (cat, kind, id) => (id && id !== 'none' ? cat[kind]?.[id] : null);
+const clamp01 = v => Math.min(1, Math.max(0, Number(v) || 0));
+function rcLayout(l) {
+  const one = (o, dx, dy) => ({ x: o && Number.isFinite(+o.x) ? clamp01(o.x) : dx, y: o && Number.isFinite(+o.y) ? clamp01(o.y) : dy, s: Math.min(2.2, Math.max(0.5, Number(o?.s) || 1)) });
+  return { avatar: one(l?.avatar, 0.5, 0.36), name: one(l?.name, 0.5, 0.62), intro: one(l?.intro, 0.5, 0.78) };
+}
+/** What the draft costs against the saved card. Unknown/disabled items → error (unless unchanged). */
+async function rcQuote(uid, d) {
+  const cat = await rcCatalog(), saved = (await db.ref(`randomCards/${uid}`).get()).val() || {};
+  const items = []; let error = '';
+  for (const [kind, key, label] of [['frames', 'frame', 'กรอบรูป'], ['nameFrames', 'nameFrame', 'กรอบป้ายชื่อ'], ['effects', 'effect', 'เอฟเฟกต์']]) {
+    const want = typeof d?.[key] === 'string' ? d[key] : 'none', have = saved[key] || 'none';
+    if (want === have || want === 'none') continue;
+    const it = rcItem(cat, kind, want);
+    if (!it || it.enabled === false) { error = `${label}นี้ปิดใช้งานแล้ว`; continue; }
+    items.push({ kind: key, id: want, name: `${label}: ${it.name}`, price: Math.max(0, num(it.price)) });
+  }
+  if (typeof d?.videoRef === 'string' && d.videoRef && d.videoRef !== saved.videoPath) items.push({ kind: 'video', id: 'video', name: 'วิดีโอแนะนำตัว', price: Math.max(0, num(cat.videoPrice)) });
+  if (typeof d?.audioRef === 'string' && d.audioRef && d.audioRef !== saved.audioPath) items.push({ kind: 'audio', id: 'audio', name: 'เสียงทักทาย', price: Math.max(0, num(cat.audioPrice)) });
+  return { items, total: items.reduce((a, x) => a + x.price, 0), error, cat, saved };
+}
+/** Public view of a card (style snapshots saved with it, so it still renders if the admin later removes an item). */
+const rcPublic = c => c ? { avatarUrl: c.avatarUrl || '', bgUrl: c.bgUrl || '', intro: c.intro || '', videoUrl: c.videoUrl || '', audioUrl: c.audioUrl || '',
+  frame: c.frame || 'none', frameColors: c.frameColors || [], nameFrame: c.nameFrame || 'none', nameFrameColors: c.nameFrameColors || [],
+  effect: c.effect || 'none', effectGlyphs: c.effectGlyphs || [], layout: rcLayout(c.layout), updatedAt: num(c.updatedAt) } : null;
+app.get('/randomcard/catalog', w(async (q, r) => {
+  const c = await rcCatalog(), list = kind => Object.entries(c[kind] || {}).filter(([, v]) => v && v.enabled !== false)
+    .map(([id, v]) => ({ id, name: v.name || id, price: num(v.price), colors: v.colors || [], glyphs: v.glyphs || [], order: num(v.order) })).sort((a, b) => a.order - b.order || a.price - b.price);
+  const [t, wl] = await Promise.all([tierOf(q.uid), db.ref(`wallets/${q.uid}/diamonds`).get()]);
+  r.json({ enabled: c.enabled !== false, videoPrice: num(c.videoPrice), audioPrice: num(c.audioPrice), frames: list('frames'), nameFrames: list('nameFrames'), effects: list('effects'),
+    vip: t.tier === 'vip', diamonds: num(wl.val()) - await pendingSum(q.uid) });
+}));
+app.get('/randomcard/me', w(async (q, r) => { const c = (await db.ref(`randomCards/${q.uid}`).get()).val(); r.json({ card: rcPublic(c), videoRef: c?.videoPath || '', audioRef: c?.audioPath || '' }); }));
+app.post('/randomcard/quote', w(async (q, r) => { const x = await rcQuote(q.uid, q.body || {}); r.json({ items: x.items, total: x.total, error: x.error }); }));
+// Voice greeting upload (raw audio, ≤ 1.5 MB, ~30 s) → Storage randomCardAudio/{uid}/…; returns the ref used in the draft.
+app.put('/randomcard/audio', express.raw({ type: 'audio/*', limit: '1600kb' }), w(notBanned), w(async (q, r) => {
+  const buf = q.body; if (!Buffer.isBuffer(buf) || buf.length < 500) return r.status(400).json({ error: 'audio required' });
+  const path = `randomCardAudio/${q.uid}/${Date.now()}.m4a`;
+  await admin.storage().bucket(STORAGE_BUCKET).file(path).save(buf, { contentType: 'audio/mp4', resumable: false });
+  r.json({ ref: path });
+}));
+async function audioUrl(uid, path) {
+  if (typeof path !== 'string' || !path.startsWith(`randomCardAudio/${uid}/`) || path.includes('..')) return null;
+  const f = admin.storage().bucket(STORAGE_BUCKET).file(path); const [m] = await f.getMetadata().catch(() => [null]); if (!m) return null;
+  let tok = (m.metadata?.firebaseStorageDownloadTokens || '').split(',')[0];
+  if (!tok) { tok = crypto.randomUUID(); await f.setMetadata({ metadata: { firebaseStorageDownloadTokens: tok } }); }
+  return `https://firebasestorage.googleapis.com/v0/b/${STORAGE_BUCKET}/o/${encodeURIComponent(path)}?alt=media&token=${tok}`;
+}
+// Confirm & use: VIP only; price recomputed here (the app's number is only checked, never trusted); diamonds taken atomically, ledger kept.
+app.post('/randomcard/save', w(notBanned), w(async (q, r) => {
+  if ((await tierOf(q.uid)).tier !== 'vip') return r.status(403).json({ code: 'vip_only', error: 'ตกแต่งการ์ดสุ่มได้เฉพาะสมาชิก VIP' });
+  const d = q.body || {}, x = await rcQuote(q.uid, d);
+  if (x.cat.enabled === false) return r.status(403).json({ error: 'ปิดระบบตกแต่งการ์ดชั่วคราว' });
+  if (x.error) return r.status(400).json({ error: x.error });
+  if (Number(d.expectedTotal) !== x.total) return r.status(409).json({ code: 'price_changed', error: 'ราคามีการเปลี่ยนแปลง กรุณาตรวจสอบอีกครั้ง', items: x.items, total: x.total });
+  // resolve media first (nothing is charged if a file is invalid)
+  const card = { ...x.saved };
+  if (d.avatarRef !== undefined) { if (!d.avatarRef) { card.avatarUrl = ''; card.avatarPath = ''; } else if (d.avatarRef !== x.saved.avatarPath) { const u = await postImageUrl(q.uid, d.avatarRef); if (!u) return r.status(400).json({ error: 'รูปโปรไฟล์ไม่ถูกต้อง' }); const mi = await moderateImage(q.uid, d.avatarRef, { kind: 'random_card' }); if (!mi.ok) return r.status(422).json({ code: 'moderated', error: 'รูปภาพนี้ขัดกติกาความปลอดภัย' }); card.avatarUrl = u; card.avatarPath = d.avatarRef; } }
+  if (d.bgRef !== undefined) { if (!d.bgRef) { card.bgUrl = ''; card.bgPath = ''; } else if (d.bgRef !== x.saved.bgPath) { const u = await postImageUrl(q.uid, d.bgRef); if (!u) return r.status(400).json({ error: 'รูปพื้นหลังไม่ถูกต้อง' }); const mi = await moderateImage(q.uid, d.bgRef, { kind: 'random_card' }); if (!mi.ok) return r.status(422).json({ code: 'moderated', error: 'รูปภาพนี้ขัดกติกาความปลอดภัย' }); card.bgUrl = u; card.bgPath = d.bgRef; } }
+  if (d.videoRef !== undefined) { if (!d.videoRef) { card.videoUrl = ''; card.videoPath = ''; } else if (d.videoRef !== x.saved.videoPath) { const u = await postMediaUrl(q.uid, d.videoRef, 'video/', POST_VIDEO_MAX); if (!u) return r.status(400).json({ error: 'วิดีโอไม่ถูกต้อง' }); card.videoUrl = u; card.videoPath = d.videoRef; } }
+  if (d.audioRef !== undefined) { if (!d.audioRef) { card.audioUrl = ''; card.audioPath = ''; } else if (d.audioRef !== x.saved.audioPath) { const u = await audioUrl(q.uid, d.audioRef); if (!u) return r.status(400).json({ error: 'ไฟล์เสียงไม่ถูกต้อง' }); card.audioUrl = u; card.audioPath = d.audioRef; } }
+  card.intro = cleanText(d.intro, 200);
+  for (const [kind, key, styleKey, styleField] of [['frames', 'frame', 'frameColors', 'colors'], ['nameFrames', 'nameFrame', 'nameFrameColors', 'colors'], ['effects', 'effect', 'effectGlyphs', 'glyphs']]) {
+    const want = typeof d[key] === 'string' ? d[key] : 'none';
+    if (want === 'none') { card[key] = 'none'; card[styleKey] = []; }
+    else if (want !== x.saved[key]) { const it = rcItem(x.cat, kind, want); card[key] = want; card[styleKey] = (it?.[styleField] || []).slice(0, 8); }
+  }
+  card.layout = rcLayout(d.layout); card.updatedAt = Date.now();
+  const price = x.total;
+  if (price > 0) {
+    const pend = await pendingSum(q.uid);
+    const tx = await db.ref(`wallets/${q.uid}/diamonds`).transaction(c => (c === null ? null : num(c) - pend >= price ? num(c) - price : undefined));
+    if (!tx.committed || tx.snapshot.val() === null) return r.status(402).json({ code: 'insufficient', error: `เพชรไม่พอ (ต้องการ 💎${price})`, price });
+  }
+  const t = Date.now();
+  await db.ref(`randomCards/${q.uid}`).set(card);
+  await Promise.all([price > 0 ? db.ref('wallets/_system/diamonds').transaction(c => num(c) + price) : null,
+    db.ref(`randomCardTx/${q.uid}`).push({ items: x.items, total: price, at: t })]);
+  const wl = await db.ref(`wallets/${q.uid}/diamonds`).get();
+  r.json({ ok: true, charged: price, diamonds: num(wl.val()), card: rcPublic(card) });
+}));
+// Admin: prices / items (add, edit, disable) — the app reads them live.
+app.get('/admin/randomcard-catalog', perm('config_edit'), w(async (q, r) => r.json(await rcCatalog())));
+app.put('/admin/randomcard-catalog', perm('config_edit'), w(notBanned), w(async (q, r) => {
+  const b = q.body || {}, out = { enabled: b.enabled !== false, videoPrice: Math.min(1e6, Math.max(0, parseInt(b.videoPrice) || 0)), audioPrice: Math.min(1e6, Math.max(0, parseInt(b.audioPrice) || 0)) };
+  const HEX = /^#[0-9A-Fa-f]{6}$/;
+  for (const kind of RC_KINDS) {
+    out[kind] = {};
+    for (const [id, v] of Object.entries(b[kind] || {}).slice(0, 40)) {
+      if (!/^[a-z0-9_]{1,24}$/.test(id) || id === 'none' || !v) continue;
+      const price = parseInt(v.price); if (!(price >= 0 && price <= 1e6)) return r.status(400).json({ error: `ราคา ${id} ต้องเป็น 0–1,000,000` });
+      const item = { name: String(v.name || id).slice(0, 30), price, enabled: v.enabled !== false, order: num(parseInt(v.order)) };
+      if (kind === 'effects') item.glyphs = (Array.isArray(v.glyphs) ? v.glyphs : []).map(g => String(g).slice(0, 4)).filter(Boolean).slice(0, 6);
+      else item.colors = (Array.isArray(v.colors) ? v.colors : []).filter(c => HEX.test(c)).slice(0, 6);
+      if (kind === 'effects' ? !item.glyphs.length : item.colors.length < 2) return r.status(400).json({ error: `${item.name}: ${kind === 'effects' ? 'ต้องมีอีโมจิอย่างน้อย 1 ตัว' : 'ต้องมีสีอย่างน้อย 2 สี'}` });
+      out[kind][id] = item;
+    }
+  }
+  out.by = q.uid; out.at = Date.now();
+  await db.ref('appConfig/randomCardCatalog').set(out);
+  await db.ref('adminLog').push({ action: 'randomcard_catalog', by: q.uid, at: out.at });
+  r.json(out);
+}));
+// สุ่มหาเพื่อน: tap the turtle → one random real person (online first), shown with their card; 💔 = next, ❤️ = chat.
+// Uses the 'ต้องการ' filter and the randomMatchPerDay quota. Falls back to a labelled AI character when nobody fits.
+app.post('/random/next', w(notBanned), w(quota('randomMatchPerDay')), w(async (q, r) => {
+  const f = readFilter(q), me = q.uid, now = Date.now();
+  const skip = new Set((Array.isArray(q.body?.skip) ? q.body.skip : []).filter(x => typeof x === 'string').slice(0, 100));
+  const [users, st, seenS] = await Promise.all([db.ref('users').get(), db.ref('status').orderByChild('online').equalTo(true).get(), db.ref(`randomSeen/${me}`).get()]);
+  const all = users.val() || {}, online = new Set(), seen = seenS.val() || {};
+  st.forEach(c => { const v = c.val(); if (v?.online === true && v.hidden !== true) online.add(c.key); });
+  const pick = async ids => {
+    for (const id of shuffle(ids)) {
+      if (id === me || skip.has(id) || now - num(seen[id]) < 20 * 60e3) continue;
+      const u = all[id]; if (!u || !u.displayName) continue;
+      const p = publicProfile(id, u); if (!passFilter(p, f)) continue;
+      if (await isBanned(id) || await blockedEither(me, id)) continue;
+      return p;
+    }
+    return null;
+  };
+  const p = await pick([...online]) || await pick(Object.keys(all).filter(id => !online.has(id)));
+  if (p) {
+    await db.ref(`randomSeen/${me}/${p.uid}`).set(now);
+    const card = (await db.ref(`randomCards/${p.uid}`).get()).val();
+    return r.json({ type: 'user', user: { ...p, online: online.has(p.uid) }, card: rcPublic(card) });
+  }
+  if (await botsEnabled()) {
+    const bots = Object.entries((await db.ref('aiBots').get()).val() || {}).filter(([, b]) => b && b.enabled === true);
+    if (bots.length) { const [id, b] = bots[Math.floor(Math.random() * bots.length)]; return r.json({ type: 'bot', bot: publicBot(id, b) }); }
+  }
+  r.json({ type: 'none' });
+}));
 // ===== Anonymous shake room: 60 s, no real name/photo, heart halves from 20 s, mutual heart → reveal + normal chat.
 // Server-only data (anonRooms/{id}); the app polls GET /anon/:id. Time is always the server's.
 const ANON_MS = 60_000, ANON_HEART_MS = 20_000, ANON_ID = /^an_[a-f0-9]{16}$/;
@@ -2952,7 +3103,7 @@ app.post('/admin/coins/reject', perm('coins_confirm'), w(notBanned), w(async (q,
 const PER_UID = ['users', 'wallets', 'giftPending', 'vip', 'pushTokens', 'radar', 'shakeWaiting', 'shakeResults', 'swipes', 'friendRequests', 'matchQueue',
   'private', 'idv', 'kyc', 'ageInfo', 'onboarding', 'usage', 'quotaBonus', 'quotaGrants', 'chatRulesAccepted', 'termsAccepted', 'creators', 'creatorMetrics',
   'creatorApplications', 'companionApplications', 'userChats', 'callInbox', 'following', 'followers', 'followCounts', 'friends', 'authorPosts',
-  'deviceOf', 'postBlocks', 'chatBlocks', 'blocks', 'notifSeen'];
+  'deviceOf', 'postBlocks', 'chatBlocks', 'blocks', 'notifSeen', 'randomCards', 'randomSeen'];
 async function deleteAccountData(uid) {
   const del = {};
   for (const k of PER_UID) del[`${k}/${uid}`] = null;
