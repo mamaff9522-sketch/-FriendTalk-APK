@@ -255,8 +255,9 @@ private fun FindFriendsHome(onTile: (String) -> Unit, showCompanion: Boolean) {
         while (true) {
             val r = NearbyRepo.onlineUsers()
             if (r.code == 200) { online = r.users; hasLoc = r.hasLocation; onlineMsg = "" }
-            else if (online == null) { online = emptyList(); onlineMsg = if (r.code == 404) tr("เซิร์ฟเวอร์ยังไม่อัปเดต") else tr("โหลดไม่สำเร็จ ลองใหม่") }
-            kotlinx.coroutines.delay(60_000)
+            else if (online.isNullOrEmpty()) { online = emptyList(); onlineMsg = if (r.code == 404) tr("เซิร์ฟเวอร์ยังไม่อัปเดต") else tr("โหลดไม่สำเร็จ กำลังลองใหม่…") + if (r.code > 0) " (${r.code})" else "" }
+            // a failed load (e.g. the server waking up) is retried soon instead of waiting a minute
+            kotlinx.coroutines.delay(if (r.code == 200) 60_000 else 6_000)
         }
     }
 
@@ -288,10 +289,15 @@ private fun FindFriendsHome(onTile: (String) -> Unit, showCompanion: Boolean) {
             }
         }
         if (com.example.social.DiscoverFilter.isSet) Text("🎯 " + com.example.social.DiscoverFilter.summary(), color = FInkSoft, fontSize = 11.sp, modifier = Modifier.padding(start = 18.dp, bottom = 2.dp))
-        // 2) function capsules, sideways scroll
+        // 2) function capsules: all on one screen, 3 per row (no sideways scrolling)
         val tiles = TILES.filter { it.first != "companion" || showCompanion }
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 10.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            tiles.forEach { (k, label) -> FunctionCapsule(k, label) { onTile(k) } }
+        Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            tiles.chunked(3).forEach { row ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    row.forEach { (k, label) -> FunctionCapsule(k, label, Modifier.weight(1f)) { onTile(k) } }
+                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
         }
         if (searchMsg.isNotBlank()) Text(searchMsg, color = Color(0xFFB45309), fontSize = 12.sp, modifier = Modifier.padding(horizontal = 18.dp, vertical = 2.dp))
         // 3) main area: search results, else everyone online
@@ -329,12 +335,12 @@ private fun FindFriendsHome(onTile: (String) -> Unit, showCompanion: Boolean) {
 
 /** Small capsule for one friend-finding function (respects the admin's feature lock / 'เร็ว ๆ นี้'). */
 @Composable
-private fun FunctionCapsule(k: String, label: String, onClick: () -> Unit) {
+private fun FunctionCapsule(k: String, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val ctx = LocalContext.current
     val locked = com.example.ui.components.AppGates.partLocked(k) && !com.example.ui.components.AppGates.isStaff
     val soon = com.example.ui.components.AppGates.comingSoon["tile_$k"]?.enabled == true && !com.example.ui.components.AppGates.isSuper
     val grad = TILE_GRAD[k] ?: listOf(FPink, FViolet)
-    Row(Modifier.height(32.dp).clip(RoundedCornerShape(16.dp))
+    Row(modifier.height(38.dp).clip(RoundedCornerShape(19.dp))
         .background(if (locked || soon) Brush.horizontalGradient(listOf(Color(0x66888899), Color(0x66888899))) else Brush.horizontalGradient(grad))
         .clickable {
             when {
@@ -342,10 +348,11 @@ private fun FunctionCapsule(k: String, label: String, onClick: () -> Unit) {
                 soon -> android.widget.Toast.makeText(ctx, tr("เร็ว ๆ นี้"), android.widget.Toast.LENGTH_SHORT).show()
                 else -> onClick()
             }
-        }.padding(start = 10.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        }.padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
         Text(if (locked) "🔒" else TILE_ICONS[k] ?: "", fontSize = 14.sp)
-        Spacer(Modifier.width(4.dp))
-        Text(label, color = PureWhite, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+        Spacer(Modifier.width(3.dp))
+        Text(label, color = PureWhite, fontSize = 11.sp, lineHeight = 12.sp, fontWeight = FontWeight.Bold, maxLines = 2,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
     }
 }
 
