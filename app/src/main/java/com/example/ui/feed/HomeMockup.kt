@@ -442,9 +442,10 @@ fun LazyListScope.homeFeedItems(all: RealFeedState, tabFeed: HomeTabFeed, tab: S
     val distances = nearby?.associate { it.profile.uid to thaiDistance(it.distance) } ?: emptyMap()
     itemsIndexed(rows, key = { _, r -> "home_row_" + r[0].id }) { idx, row ->
         if (idx > 0 && idx % adEvery == 0) com.example.ads.PlacementBanner("inFeed", Modifier.padding(vertical = 6.dp))
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+        // both cards of a row share one height (no gaps under the shorter one)
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
             row.forEach { p ->
-                HomePostCard(p, distances[p.authorId] ?: "", Modifier.weight(1f),
+                HomePostCard(p, distances[p.authorId] ?: "", Modifier.weight(1f).fillMaxHeight(),
                     onLike = { if (isAll) all.toggleLike(p) else tabFeed.toggleLike(p) },
                     onComments = { all.commentsFor = p },
                     onDelete = { if (isAll) all.delete(p) else tabFeed.delete(p) },
@@ -492,7 +493,7 @@ fun HomePostCard(p: FeedPost, distance: String, modifier: Modifier, onLike: () -
     var detail by remember { mutableStateOf(false) }
     if (detail) PostDetailDialog(p, onDismiss = { detail = false }, onLike = onLike, onDelete = onDelete, onCommentCount = onCommentCount)
     Surface(onClick = { detail = true }, shape = RoundedCornerShape(16.dp), color = HCard, border = BorderStroke(1.dp, HLine), modifier = modifier) {
-        Column {
+        Column(Modifier.fillMaxHeight()) {
             Row(Modifier.padding(start = 8.dp, end = 4.dp, top = 8.dp, bottom = 6.dp), verticalAlignment = Alignment.Top) {
                 Box(Modifier.clip(CircleShape).clickable { author = true }) { RingAvatar(p.authorAvatar, p.authorName, 34.dp, ring = 1.5.dp, glow = false) }
                 Spacer(Modifier.width(6.dp))
@@ -512,24 +513,35 @@ fun HomePostCard(p: FeedPost, distance: String, modifier: Modifier, onLike: () -
                 }
                 more()
             }
-            p.feeling?.let { f -> Text(tr(f.display()), color = HMuted, fontSize = 10.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 8.dp, end = 8.dp, bottom = 2.dp)) }
-            if (p.placeLabel.isNotBlank()) Row(Modifier.padding(start = 8.dp, end = 8.dp, bottom = 4.dp).clip(RoundedCornerShape(6.dp))
-                .clickable { openPlaceOnMap(ctx, p.placeLabel, p.placeLat, p.placeLng) }, verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.LocationOn, tr("ดูบนแผนที่"), tint = HNeon, modifier = Modifier.size(12.dp)); Spacer(Modifier.width(2.dp))
-                Text(p.placeLabel, color = Color(0xFFFF8BCB), fontSize = 10.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            if (p.text.isNotBlank()) Text(p.text, color = HText, fontSize = 12.5.sp, maxLines = 3, overflow = TextOverflow.Ellipsis, lineHeight = 17.sp,
-                modifier = Modifier.padding(start = 8.dp, end = 8.dp, bottom = 6.dp))
-            if (p.videoUrl.isNotBlank()) PostVideoThumb(p, Modifier.padding(horizontal = 6.dp).fillMaxWidth().aspectRatio(1f / 1.08f))
-            else p.imageUrls.firstOrNull()?.let { url ->
-                val video = Regex("\\.(mp4|webm|mov|m4v)(\\?|$)", RegexOption.IGNORE_CASE).containsMatchIn(Uri.decode(url))
-                Box(Modifier.padding(horizontal = 6.dp).fillMaxWidth().aspectRatio(1f / 1.08f).clip(RoundedCornerShape(10.dp)).background(Color.Black), contentAlignment = Alignment.Center) {
-                    if (!video) AsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                    else Box(Modifier.size(44.dp).clip(CircleShape).background(Color(0x73000000)).border(2.dp, Color(0xE6FFFFFF), CircleShape)
-                        .clickable { runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).setDataAndType(Uri.parse(url), "video/*")) } },
-                        contentAlignment = Alignment.Center) { Icon(Icons.Filled.PlayArrow, tr("เล่นวิดีโอ"), tint = PureWhite, modifier = Modifier.size(26.dp)) }
+            // same layout for every card: one 4:5 picture area (photo, video, or the text itself on a colour tile),
+            // then a fixed 2-line caption + one info line, so cards line up and text sizes match.
+            val mediaUrl = p.imageUrls.firstOrNull()
+            Box(Modifier.padding(horizontal = 6.dp).fillMaxWidth().aspectRatio(4f / 5f).clip(RoundedCornerShape(12.dp)).background(Color.Black), contentAlignment = Alignment.Center) {
+                when {
+                    p.videoUrl.isNotBlank() -> PostVideoThumb(p, Modifier.fillMaxSize())
+                    mediaUrl != null -> {
+                        val video = Regex("\\.(mp4|webm|mov|m4v)(\\?|$)", RegexOption.IGNORE_CASE).containsMatchIn(Uri.decode(mediaUrl))
+                        if (!video) AsyncImage(model = mediaUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                        else Box(Modifier.size(44.dp).clip(CircleShape).background(Color(0x73000000)).border(2.dp, Color(0xE6FFFFFF), CircleShape)
+                            .clickable { runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(mediaUrl)).setDataAndType(Uri.parse(mediaUrl), "video/*")) } },
+                            contentAlignment = Alignment.Center) { Icon(Icons.Filled.PlayArrow, tr("เล่นวิดีโอ"), tint = PureWhite, modifier = Modifier.size(26.dp)) }
+                        if (p.imageUrls.size > 1) Text("1/${p.imageUrls.size}", color = PureWhite, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).clip(RoundedCornerShape(8.dp)).background(Color(0x80000000)).padding(horizontal = 6.dp, vertical = 2.dp))
+                    }
+                    else -> TextTile(p)
                 }
             }
+            val hasMedia = p.videoUrl.isNotBlank() || mediaUrl != null
+            Text(if (hasMedia) p.text else "", color = HText, fontSize = 12.5.sp, lineHeight = 17.sp, minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp))
+            val info = when {
+                p.placeLabel.isNotBlank() -> "📍 " + p.placeLabel
+                p.feeling != null -> tr(p.feeling.display())
+                else -> ""
+            }
+            Text(info, color = if (p.placeLabel.isNotBlank()) Color(0xFFFF8BCB) else HMuted, fontSize = 10.5.sp, minLines = 1, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 8.dp).then(if (p.placeLabel.isNotBlank()) Modifier.clickable { openPlaceOnMap(ctx, p.placeLabel, p.placeLat, p.placeLng) } else Modifier))
+            Spacer(Modifier.weight(1f))
             Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 6.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Row(Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = onLike), verticalAlignment = Alignment.CenterVertically) {
                     Icon(if (p.likedByMe) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder, tr("ถูกใจ"), tint = if (p.likedByMe) Color(0xFFFF2D6F) else HSoft, modifier = Modifier.size(19.dp))
@@ -550,6 +562,21 @@ fun HomePostCard(p: FeedPost, distance: String, modifier: Modifier, onLike: () -
                 }
             }
         }
+    }
+}
+
+/** A text-only post shown as a colourful tile with the words in the middle (bigger when short), like a story card. */
+@Composable
+private fun TextTile(p: FeedPost) {
+    val palettes = listOf(listOf(Color(0xFFFF2FA8), Color(0xFF8B3DFF)), listOf(Color(0xFF4F46E5), Color(0xFF06B6D4)), listOf(Color(0xFFFF7A59), Color(0xFFFF2F6E)),
+        listOf(Color(0xFF10B981), Color(0xFF3B82F6)), listOf(Color(0xFFF59E0B), Color(0xFFEC4899)), listOf(Color(0xFF7C3AED), Color(0xFF1E1B4B)))
+    val pal = palettes[(p.id.hashCode() and 0x7fffffff) % palettes.size]
+    val t = p.text.trim().ifBlank { p.feeling?.let { tr(it.display()) } ?: "" }
+    val size = when { t.length <= 12 -> 22.sp; t.length <= 40 -> 17.sp; t.length <= 90 -> 14.sp; else -> 12.5.sp }
+    Box(Modifier.fillMaxSize().background(Brush.linearGradient(pal)), contentAlignment = Alignment.Center) {
+        Text("“", color = Color.White.copy(alpha = 0.25f), fontSize = 54.sp, fontWeight = FontWeight.Black, modifier = Modifier.align(Alignment.TopStart).padding(start = 8.dp))
+        Text(t, color = PureWhite, fontSize = size, lineHeight = size * 1.3f, fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            maxLines = 7, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 12.dp))
     }
 }
 
