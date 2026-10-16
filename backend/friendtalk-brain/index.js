@@ -2078,7 +2078,7 @@ app.post('/notifications/seen', w(async (q, r) => { await db.ref(`notifSeen/${q.
 // charged EVERY time the chosen paid item changes (switching back to an item used before is charged again).
 const RC_KINDS = ['frames', 'nameFrames', 'effects'];
 const RC_SEED = {
-  enabled: true, videoPrice: 80, audioPrice: 40,
+  enabled: true, videoPrice: 80, audioPrice: 40, customFramePrice: 0, customNameFramePrice: 0, customEffectPrice: 0,
   frames: { gold: { name: 'ทอง', price: 30, colors: ['#FFD700', '#B8860B', '#FFF3B0'] }, diamond: { name: 'เพชร', price: 50, colors: ['#B9F2FF', '#FFFFFF', '#5CC8E8'] },
     neon: { name: 'นีออน', price: 40, colors: ['#00E5FF', '#FF00C8', '#00E5FF'] }, rose: { name: 'กุหลาบ', price: 30, colors: ['#FFB3C7', '#E8A598', '#FF6F91'] },
     rainbow: { name: 'สายรุ้ง', price: 60, colors: ['#FF5F6D', '#FFC371', '#47E891', '#4FACFE', '#B06AB3'] } },
@@ -2126,11 +2126,20 @@ function rcLayout(l) {
   return { avatar: one(l?.avatar, 0.5, 0.36), name: one(l?.name, 0.5, 0.62), intro: one(l?.intro, 0.5, 0.78) };
 }
 /** What the draft costs against the saved card. Unknown/disabled items → error (unless unchanged). */
+// own uploads: draft ref field, saved path field, price field in the catalog, saved URL field
+const RC_CUSTOM = { frame: ['frameRef', 'frameImagePath', 'customFramePrice', 'frameImageUrl'], nameFrame: ['nameFrameRef', 'nameFrameImagePath', 'customNameFramePrice', 'nameFrameImageUrl'],
+  effect: ['effectRef', 'effectImagePath', 'customEffectPrice', 'effectImageUrl'] };
 async function rcQuote(uid, d) {
   const cat = await rcCatalog(), saved = (await db.ref(`randomCards/${uid}`).get()).val() || {};
   const items = []; let error = '';
   for (const [kind, key, label] of [['frames', 'frame', 'กรอบรูป'], ['nameFrames', 'nameFrame', 'กรอบป้ายชื่อ'], ['effects', 'effect', 'เอฟเฟกต์']]) {
     const want = typeof d?.[key] === 'string' ? d[key] : 'none', have = saved[key] || 'none';
+    if (want === 'custom') { // the owner's own uploaded picture: charged (admin price, default free) whenever a new file is used
+      const [refKey, pathKey, priceKey] = RC_CUSTOM[key], ref = d?.[refKey];
+      if (typeof ref === 'string' && ref && !(have === 'custom' && ref === saved[pathKey])) items.push({ kind: key, id: 'custom', name: `${label}: อัปโหลดเอง`, price: Math.max(0, num(cat[priceKey])) });
+      else if (have !== 'custom') error = `${label}: ยังไม่ได้อัปโหลดรูป`;
+      continue;
+    }
     if (want === have || want === 'none') continue;
     const it = rcItem(cat, kind, want);
     if (!it || it.enabled === false) { error = `${label}นี้ปิดใช้งานแล้ว`; continue; }
@@ -2144,14 +2153,17 @@ async function rcQuote(uid, d) {
 const rcPublic = c => c ? { avatarUrl: c.avatarUrl || '', bgUrl: c.bgUrl || '', intro: c.intro || '', videoUrl: c.videoUrl || '', audioUrl: c.audioUrl || '',
   frame: c.frame || 'none', frameColors: c.frameColors || [], nameFrame: c.nameFrame || 'none', nameFrameColors: c.nameFrameColors || [],
   effect: c.effect || 'none', effectGlyphs: c.effectGlyphs || [], layout: rcLayout(c.layout), updatedAt: num(c.updatedAt),
-  nameFrameStyle: c.nameFrameStyle || 'pill', effectMotion: c.effectMotion || 'rise', nameDeco: c.nameDeco || '', nameColor: c.nameColor || '' } : null;
+  nameFrameStyle: c.nameFrameStyle || 'pill', effectMotion: c.effectMotion || 'rise', nameDeco: c.nameDeco || '', nameColor: c.nameColor || '',
+  frameImageUrl: c.frame === 'custom' ? c.frameImageUrl || '' : '', nameFrameImageUrl: c.nameFrame === 'custom' ? c.nameFrameImageUrl || '' : '',
+  effectImageUrl: c.effect === 'custom' ? c.effectImageUrl || '' : '' } : null;
 // Free name-tag decoration the owner picks (sticker on the tag + text colour)
 const RC_DECOS = ['', '♡', '✦', '👑', '🌸', '⭐', '🎀', '🔥', '💎', '🦋', '🐱', '🌙'];
 app.get('/randomcard/catalog', w(async (q, r) => {
   const c = await rcCatalog(), list = kind => Object.entries(c[kind] || {}).filter(([, v]) => v && v.enabled !== false)
     .map(([id, v]) => ({ id, name: v.name || id, price: num(v.price), colors: v.colors || [], glyphs: v.glyphs || [], style: v.style || 'pill', motion: v.motion || 'rise', order: num(v.order) })).sort((a, b) => a.order - b.order || a.price - b.price);
   const [t, wl] = await Promise.all([tierOf(q.uid), db.ref(`wallets/${q.uid}/diamonds`).get()]);
-  r.json({ enabled: c.enabled !== false, videoPrice: num(c.videoPrice), audioPrice: num(c.audioPrice), frames: list('frames'), nameFrames: list('nameFrames'), effects: list('effects'),
+  r.json({ enabled: c.enabled !== false, videoPrice: num(c.videoPrice), audioPrice: num(c.audioPrice),
+    customFramePrice: num(c.customFramePrice), customNameFramePrice: num(c.customNameFramePrice), customEffectPrice: num(c.customEffectPrice), frames: list('frames'), nameFrames: list('nameFrames'), effects: list('effects'),
     vip: t.tier === 'vip', diamonds: num(wl.val()) - await pendingSum(q.uid) });
 }));
 app.get('/randomcard/me', w(async (q, r) => { const c = (await db.ref(`randomCards/${q.uid}`).get()).val(); r.json({ card: rcPublic(c), videoRef: c?.videoPath || '', audioRef: c?.audioPath || '' }); }));
@@ -2186,6 +2198,16 @@ app.post('/randomcard/save', w(notBanned), w(async (q, r) => {
   card.intro = cleanText(d.intro, 200);
   for (const [kind, key, styleKey, styleField] of [['frames', 'frame', 'frameColors', 'colors'], ['nameFrames', 'nameFrame', 'nameFrameColors', 'colors'], ['effects', 'effect', 'effectGlyphs', 'glyphs']]) {
     const want = typeof d[key] === 'string' ? d[key] : 'none';
+    if (want === 'custom') {
+      const [refKey, pathKey, , urlKey] = RC_CUSTOM[key], ref = d[refKey];
+      if (typeof ref === 'string' && ref && ref !== x.saved[pathKey]) {
+        const u = await postImageUrl(q.uid, ref); if (!u) return r.status(400).json({ error: 'ไฟล์ที่อัปโหลดไม่ถูกต้อง (รูป PNG / GIF / WebP ไม่เกิน 10MB)' });
+        const mi = await moderateImage(q.uid, ref, { kind: 'random_card' }); if (!mi.ok) return r.status(422).json({ error: 'รูปนี้ไม่ผ่านการตรวจเนื้อหา' });
+        card[urlKey] = u; card[pathKey] = ref;
+      } else if (x.saved[key] !== 'custom' || !x.saved[urlKey]) return r.status(400).json({ error: 'ยังไม่ได้อัปโหลดรูป' });
+      card[key] = 'custom'; card[styleKey] = [];
+      continue;
+    }
     if (want === 'none') { card[key] = 'none'; card[styleKey] = []; }
     else if (want !== x.saved[key]) { const it = rcItem(x.cat, kind, want); card[key] = want; card[styleKey] = (it?.[styleField] || []).slice(0, 8);
       if (kind === 'nameFrames') card.nameFrameStyle = RC_STYLES.includes(it?.style) ? it.style : 'pill';
@@ -2210,7 +2232,9 @@ app.post('/randomcard/save', w(notBanned), w(async (q, r) => {
 // Admin: prices / items (add, edit, disable) — the app reads them live.
 app.get('/admin/randomcard-catalog', perm('config_edit'), w(async (q, r) => r.json(await rcCatalog())));
 app.put('/admin/randomcard-catalog', perm('config_edit'), w(notBanned), w(async (q, r) => {
-  const b = q.body || {}, out = { enabled: b.enabled !== false, videoPrice: Math.min(1e6, Math.max(0, parseInt(b.videoPrice) || 0)), audioPrice: Math.min(1e6, Math.max(0, parseInt(b.audioPrice) || 0)) };
+  const pr = v => Math.min(1e6, Math.max(0, parseInt(v) || 0));
+  const b = q.body || {}, out = { enabled: b.enabled !== false, videoPrice: pr(b.videoPrice), audioPrice: pr(b.audioPrice),
+    customFramePrice: pr(b.customFramePrice), customNameFramePrice: pr(b.customNameFramePrice), customEffectPrice: pr(b.customEffectPrice) };
   const HEX = /^#[0-9A-Fa-f]{6}$/;
   for (const kind of RC_KINDS) {
     out[kind] = {};

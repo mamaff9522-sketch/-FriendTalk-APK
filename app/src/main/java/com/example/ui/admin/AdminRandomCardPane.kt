@@ -46,6 +46,8 @@ fun AdminRandomCardPane() {
     var enabled by remember { mutableStateOf(true) }
     var videoPrice by remember { mutableStateOf("") }
     var audioPrice by remember { mutableStateOf("") }
+    // prices for the user's own uploads (0 = free)
+    val customPrices = remember { mutableStateMapOf("customFramePrice" to "0", "customNameFramePrice" to "0", "customEffectPrice" to "0") }
     val rows = remember { mutableStateMapOf<String, androidx.compose.runtime.snapshots.SnapshotStateList<RcRow>>() }
     var status by remember { mutableStateOf("") }
     var saving by remember { mutableStateOf(false) }
@@ -55,6 +57,7 @@ fun AdminRandomCardPane() {
         val r = BrainApi.call(u, "GET", "/admin/randomcard-catalog"); val j = r.json
         if (r.code != 200 || j == null) { status = if (r.code == 404) "เซิร์ฟเวอร์ยังไม่อัปเดต" else "โหลดไม่สำเร็จ (${r.code})"; return }
         enabled = j.optBoolean("enabled", true); videoPrice = j.optInt("videoPrice").toString(); audioPrice = j.optInt("audioPrice").toString()
+        customPrices.keys.toList().forEach { k -> customPrices[k] = j.optInt(k).toString() }
         kinds.forEach { (k, _) ->
             val o = j.optJSONObject(k) ?: JSONObject()
             rows[k] = mutableStateListOf<RcRow>().apply {
@@ -80,6 +83,13 @@ fun AdminRandomCardPane() {
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White))
             OutlinedTextField(audioPrice, { audioPrice = it.filter(Char::isDigit).take(7) }, label = { Text("เสียงทักทาย 💎") }, singleLine = true, modifier = Modifier.weight(1f),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White))
+        }
+        Text("ผู้ใช้อัปโหลดเอง (0 = ฟรี)", color = White, fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.padding(top = 4.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf("customFramePrice" to "กรอบการ์ด 💎", "customNameFramePrice" to "กรอบชื่อ 💎", "customEffectPrice" to "เอฟเฟกต์ 💎").forEach { (k, l) ->
+                OutlinedTextField(customPrices[k].orEmpty(), { customPrices[k] = it.filter(Char::isDigit).take(7) }, label = { Text(l, fontSize = 11.sp) }, singleLine = true, modifier = Modifier.weight(1f),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White))
+            }
         }
         kinds.forEach { (k, label) ->
             val list = rows.getOrPut(k) { mutableStateListOf() }
@@ -118,6 +128,7 @@ fun AdminRandomCardPane() {
             saving = true; status = ""
             scope.launch {
                 val body = JSONObject().put("enabled", enabled).put("videoPrice", videoPrice.toIntOrNull() ?: 0).put("audioPrice", audioPrice.toIntOrNull() ?: 0)
+                    .apply { customPrices.forEach { (k, v) -> put(k, v.toIntOrNull() ?: 0) } }
                 kinds.forEach { (k, _) ->
                     val o = JSONObject()
                     rows[k].orEmpty().forEachIndexed { i, row ->

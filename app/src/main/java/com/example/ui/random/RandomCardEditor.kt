@@ -69,6 +69,9 @@ fun RandomCardEditor(onClose: () -> Unit) {
     var newBg by remember { mutableStateOf<Uri?>(null) }; var clearBg by remember { mutableStateOf(false) }
     var newVideo by remember { mutableStateOf<Uri?>(null) }; var clearVideo by remember { mutableStateOf(false) }
     var newAudio by remember { mutableStateOf<java.io.File?>(null) }; var clearAudio by remember { mutableStateOf(false) }
+    // the owner's own frame / name frame / effect pictures (uploaded only on confirm)
+    var newFrameImg by remember { mutableStateOf<Uri?>(null) }; var newNameImg by remember { mutableStateOf<Uri?>(null) }; var newFxImg by remember { mutableStateOf<Uri?>(null) }
+    var decorTarget by remember { mutableStateOf("frame") }
     var sel by remember { mutableStateOf(CardPart.NAME) }
     var tab by remember { mutableIntStateOf(0) }
     var msg by remember { mutableStateOf("") }
@@ -92,11 +95,22 @@ fun RandomCardEditor(onClose: () -> Unit) {
         (if (card.frame != "none" && card.frame != base.frame) priceOf(c.frames, card.frame) else 0) +
         (if (card.nameFrame != "none" && card.nameFrame != base.nameFrame) priceOf(c.nameFrames, card.nameFrame) else 0) +
         (if (card.effect != "none" && card.effect != base.effect) priceOf(c.effects, card.effect) else 0) +
-        (if (newVideo != null) c.videoPrice else 0) + (if (newAudio != null) c.audioPrice else 0)
+        (if (newVideo != null) c.videoPrice else 0) + (if (newAudio != null) c.audioPrice else 0) +
+        (if (card.frame == "custom" && newFrameImg != null) c.customFramePrice else 0) + (if (card.nameFrame == "custom" && newNameImg != null) c.customNameFramePrice else 0) +
+        (if (card.effect == "custom" && newFxImg != null) c.customEffectPrice else 0)
 
     var imageTarget by remember { mutableStateOf("avatar") }
     val pickImage2 = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) { if (imageTarget == "avatar") { newAvatar = uri; clearAvatar = false } else { newBg = uri; clearBg = false }; dirty = true }
+    }
+    val pickDecor = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        when (decorTarget) {
+            "frame" -> { newFrameImg = uri; card = card.copy(frame = "custom", frameColors = emptyList()) }
+            "name" -> { newNameImg = uri; card = card.copy(nameFrame = "custom", nameFrameColors = emptyList()) }
+            else -> { newFxImg = uri; card = card.copy(effect = "custom", effectGlyphs = emptyList()) }
+        }
+        dirty = true
     }
     val pickVideo = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -115,7 +129,9 @@ fun RandomCardEditor(onClose: () -> Unit) {
     val preview = card.copy(
         avatarUrl = if (clearAvatar) "" else newAvatar?.toString() ?: card.avatarUrl,
         bgUrl = if (clearBg) "" else newBg?.toString() ?: card.bgUrl,
-        videoUrl = if (clearVideo) "" else card.videoUrl, audioUrl = if (clearAudio) "" else card.audioUrl)
+        videoUrl = if (clearVideo) "" else card.videoUrl, audioUrl = if (clearAudio) "" else card.audioUrl,
+        frameImageUrl = newFrameImg?.toString() ?: card.frameImageUrl, nameFrameImageUrl = newNameImg?.toString() ?: card.nameFrameImageUrl,
+        effectImageUrl = newFxImg?.toString() ?: card.effectImageUrl)
 
     fun draftJson(refs: Map<String, String?>): JSONObject {
         val L = card.layout
@@ -133,6 +149,11 @@ fun RandomCardEditor(onClose: () -> Unit) {
             if (clearAvatar) refs["avatarRef"] = "" else newAvatar?.let { u -> refs["avatarRef"] = RandomCardRepo.uploadImage(ctx, u, "avatar") ?: run { msg = "อัปโหลดรูปโปรไฟล์ไม่สำเร็จ"; busy = ""; return@launch } }
             if (clearBg) refs["bgRef"] = "" else newBg?.let { u -> refs["bgRef"] = RandomCardRepo.uploadImage(ctx, u, "bg") ?: run { msg = "อัปโหลดพื้นหลังไม่สำเร็จ"; busy = ""; return@launch } }
             if (clearVideo) refs["videoRef"] = "" else newVideo?.let { u -> refs["videoRef"] = RandomCardRepo.uploadVideo(ctx, u) ?: run { msg = "อัปโหลดวิดีโอไม่สำเร็จ"; busy = ""; return@launch } }
+            for ((on, uri, key, tag) in listOf(Quad(card.frame == "custom", newFrameImg, "frameRef", "frame"), Quad(card.nameFrame == "custom", newNameImg, "nameFrameRef", "nameframe"),
+                    Quad(card.effect == "custom", newFxImg, "effectRef", "effect"))) {
+                if (!on || uri == null) continue
+                refs[key] = RandomCardRepo.uploadDecor(ctx, uri, tag) { e -> msg = e } ?: run { busy = ""; return@launch }
+            }
             if (clearAudio) refs["audioRef"] = "" else newAudio?.let { f -> refs["audioRef"] = RandomCardRepo.uploadAudio(f.readBytes()) ?: run { msg = "อัปโหลดเสียงไม่สำเร็จ"; busy = ""; return@launch } }
             val d = draftJson(refs)
             val q = RandomCardRepo.quote(d)
@@ -201,8 +222,14 @@ fun RandomCardEditor(onClose: () -> Unit) {
                                 colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White), modifier = Modifier.fillMaxWidth())
                             Text("${card.intro.length}/200", color = Color.White.copy(alpha = 0.5f), fontSize = 11.sp)
                         }
-                        2 -> Options(c.frames, card.frame, base.frame) { id, item -> card = card.copy(frame = id, frameColors = item?.colors ?: emptyList()); dirty = true }
+                        2 -> {
+                            UploadOwn("📤 อัปโหลดกรอบการ์ดเอง", "แนะนำ PNG พื้นใส ขนาดสัดส่วน 3:4", c.customFramePrice, card.frame == "custom", base.frame == "custom" && newFrameImg == null) {
+                                decorTarget = "frame"; pickDecor.launch("image/*") }
+                            Options(c.frames, card.frame, base.frame) { id, item -> card = card.copy(frame = id, frameColors = item?.colors ?: emptyList()); dirty = true }
+                        }
                         3 -> {
+                            UploadOwn("📤 อัปโหลดกรอบชื่อเอง", "รูปจะยืดอยู่หลังชื่อ · PNG พื้นใสสวยที่สุด", c.customNameFramePrice, card.nameFrame == "custom", base.nameFrame == "custom" && newNameImg == null) {
+                                decorTarget = "name"; pickDecor.launch("image/*") }
                             NameFrameOptions(c.nameFrames, card.nameFrame, base.nameFrame, card.nameDeco, card.nameColor) { id, item ->
                                 card = card.copy(nameFrame = id, nameFrameColors = item?.colors ?: emptyList(), nameFrameStyle = item?.style ?: "pill"); dirty = true }
                             FreeNote()
@@ -226,7 +253,11 @@ fun RandomCardEditor(onClose: () -> Unit) {
                                 }
                             }
                         }
-                        4 -> Options(c.effects, card.effect, base.effect) { id, item -> card = card.copy(effect = id, effectGlyphs = item?.glyphs ?: emptyList(), effectMotion = item?.motion ?: "rise"); dirty = true }
+                        4 -> {
+                            UploadOwn("📤 อัปโหลดเอฟเฟกต์เอง", "GIF / WebP เคลื่อนไหว พื้นใส · เล่นทับทั้งการ์ด", c.customEffectPrice, card.effect == "custom", base.effect == "custom" && newFxImg == null) {
+                                decorTarget = "effect"; pickDecor.launch("image/*") }
+                            Options(c.effects, card.effect, base.effect) { id, item -> card = card.copy(effect = id, effectGlyphs = item?.glyphs ?: emptyList(), effectMotion = item?.motion ?: "rise"); dirty = true }
+                        }
                         5 -> {
                             PaidNote(c.videoPrice, "วิดีโอ (ไม่เกิน 30 วินาที) เล่นอัตโนมัติแทนรูปโปรไฟล์")
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -282,6 +313,22 @@ fun RandomCardEditor(onClose: () -> Unit) {
         text = { Text("การตกแต่งที่ยังไม่ยืนยันจะหายไป และไม่มีการหักเพชร") },
         confirmButton = { TextButton(onClick = { confirmExit = false; onClose() }) { Text("ออก", color = EPink) } },
         dismissButton = { TextButton(onClick = { confirmExit = false }) { Text("แต่งต่อ") } })
+}
+
+private data class Quad(val a: Boolean, val b: Uri?, val c: String, val d: String)
+
+/** 'Upload your own' row: picks a picture (PNG / GIF / WebP), shows its price (admin-set, may be free) and whether it is in use. */
+@Composable
+private fun UploadOwn(label: String, hint: String, price: Int, selected: Boolean, inUse: Boolean, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(bottom = 8.dp).clip(RoundedCornerShape(14.dp))
+        .background(if (selected) Color(0x33FF2FA8) else Color(0x18FFFFFF)).border(if (selected) 2.dp else 1.dp, if (selected) EPink else Color(0x33FFFFFF), RoundedCornerShape(14.dp))
+        .clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(label, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Text(hint, color = Color.White.copy(alpha = 0.55f), fontSize = 11.sp)
+        }
+        Text(when { selected && inUse -> "ใช้อยู่"; price == 0 -> "ฟรี"; else -> "💎$price" }, color = if (price == 0 || inUse) Color(0xFF34D399) else Color(0xFF7AF5FF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+    }
 }
 
 @Composable private fun FreeNote() = Text("ใช้ฟรี", color = Color(0xFF34D399), fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 6.dp))

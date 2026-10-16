@@ -70,11 +70,13 @@ fun RandomCardView(
             else -> Text(name.take(1).ifBlank { "?" }, color = Color.White.copy(alpha = 0.85f), fontSize = 96.sp, fontWeight = FontWeight.Black, modifier = Modifier.align(Alignment.Center))
         }
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.45f to Color.Transparent, 1f to Color(0xAA000000))))
-        if (card.effect != "none") CardEffect(card.effectGlyphs.ifEmpty { listOf("✨") }, card.effectMotion)
+        val gif = com.example.ui.social.rememberGifLoader()
+        if (card.effect == "custom") { if (card.effectImageUrl.isNotBlank()) AsyncImage(model = card.effectImageUrl, imageLoader = gif, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
+        else if (card.effect != "none") CardEffect(card.effectGlyphs.ifEmpty { listOf("✨") }, card.effectMotion)
         val L = card.layout
         // name tag
         Placed(L.name, w, h, null, partModifier(CardPart.NAME), selected == CardPart.NAME) {
-            NameTag(name + (age?.let { ", $it" } ?: ""), card.nameFrame, card.nameFrameColors, L.name.s, card.nameFrameStyle, card.nameDeco, card.nameColor)
+            NameTag(name + (age?.let { ", $it" } ?: ""), card.nameFrame, card.nameFrameColors, L.name.s, card.nameFrameStyle, card.nameDeco, card.nameColor, card.nameFrameImageUrl)
         }
         // intro text
         if (card.intro.isNotBlank()) Placed(L.intro, w, h, null, partModifier(CardPart.INTRO), selected == CardPart.INTRO) {
@@ -82,7 +84,8 @@ fun RandomCardView(
                 modifier = Modifier.widthIn(max = w * 0.86f).clip(RoundedCornerShape(12.dp)).background(Color(0x55000000)).padding(horizontal = 10.dp, vertical = 6.dp))
         }
         // frame around the whole card
-        if (card.frame != "none" && card.frameColors.size >= 2) CardFrame(card.frameColors)
+        if (card.frame == "custom") { if (card.frameImageUrl.isNotBlank()) AsyncImage(model = card.frameImageUrl, imageLoader = gif, contentDescription = null, contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxSize()) }
+        else if (card.frame != "none" && card.frameColors.size >= 2) CardFrame(card.frameColors)
         val aud = audioUri?.toString() ?: card.audioUrl
         if (aud.isNotBlank() && autoplay) VoiceChip(aud, Modifier.align(Alignment.TopEnd).padding(12.dp))
     }
@@ -145,9 +148,9 @@ private val TagShape = GenericShape { s, _ ->
  * (frame "none" = plain dark pill). [deco] = sticker at both ends, [textColor] = #RRGGBB (blank = default).
  */
 @Composable
-fun NameTag(text: String, frame: String, colors: List<Color>, scale: Float = 1f, style: String = "pill", deco: String = "", textColor: String = "") {
+fun NameTag(text: String, frame: String, colors: List<Color>, scale: Float = 1f, style: String = "pill", deco: String = "", textColor: String = "", imageUrl: String = "") {
     val has = frame != "none" && colors.size >= 2
-    val st = if (has) style else "plain"
+    val st = when { frame == "custom" -> "image"; has -> style; else -> "plain" }
     val inf = rememberInfiniteTransition(label = "tag")
     val pulse by inf.animateFloat(0.55f, 1f, infiniteRepeatable(tween(900), androidx.compose.animation.core.RepeatMode.Reverse), label = "p")
     val shine by inf.animateFloat(-1f, 2f, infiniteRepeatable(tween(2200, easing = LinearEasing)), label = "s")
@@ -161,6 +164,7 @@ fun NameTag(text: String, frame: String, colors: List<Color>, scale: Float = 1f,
     val tc = RandomCardRepo.hex(textColor) ?: if (st == "neon") colors.firstOrNull() ?: Color.White else defaultText
     val bg: Modifier = when (st) {
         "plain" -> Modifier.background(Color(0x66000000), shape)
+        "image" -> Modifier
         "neon" -> Modifier.background(Color(0xCC0A0820), shape).border(2.dp, colors.first().copy(alpha = pulse), shape)
             .border(5.dp, colors.last().copy(alpha = 0.25f * pulse), shape)
         "outline" -> Modifier.border(2.dp, colors.first(), shape).padding(3.dp).border(1.dp, colors.last(), shape)
@@ -168,15 +172,18 @@ fun NameTag(text: String, frame: String, colors: List<Color>, scale: Float = 1f,
         "royal" -> Modifier.background(Brush.horizontalGradient(colors + colors.first()), shape).border(1.5.dp, Color(0xFFFFF3B0), shape)
         else -> Modifier.background(Brush.horizontalGradient(colors), shape).border(1.5.dp, Color(0xCCFFFFFF), shape)
     }
-    val padH = when (st) { "ribbon" -> 26; "tag" -> 22; else -> 14 }
+    val padH = when (st) { "ribbon" -> 26; "tag" -> 22; "image" -> 26; else -> 14 }
     Box(contentAlignment = Alignment.Center) {
+        // own uploaded name frame: the picture is stretched behind the name
+        if (st == "image" && imageUrl.isNotBlank()) AsyncImage(model = imageUrl, imageLoader = com.example.ui.social.rememberGifLoader(), contentDescription = null,
+            contentScale = ContentScale.FillBounds, modifier = Modifier.matchParentSize())
         Row(Modifier.padding(top = if (st == "royal") (14 * scale).dp else 0.dp).then(bg).clip(shape)
             .then(if (st == "glitter") Modifier.drawWithContent {
                 drawContent()
                 drawRect(Brush.linearGradient(listOf(Color.Transparent, Color.White.copy(alpha = 0.45f), Color.Transparent),
                     start = androidx.compose.ui.geometry.Offset(size.width * shine, 0f), end = androidx.compose.ui.geometry.Offset(size.width * shine + size.height * 1.5f, size.height)))
             } else Modifier)
-            .padding(start = (padH * scale).dp, end = (padH * scale).dp, top = (6 * scale).dp, bottom = (6 * scale).dp),
+            .padding(start = (padH * scale).dp, end = (padH * scale).dp, top = ((if (st == "image") 12 else 6) * scale).dp, bottom = ((if (st == "image") 12 else 6) * scale).dp),
             verticalAlignment = Alignment.CenterVertically) {
             if (deco.isNotBlank()) Text(deco, color = tc, fontSize = (15 * scale).sp, modifier = Modifier.padding(end = 5.dp))
             if (st == "glitter") Text("✦", color = Color.White.copy(alpha = pulse), fontSize = (10 * scale).sp, modifier = Modifier.padding(end = 4.dp))

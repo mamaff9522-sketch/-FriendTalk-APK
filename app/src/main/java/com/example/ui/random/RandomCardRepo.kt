@@ -26,12 +26,15 @@ data class RandomCard(
     /** shape of the name frame (pill, neon, ribbon, bubble, badge, glitter, outline, royal, cloud, tag) and how the effect moves */
     val nameFrameStyle: String = "pill", val effectMotion: String = "rise",
     /** free decoration of the name tag: sticker glyph + text colour (#RRGGBB, blank = white) */
-    val nameDeco: String = "", val nameColor: String = ""
+    val nameDeco: String = "", val nameColor: String = "",
+    /** the owner's own uploaded frame / name frame / effect (PNG, GIF, WebP) when frame / nameFrame / effect == "custom" */
+    val frameImageUrl: String = "", val nameFrameImageUrl: String = "", val effectImageUrl: String = ""
 )
 
 data class CardItem(val id: String, val name: String, val price: Int, val colors: List<Color>, val glyphs: List<String>, val style: String = "pill", val motion: String = "rise")
 data class CardCatalog(val enabled: Boolean, val videoPrice: Int, val audioPrice: Int, val frames: List<CardItem>, val nameFrames: List<CardItem>,
-                       val effects: List<CardItem>, val vip: Boolean, val diamonds: Int)
+                       val effects: List<CardItem>, val vip: Boolean, val diamonds: Int,
+                       val customFramePrice: Int = 0, val customNameFramePrice: Int = 0, val customEffectPrice: Int = 0)
 
 object RandomCardRepo {
     private fun user() = FirebaseAuth.getInstance().currentUser
@@ -47,7 +50,8 @@ object RandomCardRepo {
             o.optString("frame", "none"), colors(o.optJSONArray("frameColors")), o.optString("nameFrame", "none"), colors(o.optJSONArray("nameFrameColors")),
             o.optString("effect", "none"), strs(o.optJSONArray("effectGlyphs")),
             CardLayout(place(l?.optJSONObject("avatar"), d.avatar), place(l?.optJSONObject("name"), d.name), place(l?.optJSONObject("intro"), d.intro)),
-            o.optString("nameFrameStyle", "pill"), o.optString("effectMotion", "rise"), o.optString("nameDeco"), o.optString("nameColor"))
+            o.optString("nameFrameStyle", "pill"), o.optString("effectMotion", "rise"), o.optString("nameDeco"), o.optString("nameColor"),
+            o.optString("frameImageUrl"), o.optString("nameFrameImageUrl"), o.optString("effectImageUrl"))
     }
 
     sealed class Next {
@@ -75,7 +79,8 @@ object RandomCardRepo {
         val j = BrainApi.call(u, "GET", "/randomcard/catalog").json ?: return null
         fun list(k: String) = j.optJSONArray(k)?.let { a -> (0 until a.length()).map { a.getJSONObject(it) }.map {
             CardItem(it.optString("id"), it.optString("name"), it.optInt("price"), colors(it.optJSONArray("colors")), strs(it.optJSONArray("glyphs")), it.optString("style", "pill"), it.optString("motion", "rise")) } } ?: emptyList()
-        return CardCatalog(j.optBoolean("enabled", true), j.optInt("videoPrice"), j.optInt("audioPrice"), list("frames"), list("nameFrames"), list("effects"), j.optBoolean("vip"), j.optInt("diamonds"))
+        return CardCatalog(j.optBoolean("enabled", true), j.optInt("videoPrice"), j.optInt("audioPrice"), list("frames"), list("nameFrames"), list("effects"), j.optBoolean("vip"), j.optInt("diamonds"),
+            j.optInt("customFramePrice"), j.optInt("customNameFramePrice"), j.optInt("customEffectPrice"))
     }
     data class Mine(val card: RandomCard?, val videoRef: String, val audioRef: String)
     suspend fun mine(): Mine {
@@ -110,6 +115,19 @@ object RandomCardRepo {
         val bytes = com.example.social.FeedRepo.compress(ctx, uri) ?: return null
         val path = "posts/${u.uid}/rc_${tag}_${System.currentTimeMillis()}.jpg"
         return if (putStorage(path) { it.putBytes(bytes, StorageMetadata.Builder().setContentType("image/jpeg").build()) }) path else null
+    }
+    /**
+     * Own frame / name frame / effect: the file is uploaded as it is (PNG / GIF / WebP keep transparency and animation), ≤ 5 MB.
+     * Returns the Storage ref, or null with [err] set.
+     */
+    suspend fun uploadDecor(ctx: Context, uri: Uri, tag: String, err: (String) -> Unit): String? {
+        val u = user() ?: return null
+        val mime = ctx.contentResolver.getType(uri) ?: ""
+        val ext = when (mime) { "image/png" -> "png"; "image/gif" -> "gif"; "image/webp" -> "webp"; "image/jpeg" -> "jpg"; else -> { err("รองรับเฉพาะรูป PNG, GIF, WebP หรือ JPG"); return null } }
+        val bytes = runCatching { ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull() ?: run { err("อ่านไฟล์ไม่ได้"); return null }
+        if (bytes.size > 5 * 1024 * 1024) { err("ไฟล์ใหญ่เกิน 5MB"); return null }
+        val path = "posts/${u.uid}/rc_${tag}_${System.currentTimeMillis()}.$ext"
+        return if (putStorage(path) { it.putBytes(bytes, StorageMetadata.Builder().setContentType(mime).build()) }) path else { err("อัปโหลดไม่สำเร็จ"); null }
     }
     suspend fun uploadVideo(ctx: Context, uri: Uri): String? {
         val u = user() ?: return null
