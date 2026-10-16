@@ -3449,6 +3449,30 @@ app.post('/delete-account', express.urlencoded({ extended: false, limit: '8kb' }
   await db.ref('deletionRequests').push({ email, name: String(q.body?.name || '').slice(0, 80), note: String(q.body?.note || '').slice(0, 500), status: 'pending', at: Date.now() });
   r.type('html').send(page('ลบบัญชี', '<h1>ได้รับคำขอแล้ว ✅</h1><p>ทีมงานจะตรวจสอบและลบบัญชีภายใน 30 วัน / We received your request and will delete the account within 30 days.</p>'));
 }));
+// Child safety standards (required by Google Play for social apps): public page linked from the Play Console declaration.
+app.get('/child-safety', (_q, r) => r.type('html').send(page('มาตรฐานความปลอดภัยของเด็ก FriendTalk', `
+<h1>มาตรฐานความปลอดภัยของเด็ก — FriendTalk</h1><p class="muted">Child Safety Standards · ปรับปรุงล่าสุด: 16 ตุลาคม 2026</p>
+<p>FriendTalk (แพ็กเกจ th.friendtalk.app) เป็นแอปสำหรับผู้ใช้อายุ 18 ปีขึ้นไปเท่านั้น เรา<strong>ไม่ยอมรับ</strong>การล่วงละเมิดทางเพศและการแสวงประโยชน์จากเด็ก (CSAE) และสื่อการล่วงละเมิดทางเพศเด็ก (CSAM) ในทุกรูปแบบ</p>
+<h2>1. สิ่งที่ห้ามโดยเด็ดขาด</h2><ul>
+<li>เนื้อหา รูปภาพ วิดีโอ หรือข้อความใดๆ ที่แสดง ส่งเสริม หรือชักชวนให้เกิดการล่วงละเมิดทางเพศหรือการแสวงประโยชน์จากเด็ก</li>
+<li>การล่อลวง (grooming) การติดต่อผู้เยาว์ในเชิงชู้สาว หรือการขอรูปภาพจากผู้เยาว์</li>
+<li>การใช้งานโดยผู้ที่อายุต่ำกว่า 18 ปี</li></ul>
+<h2>2. วิธีที่เราป้องกัน</h2><ul>
+<li>ยืนยันอายุตอนสมัคร และระงับบัญชีที่พบว่าอายุต่ำกว่า 18 ปี</li>
+<li>ตรวจรูปภาพที่อัปโหลดด้วยระบบตรวจเนื้อหาอัตโนมัติ และกรองข้อความในแชท</li>
+<li>ทีมผู้ดูแลตรวจสอบรายงานและเนื้อหาที่ถูกระบบตั้งค่าสถานะ</li></ul>
+<h2>3. การรายงานในแอป</h2>
+<p>ผู้ใช้กดรายงานผู้ใช้ โพสต์ ความคิดเห็น ห้องแชท หรือไลฟ์ได้จากเมนู "🚩 รายงาน" และบล็อกผู้ใช้ได้ทันที รายงานที่เกี่ยวกับความปลอดภัยของเด็กจะได้รับการตรวจสอบเป็นลำดับแรก</p>
+<h2>4. เมื่อพบเนื้อหา CSAM / CSAE</h2><ul>
+<li>ลบเนื้อหาทันทีและระงับบัญชีที่เกี่ยวข้องอย่างถาวร</li>
+<li>เก็บหลักฐานตามที่กฎหมายกำหนด และรายงานต่อหน่วยงานที่เกี่ยวข้อง เช่น สำนักงานตำรวจแห่งชาติ / ศูนย์ปราบปรามการกระทำความผิดต่อเด็ก (TICAC) และ NCMEC ตามกฎหมายที่บังคับใช้</li>
+<li>ให้ความร่วมมือกับเจ้าหน้าที่ในการสอบสวน</li></ul>
+<h2>5. การปฏิบัติตามกฎหมาย</h2>
+<p>เราปฏิบัติตามกฎหมายคุ้มครองเด็กที่เกี่ยวข้อง รวมถึงกฎหมายไทยและนโยบายของ Google Play</p>
+<h2>6. ผู้ติดต่อด้านความปลอดภัยของเด็ก</h2>
+<p>อีเมล: <a href="mailto:mama.ff9522@gmail.com">mama.ff9522@gmail.com</a> หรือใช้เมนูรายงานในแอป</p>
+<hr><p class="muted">FriendTalk has zero tolerance for child sexual abuse and exploitation (CSAE) and child sexual abuse material (CSAM). The app is for adults 18+ only. Users can report users and content in the app; reported content is reviewed, removed, the accounts are banned, and CSAM is reported to the relevant authorities (including NCMEC and Thai police) as required by law. Child-safety contact: mama.ff9522@gmail.com</p>
+`)));
 app.get('/privacy', (_q, r) => r.type('html').send(page('นโยบายความเป็นส่วนตัว FriendTalk', `
 <h1>นโยบายความเป็นส่วนตัว — FriendTalk</h1><p class="muted">ปรับปรุงล่าสุด: 15 ตุลาคม 2026</p>
 <p>FriendTalk เป็นแอปหาเพื่อนคุย แชท โทร และไลฟ์สด สำหรับผู้ใช้อายุ 18 ปีขึ้นไป นโยบายนี้อธิบายว่าเราเก็บข้อมูลอะไร ใช้ทำอะไร และคุณควบคุมข้อมูลได้อย่างไร</p>
