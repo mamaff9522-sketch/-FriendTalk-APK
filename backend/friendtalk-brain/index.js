@@ -58,7 +58,7 @@ async function isSuper(req, res, next) {
   req.role = r; next();
 }
 const w = fn => (q, r, n) => fn(q, r, n).catch(e => { console.error(e.message); r.status(e.code === 404 ? 404 : 500).json({ error: e.code === 404 ? 'user not found' : 'internal' }); });
-app.use(['/push', '/coins', '/age', '/config', '/admin', '/superadmin', '/me', '/match', '/bot', '/ui', '/chats', '/swipe', '/posts', '/feed', '/friends', '/radar', '/shake', '/limits', '/quota', '/search', '/users', '/interests', '/bots', '/gifts', '/rooms', '/reports', '/creator', '/blocks', '/chat-rules', '/companion-apply', '/companion', '/shop', '/follow', '/views', '/withdraw', '/onboarding', '/idv', '/chat-send', '/rtc', '/calls', '/lives', '/vip'], w(auth));
+app.use(['/push', '/coins', '/age', '/config', '/admin', '/superadmin', '/me', '/match', '/bot', '/ui', '/chats', '/swipe', '/posts', '/feed', '/friends', '/radar', '/shake', '/limits', '/quota', '/search', '/users', '/interests', '/bots', '/gifts', '/rooms', '/reports', '/creator', '/blocks', '/chat-rules', '/companion-apply', '/companion', '/shop', '/follow', '/views', '/withdraw', '/onboarding', '/idv', '/chat-send', '/rtc', '/calls', '/lives', '/vip', '/discover', '/anon', '/notifications'], w(auth));
 app.get('/me', w(async (q, r) => {
   const dh = String(q.get('X-Device-Hash') || ''); if (/^[a-f0-9]{16,64}$/.test(dh)) { db.ref(`deviceOf/${q.uid}`).set(dh).catch(() => {}); db.ref(`devices/${dh}/${q.uid}`).set(Date.now()).catch(() => {}); }
   // Safeguard: if /roles has no superadmin at all (data loss), re-seed it for the configured owner email (verified Google sign-in only; server-side).
@@ -91,7 +91,7 @@ const PART_OF = q => {
   if (/^\/posts\/?$/.test(p) && q.method === 'POST') return 'posting';
   if (/^\/(posts|feed)(\/|$)/.test(p)) return 'home';
   if (/^\/match(\/|$)/.test(p)) return 'random';
-  if (/^\/shake(\/|$)/.test(p)) return 'shake';
+  if (/^\/(shake|anon)(\/|$)/.test(p)) return 'shake';
   if (/^\/radar(\/|$)/.test(p)) return 'radar';
   if (/^\/swipe(\/|$)/.test(p)) return 'swipe';
   if (/^\/interests\/(similar|match)/.test(p)) return 'similar';
@@ -1260,14 +1260,16 @@ app.get('/match/personality', w(notBanned), w(quota('personalityMatchPerDay')), 
 }));
 
 app.post('/match', w(notBanned), w(quota('randomMatchPerDay')), w(async (q, r) => {
-  const me = q.uid, t = Date.now(), qref = db.ref('matchQueue');
+  const me = q.uid, t = Date.now(), qref = db.ref('matchQueue'), f = readFilter(q), mine = await summary(me) || {};
+  const myCard = { g: mine.gender || '', age: mine.age || 0 }, ok = (card, flt) => passFilter({ gender: card?.g || '', age: card?.age || null }, flt);
   let partner = null;
   await qref.transaction(all => {
     all = all || {}; partner = null;
     for (const [uid, v] of Object.entries(all)) if (!v || t - v.ts > QUEUE_TTL_MS) delete all[uid];
-    const other = Object.keys(all).find(u => u !== me);
+    // 'ต้องการ' filter works both ways: I must want them and they must want me (entries without a filter accept anyone)
+    const other = Object.keys(all).find(u => u !== me && ok(all[u].card, f) && ok(myCard, all[u].f));
     if (other) { partner = other; delete all[other]; delete all[me]; }
-    else all[me] = { ts: t };
+    else all[me] = { ts: t, card: myCard, ...(filterIsOpen(f) ? {} : { f: { g: f.g, a: f.a, b: f.b } }) };
     return all;
   });
   if (partner) { const { chatId } = await openDirectChat(me, partner); return r.json({ type: 'user', uid: partner, chatId }); }
@@ -1567,7 +1569,10 @@ app.get('/chats/:chatId/image', w(async (q, r) => {
   r.set('Content-Type', meta.contentType); r.set('Cache-Control', 'private, max-age=3600');
   file.createReadStream().on('error', () => r.end()).pipe(r);
 }));
-const publicProfile = (uid, u) => ({ uid, displayName: u.displayName || '', username: u.username || '', avatar: u.avatar || '', bio: u.bio || '', age: u.age || null, gender: u.gender || '', interests: u.interests || [],
+// Gender: profile setting (male/female/other) or, if unset, the onboarding answer (ชาย/หญิง/LGBTQ+).
+const GENDER_TH = { 'ชาย': 'male', 'หญิง': 'female', 'LGBTQ+': 'other' };
+const genderOf = u => u?.gender || GENDER_TH[u?.profileDetails?.gender] || '';
+const publicProfile = (uid, u) => ({ uid, displayName: u.displayName || '', username: u.username || '', avatar: u.avatar || '', bio: u.bio || '', age: u.age || null, gender: genderOf(u), interests: u.interests || [],
   cover: u.cover || '', province: u.province || '', occupation: u.occupation || '', lookingFor: Array.isArray(u.lookingFor) ? u.lookingFor : [] });
 app.get('/swipe/candidates', w(notBanned), w(async (q, r) => {
   const limit = Math.min(20, Math.max(1, parseInt(q.query.limit || '10', 10)));
@@ -1576,7 +1581,7 @@ app.get('/swipe/candidates', w(notBanned), w(async (q, r) => {
   const icfg = await getInterestCfg(), mineIp = (users.val() || {})[q.uid]?.interestProfile || {};
   // Distance only between people who both opened the radar (their own consent) in the last 24 h, rounded like the radar.
   const [meR, radarAll] = await Promise.all([db.ref(`radar/${q.uid}`).get(), db.ref('radar').get()]);
-  const me = meR.val(), rad = radarAll.val() || {}, LOC_MS = 24 * 3600 * 1000, RECYCLE_MS = 24 * 3600 * 1000;
+  const me = meR.val(), rad = radarAll.val() || {}, LOC_MS = 24 * 3600 * 1000, RECYCLE_MS = 24 * 3600 * 1000, sf = readFilter(q);
   const out = [];
   for (const [uid, u] of Object.entries(users.val() || {})) {
     if (uid === q.uid || !u || !u.displayName) continue;
@@ -1585,6 +1590,8 @@ app.get('/swipe/candidates', w(notBanned), w(async (q, r) => {
     const ban = b[uid]; if (ban && (!ban.until || ban.until > now)) continue;
     if (await blockedEither(q.uid, uid)) continue;
     const rv = rad[uid], km = me && rv && now - num(rv.at) < LOC_MS && validLatLng(rv.lat, rv.lng) ? distKm(me.lat, me.lng, rv.lat, rv.lng) : null;
+    if (!passFilter(publicProfile(uid, u), sf)) continue;
+    if (sf.km && me && (km == null || km > sf.km)) continue;
     out.push({ ...publicProfile(uid, u), interestProfile: u.interestProfile || {}, similarity: similarity(mineIp, u.interestProfile || {}, icfg),
       distance: km == null ? '' : roundDist(km), _km: km == null ? Infinity : km, _seen: !!sw });
   }
@@ -1878,6 +1885,36 @@ async function summary(uid) {
   const u = (await db.ref(`users/${uid}`).get()).val();
   return u ? publicProfile(uid, u) : null;
 }
+// ===== Shared 'ต้องการ' filter (หาเพื่อน): gender, age range, distance. Sent by the app as query params on
+// /discover/online, /match, /shake, /radar/nearby, /swipe/candidates (fGender=male|female|other, fAgeMin, fAgeMax, fKm).
+function readFilter(q) {
+  const src = q.query || {};
+  const g = ['male', 'female', 'other'].includes(src.fGender) ? src.fGender : '';
+  let a = parseInt(src.fAgeMin, 10), b = parseInt(src.fAgeMax, 10);
+  a = Number.isFinite(a) ? Math.min(99, Math.max(18, a)) : 18; b = Number.isFinite(b) ? Math.min(99, Math.max(a, b)) : 99;
+  const km = Number(src.fKm);
+  return { g, a, b, km: RADII.includes(km) ? km : 0 };
+}
+const filterIsOpen = f => !f || (!f.g && f.a <= 18 && f.b >= 99);
+// Unknown age only passes when no age range is set (we never guess someone's age).
+const passFilter = (p, f) => !f || ((!f.g || p.gender === f.g) && ((f.a <= 18 && f.b >= 99) || (p.age && p.age >= f.a && p.age <= f.b)));
+const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+// All online users (presence status/{uid}.online, not hidden), random order, with age + rounded distance when both shared location.
+app.get('/discover/online', w(notBanned), w(async (q, r) => {
+  const f = readFilter(q), now = Date.now(), LOC_MS = 24 * 3600 * 1000;
+  const [st, meR, rad] = await Promise.all([db.ref('status').orderByChild('online').equalTo(true).get(), db.ref(`radar/${q.uid}`).get(), db.ref('radar').get()]);
+  const me = meR.val(), radar = rad.val() || {};
+  const ids = []; st.forEach(c => { const v = c.val(); if (c.key !== q.uid && v && v.online === true && v.hidden !== true) ids.push(c.key); });
+  const out = [];
+  await Promise.all(shuffle(ids).slice(0, 400).map(async id => {
+    if (await isBanned(id) || await blockedEither(q.uid, id)) return;
+    const p = await summary(id); if (!p || !p.displayName || !passFilter(p, f)) return;
+    const rv = radar[id], km = me && rv && now - num(rv.at) < LOC_MS && validLatLng(rv.lat, rv.lng) ? distKm(me.lat, me.lng, rv.lat, rv.lng) : null;
+    if (f.km && me && (km == null || km > f.km)) return; // distance filter only when I shared my location
+    out.push({ ...p, distance: km == null ? '' : roundDist(km), online: true });
+  }));
+  r.json({ users: shuffle(out).slice(0, 200), hasLocation: !!me });
+}));
 // --- friends
 app.post('/friends/request', w(notBanned), w(async (q, r) => {
   const to = q.body?.toUid;
@@ -1957,44 +1994,141 @@ async function nearbyFor(uid, radius) {
   return out.slice(0, 50);
 }
 app.get('/radar/nearby', w(notBanned), w(quota('radarPerDay')), w(async (q, r) => {
-  const radius = pickRadius(q.query.radiusKm);
+  const f = readFilter(q), radius = f.km || pickRadius(q.query.radiusKm);
   const list = await nearbyFor(q.uid, radius);
   if (!list) return r.status(409).json({ error: 'location not shared' });
-  r.json({ radiusKm: radius, users: list.map(({ _km, ...x }) => x) });
+  r.json({ radiusKm: radius, users: list.filter(p => passFilter(p, f)).map(({ _km, ...x }) => x) });
 }));
 // --- shake (15 s window)
 const SHAKE_MS = 15000;
 
 app.post('/shake', w(notBanned), w(quota('shakePerDay')), w(async (q, r) => {
   const { lat, lng } = q.body || {};
-  const radiusKm = pickRadius(q.body?.radiusKm);
+  const f = readFilter(q), radiusKm = f.km || pickRadius(q.body?.radiusKm);
   const hasLoc = validLatLng(lat, lng);
   const la = hasLoc ? coarse(lat) : null, lo = hasLoc ? coarse(lng) : null;
+  const mine = await summary(q.uid) || {}, myCard = { g: mine.gender || '', age: mine.age || 0 };
+  const ok = (card, flt) => passFilter({ gender: card?.g || '', age: card?.age || null }, flt);
   const now = Date.now(); let partner = null;
   await db.ref(`shakeResults/${q.uid}`).remove();
   await db.ref('shakeWaiting').transaction(cur => {
     const w8 = {}; partner = null;
     for (const [k, v] of Object.entries(cur || {})) if (v && now - v.at < SHAKE_MS && k !== q.uid) w8[k] = v;
     // With location: only users that also shared location and are within BOTH users' radius (nearest first).
-    // Without location: only other users without location ("anywhere" mode).
-    const ids = Object.keys(w8).filter(k => hasLoc ? (w8[k].lat != null && distKm(la, lo, w8[k].lat, w8[k].lng) <= Math.min(radiusKm, w8[k].radiusKm || 0.5)) : w8[k].lat == null);
+    // Without location: only other users without location ("anywhere" mode). The 'ต้องการ' filter must pass both ways.
+    const ids = Object.keys(w8).filter(k => (hasLoc ? (w8[k].lat != null && distKm(la, lo, w8[k].lat, w8[k].lng) <= Math.min(radiusKm, w8[k].radiusKm || 0.5)) : w8[k].lat == null)
+      && ok(w8[k].card, f) && ok(myCard, w8[k].f));
     if (hasLoc) ids.sort((a, b) => distKm(la, lo, w8[a].lat, w8[a].lng) - distKm(la, lo, w8[b].lat, w8[b].lng));
     partner = ids[0] || null;
     if (partner) { delete w8[partner]; return w8; }
-    w8[q.uid] = hasLoc ? { at: now, lat: la, lng: lo, radiusKm } : { at: now }; return w8;
+    w8[q.uid] = { at: now, card: myCard, ...(hasLoc ? { lat: la, lng: lo, radiusKm } : {}), ...(filterIsOpen(f) ? {} : { f: { g: f.g, a: f.a, b: f.b } }) }; return w8;
   });
   if (partner && (await isBanned(partner) || await blockedEither(q.uid, partner))) partner = null;
   if (!partner) return r.json({ status: 'waiting', windowMs: SHAKE_MS, mode: hasLoc ? 'nearby' : 'anywhere', radiusKm });
-  await db.ref().update({ [`shakeResults/${q.uid}`]: { other: partner, at: now }, [`shakeResults/${partner}`]: { other: q.uid, at: now } });
-  r.json({ status: 'matched', user: await summary(partner) });
+  // Matched → anonymous 60-second room; real names/photos stay hidden until both press the heart.
+  const room = await openAnonRoom(q.uid, partner);
+  await db.ref().update({ [`shakeResults/${q.uid}`]: { other: partner, room, at: now }, [`shakeResults/${partner}`]: { other: q.uid, room, at: now } });
+  r.json({ status: 'matched', room });
 }));
 app.get('/shake/result', w(async (q, r) => {
   const res = (await db.ref(`shakeResults/${q.uid}`).get()).val();
-  if (res && Date.now() - res.at < 60000) return r.json({ status: 'matched', user: await summary(res.other) });
+  if (res && Date.now() - res.at < 60000) return r.json(res.room ? { status: 'matched', room: res.room } : { status: 'matched', user: await summary(res.other) });
   const wv = (await db.ref(`shakeWaiting/${q.uid}`).get()).val();
   if (wv && Date.now() - wv.at < SHAKE_MS) return r.json({ status: 'waiting' });
   if (wv) await db.ref(`shakeWaiting/${q.uid}`).remove();
   r.json({ status: 'timeout' });
+}));
+// ===== Bell: one list of everything for me, newest first (friend requests with accept/decline, likes, comments,
+// new followers, matches). unseen = items newer than notifSeen/{uid} (+ every open friend request).
+app.get('/notifications', w(async (q, r) => {
+  const me = q.uid, val = async p => (await db.ref(p).get()).val() || {};
+  const [reqs, follows, matches, myPosts, seenAt] = await Promise.all([val(`friendRequests/${me}`), val(`followers/${me}`), val(`matchNotifications/${me}`),
+    db.ref(`authorPosts/${me}`).orderByValue().limitToLast(15).get().then(x => x.val() || {}), db.ref(`notifSeen/${me}`).get().then(x => num(x.val()))]);
+  const items = [];
+  for (const [uid, v] of Object.entries(reqs)) items.push({ type: 'friend_request', uid, at: num(v?.at) });
+  for (const [uid, at] of Object.entries(follows)) if (uid !== me) items.push({ type: 'follow', uid, at: num(at) });
+  for (const [id, m] of Object.entries(matches)) if (m?.otherUid) items.push({ type: 'match', uid: m.otherUid, at: num(m.at), chatId: m.chatId || '', id });
+  await Promise.all(Object.keys(myPosts).map(async pid => {
+    const [likes, comments, post] = await Promise.all([val(`postLikes/${pid}`), db.ref(`postComments/${pid}`).orderByKey().limitToLast(20).get().then(x => x.val() || {}), db.ref(`posts/${pid}/text`).get().then(x => String(x.val() || ''))]);
+    const snip = post.slice(0, 40);
+    for (const [uid, at] of Object.entries(likes)) if (uid !== me) items.push({ type: 'like', uid, at: num(at), postId: pid, snippet: snip });
+    for (const [cid, c] of Object.entries(comments)) if (c?.authorId && c.authorId !== me) items.push({ type: 'comment', uid: c.authorId, at: num(c.createdAt), postId: pid, snippet: String(c.text || '').slice(0, 60), id: cid });
+  }));
+  items.sort((x, y) => y.at - x.at);
+  const top = items.slice(0, 80), names = new Map();
+  await Promise.all([...new Set(top.map(i => i.uid))].map(async uid => { const p = await summary(uid); if (p) names.set(uid, { name: p.displayName || 'ผู้ใช้', avatar: p.avatar || '' }); }));
+  const out = top.filter(i => names.has(i.uid)).map(i => ({ ...i, ...names.get(i.uid), unseen: i.type === 'friend_request' || i.at > seenAt }));
+  r.json({ items: out, unseen: out.filter(i => i.unseen).length, requests: Object.keys(reqs).length, seenAt });
+}));
+app.post('/notifications/seen', w(async (q, r) => { await db.ref(`notifSeen/${q.uid}`).set(Date.now()); r.json({ ok: true }); }));
+// ===== Anonymous shake room: 60 s, no real name/photo, heart halves from 20 s, mutual heart → reveal + normal chat.
+// Server-only data (anonRooms/{id}); the app polls GET /anon/:id. Time is always the server's.
+const ANON_MS = 60_000, ANON_HEART_MS = 20_000, ANON_ID = /^an_[a-f0-9]{16}$/;
+const ANON_NAMES = ['จิ้งจอก 🦊', 'แพนด้า 🐼', 'แมวเหมียว 🐱', 'กระต่าย 🐰', 'นกฮูก 🦉', 'เพนกวิน 🐧', 'โคอาล่า 🐨', 'ยูนิคอร์น 🦄', 'ผีเสื้อ 🦋', 'ดาวน้อย ⭐'];
+async function openAnonRoom(a, b) {
+  const id = 'an_' + crypto.randomBytes(8).toString('hex');
+  const n = shuffle([...ANON_NAMES]);
+  await db.ref(`anonRooms/${id}`).set({ a, b, startAt: Date.now(), state: 'active', alias: { a: n[0], b: n[1] } });
+  return id;
+}
+async function anonLoad(q, r) {
+  const id = q.params.id; if (!ANON_ID.test(id)) { r.status(400).json({ error: 'bad room' }); return null; }
+  const ref = db.ref(`anonRooms/${id}`), room = (await ref.get()).val();
+  if (!room || (room.a !== q.uid && room.b !== q.uid)) { r.status(404).json({ error: 'not found' }); return null; }
+  const side = room.a === q.uid ? 'a' : 'b', other = side === 'a' ? 'b' : 'a';
+  const elapsed = Date.now() - num(room.startAt);
+  if (room.state === 'active' && elapsed >= ANON_MS) { await ref.child('state').transaction(st => (st === 'active' ? 'ended' : st)); room.state = (await ref.child('state').get()).val(); }
+  return { id, ref, room, side, other, elapsed };
+}
+async function anonView(x, me, afterAt = 0) {
+  const { room, side, other, elapsed } = x;
+  const msgs = Object.values(room.msgs || {}).filter(m => num(m.at) > afterAt).sort((m1, m2) => m1.at - m2.at).slice(-100)
+    .map(m => ({ mine: m.s === side, text: m.t, at: m.at }));
+  const out = { state: room.state, elapsedMs: Math.min(elapsed, ANON_MS), heartAfterMs: ANON_HEART_MS, durationMs: ANON_MS,
+    myAlias: room.alias?.[side] || 'นิรนาม', otherAlias: room.alias?.[other] || 'นิรนาม', myHeart: room.hearts?.[side] === true, messages: msgs };
+  if (room.state === 'matched') { // only now: real profiles + the normal chat
+    const [mine, theirs] = await Promise.all([summary(me), summary(room[other])]);
+    Object.assign(out, { chatId: room.chatId, me: mine, other: theirs });
+  }
+  return out;
+}
+app.get('/anon/:id', w(async (q, r) => {
+  const x = await anonLoad(q, r); if (!x) return;
+  r.json(await anonView(x, q.uid, Number(q.query.after) || 0));
+}));
+app.post('/anon/:id/msg', w(notBanned), w(async (q, r) => {
+  const x = await anonLoad(q, r); if (!x) return;
+  if (x.room.state !== 'active') return r.status(409).json({ error: 'ended', state: x.room.state });
+  const text = cleanText(q.body?.text, 300); if (!text) return r.status(400).json({ error: 'text required' });
+  if (Object.keys(x.room.msgs || {}).length >= 200) return r.status(429).json({ error: 'too many messages' });
+  await x.ref.child('msgs').push({ s: x.side, t: text, at: Date.now() });
+  r.json({ ok: true });
+}));
+app.post('/anon/:id/heart', w(notBanned), w(async (q, r) => {
+  const x = await anonLoad(q, r); if (!x) return;
+  if (x.room.state !== 'active') return r.status(409).json({ error: 'ended', state: x.room.state });
+  if (x.elapsed < ANON_HEART_MS - 1500) return r.status(409).json({ error: 'too early' });
+  let both = false;
+  await x.ref.transaction(room => {
+    if (!room || room.state !== 'active') return room;
+    room.hearts = { ...(room.hearts || {}), [x.side]: true };
+    both = room.hearts.a === true && room.hearts.b === true;
+    if (both) room.state = 'matching';
+    return room;
+  });
+  if (both) { // open the normal chat right away, no need to wait for 60 s
+    const { chatId } = await openDirectChat(x.room.a, x.room.b);
+    await x.ref.update({ state: 'matched', chatId, matchedAt: Date.now() });
+    const t = Date.now(), pid = [x.room.a, x.room.b].sort().join('_');
+    await db.ref().update({ [`matchNotifications/${x.room.a}/${pid}`]: { otherUid: x.room.b, chatId, at: t, seen: false }, [`matchNotifications/${x.room.b}/${pid}`]: { otherUid: x.room.a, chatId, at: t, seen: false } });
+  }
+  const fresh = await anonLoad(q, r); if (!fresh) return;
+  r.json(await anonView(fresh, q.uid));
+}));
+app.post('/anon/:id/leave', w(async (q, r) => {
+  const x = await anonLoad(q, r); if (!x) return;
+  await x.ref.child('state').transaction(st => (st === 'active' ? 'ended' : st));
+  r.json({ ok: true });
 }));
 // ===== Gift catalog (live / vip / chat) + stickers; admin-managed, images in Storage giftAssets/{id}.webp =====
 // chatStickers = free stickers users send as chat messages (admin uploads them); stickers = VIP room-decor stickers
@@ -2811,7 +2945,7 @@ app.post('/admin/coins/reject', perm('coins_confirm'), w(notBanned), w(async (q,
 const PER_UID = ['users', 'wallets', 'giftPending', 'vip', 'pushTokens', 'radar', 'shakeWaiting', 'shakeResults', 'swipes', 'friendRequests', 'matchQueue',
   'private', 'idv', 'kyc', 'ageInfo', 'onboarding', 'usage', 'quotaBonus', 'quotaGrants', 'chatRulesAccepted', 'termsAccepted', 'creators', 'creatorMetrics',
   'creatorApplications', 'companionApplications', 'userChats', 'callInbox', 'following', 'followers', 'followCounts', 'friends', 'authorPosts',
-  'deviceOf', 'postBlocks', 'chatBlocks', 'blocks'];
+  'deviceOf', 'postBlocks', 'chatBlocks', 'blocks', 'notifSeen'];
 async function deleteAccountData(uid) {
   const del = {};
   for (const k of PER_UID) del[`${k}/${uid}`] = null;

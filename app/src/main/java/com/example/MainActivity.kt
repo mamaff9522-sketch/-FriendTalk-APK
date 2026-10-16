@@ -214,7 +214,7 @@ fun FriendTalkApp(
     // Real unread chats (RTDB userChats + readReceipts), refreshed every minute
     val totalUnreadMessages by com.example.ui.feed.HomeRepo.unreadChats.collectAsState()
     val appCtx = androidx.compose.ui.platform.LocalContext.current
-    LaunchedEffect(uiState.currentUser.id) { com.example.push.MessageWatcher.start(appCtx) }
+    LaunchedEffect(uiState.currentUser.id) { com.example.push.MessageWatcher.start(appCtx); com.example.social.DiscoverFilter.load(appCtx) }
     LaunchedEffect(uiState.currentUser.id) { while (true) { com.example.ui.feed.HomeRepo.refreshCounts(); kotlinx.coroutines.delay(60_000) } }
     var isHomeNotifsOpen by remember { mutableStateOf(false) }
     if (isHomeNotifsOpen) com.example.ui.feed.HomeNotificationsDialog { isHomeNotifsOpen = false }

@@ -278,6 +278,7 @@ fun RealShakeView() {
     var listening by remember { mutableStateOf(false) }
     var state by remember { mutableStateOf("idle") } // idle, searching, matched, timeout, error
     var found by remember { mutableStateOf<RealProfile?>(null) }
+    var anonRoom by remember { mutableStateOf<String?>(null) } // shake match → anonymous 60 s chat
     var showProfile by remember { mutableStateOf(false) }
     val detector = remember { ShakeDetector() }
     val fx = remember { ShakeFeedback(ctx) }
@@ -296,12 +297,12 @@ fun RealShakeView() {
             val loc = if (granted) currentLocation(ctx) else null
             val r = NearbyRepo.shake(loc?.latitude, loc?.longitude, radius)
             if (r == null) { state = "error"; return@launch }
-            if (r.status == "matched") { found = r.user; state = "matched"; return@launch }
+            if (r.status == "matched") { if (r.room.isNotBlank()) anonRoom = r.room else found = r.user; state = "matched"; return@launch }
             val end = System.currentTimeMillis() + 16_000
             while (System.currentTimeMillis() < end) {
                 delay(1500)
                 val s = NearbyRepo.shakeResult() ?: continue
-                if (s.status == "matched") { found = s.user; state = "matched"; return@launch }
+                if (s.status == "matched") { if (s.room.isNotBlank()) anonRoom = s.room else found = s.user; state = "matched"; return@launch }
                 if (s.status == "timeout") break
             }
             state = "timeout"
@@ -338,7 +339,7 @@ fun RealShakeView() {
             .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(androidx.compose.ui.graphics.Color(0xFF140F35), androidx.compose.ui.graphics.Color(0xFF2B1660), androidx.compose.ui.graphics.Color(0xFF5A1A6E))))) {
             Column(Modifier.fillMaxWidth().padding(vertical = 20.dp, horizontal = 18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(tr("เขย่าเจอเพื่อน"), color = PureWhite, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp)
-                Text(tr("เขย่าพร้อมกันภายใน 15 วินาที แล้วเจอเพื่อนใหม่ทันที"), color = PureWhite.copy(alpha = 0.75f), fontSize = 13.sp, modifier = Modifier.padding(top = 2.dp))
+                Text(tr("เขย่าพร้อมกัน แล้วคุยแบบนิรนาม 60 วินาที"), color = PureWhite.copy(alpha = 0.75f), fontSize = 13.sp, modifier = Modifier.padding(top = 2.dp))
                 Spacer(Modifier.height(18.dp))
                 ShakeOrb(level = if (listening) motion else 0f, burst = burst.value, active = listening || state == "searching", matched = state == "matched")
                 Spacer(Modifier.height(16.dp))
@@ -364,7 +365,8 @@ fun RealShakeView() {
                 }
             }
         }
-        // match result
+        anonRoom?.let { room -> AnonShakeChatDialog(room) { anonRoom = null; state = "idle" } }
+        // match result (older server: reveals the person directly)
         found?.let { p ->
             Column(Modifier.padding(top = 14.dp).fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(AppThemeMode.cardSolid)
                 .border(1.5.dp, grad, RoundedCornerShape(22.dp)).padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -394,7 +396,7 @@ fun RealShakeView() {
         }
         // how it works
         Row(Modifier.padding(top = 14.dp, bottom = 8.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("1" to tr("กดเริ่มรับการเขย่า"), "2" to tr("เขย่าแรง ๆ 2–3 ครั้ง"), "3" to tr("เจอคนที่เขย่าพร้อมกัน")).forEach { (n, t) ->
+            listOf("1" to tr("กดเริ่มรับการเขย่า"), "2" to tr("เขย่าแรง ๆ 2–3 ครั้ง"), "3" to tr("คุยนิรนาม กดหัวใจตรงกันเพื่อรู้จักกัน")).forEach { (n, t) ->
                 Column(Modifier.weight(1f).clip(RoundedCornerShape(16.dp)).background(AppThemeMode.cardSolid).border(1.dp, AppThemeMode.divider, RoundedCornerShape(16.dp))
                     .padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Box(Modifier.size(24.dp).clip(androidx.compose.foundation.shape.CircleShape).background(grad), contentAlignment = Alignment.Center) { Text(n, color = PureWhite, fontSize = 12.sp, fontWeight = FontWeight.Bold) }

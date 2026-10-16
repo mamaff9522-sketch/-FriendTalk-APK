@@ -172,6 +172,9 @@ object HomeRepo {
             } }.awaitAll().count { it }
         }
         unreadChats.value = unread
+        // bell = everything unseen (friend requests, likes, comments, follows, matches) from /notifications
+        val n = runCatching { NearbyRepo.notifications() }.getOrNull()
+        if (n != null && n.code == 200) { notifCount.value = n.unseen; return }
         val reqs = runCatching { NearbyRepo.requests().size }.getOrDefault(0)
         val matches = get("matchNotifications/$me")?.children?.count { it.child("seen").value != true } ?: 0
         notifCount.value = reqs + matches
@@ -562,53 +565,86 @@ private fun PostMoreButton(mine: Boolean, onDelete: () -> Unit, onReport: () -> 
     }
 }
 
-/** Real notifications: friend requests (accept / decline) and new matches. */
+/**
+ * Bell: ONE list (no tabs), newest first — friend requests (accept / decline), likes, comments, new followers, matches —
+ * each with its own icon. Opening it marks everything seen.
+ */
 @Composable
 fun HomeNotificationsDialog(onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
-    var reqs by remember { mutableStateOf<List<FriendRequest>?>(null) }
-    var matches by remember { mutableStateOf<List<HomeRepo.MatchNote>>(emptyList()) }
+    var items by remember { mutableStateOf<List<NearbyRepo.Notif>?>(null) }
+    var failed by remember { mutableStateOf(false) }
+    var profile by remember { mutableStateOf<String?>(null) }
+    var chat by remember { mutableStateOf<String?>(null) }
+    val done = remember { mutableStateMapOf<String, String>() } // request uid -> "accepted" / "declined"
     LaunchedEffect(Unit) {
-        reqs = runCatching { NearbyRepo.requests() }.getOrDefault(emptyList())
-        matches = HomeRepo.matchNotes()
-        matches.filter { !it.seen }.forEach { HomeRepo.markMatchSeen(it.id) }
+        val n = NearbyRepo.notifications()
+        if (n.code == 200) items = n.items else { failed = true; items = emptyList() }
+        NearbyRepo.markNotificationsSeen()
+        HomeRepo.matchNotes().filter { !it.seen }.forEach { HomeRepo.markMatchSeen(it.id) }
         HomeRepo.refreshCounts()
     }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-        Surface(Modifier.fillMaxWidth(0.94f).fillMaxHeight(0.7f), shape = RoundedCornerShape(22.dp), color = AppThemeMode.dialog, border = BorderStroke(1.dp, Color(0xFF4A3590))) {
+        Surface(Modifier.fillMaxWidth(0.94f).fillMaxHeight(0.8f), shape = RoundedCornerShape(22.dp), color = AppThemeMode.dialog, border = BorderStroke(1.dp, Color(0xFF4A3590))) {
             Column(Modifier.padding(14.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(tr("การแจ้งเตือน"), color = HText, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     TextButton(onClick = onDismiss) { Text(tr("ปิด"), color = HSoft) }
                 }
-                val r = reqs
-                if (r == null) Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = HNeon) }
-                else if (r.isEmpty() && matches.isEmpty()) Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { Text(tr("ยังไม่มีการแจ้งเตือน"), color = HMuted) }
-                else androidx.compose.foundation.lazy.LazyColumn {
-                    items(r, key = { "req_" + it.profile.uid }) { q ->
-                        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Avatar(q.profile.avatar, q.profile.displayName, 42); Spacer(Modifier.width(10.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text("${q.profile.displayName} ขอเป็นเพื่อน", color = HText, fontSize = 14.sp, maxLines = 2)
-                                Text(thaiTimeAgo(q.at), color = HMuted, fontSize = 11.sp)
-                            }
-                            TextButton(onClick = { scope.launch { NearbyRepo.respond(q.profile.uid, true); reqs = reqs?.filter { it !== q }; HomeRepo.refreshCounts() } }) { Text(tr("ตอบรับ"), color = HNeon) }
-                            TextButton(onClick = { scope.launch { NearbyRepo.respond(q.profile.uid, false); reqs = reqs?.filter { it !== q }; HomeRepo.refreshCounts() } }) { Text(tr("ลบ"), color = HMuted) }
-                        }
+                val l = items
+                when {
+                    l == null -> Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = HNeon) }
+                    l.isEmpty() -> Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                        Text(if (failed) tr("โหลดการแจ้งเตือนไม่สำเร็จ (เซิร์ฟเวอร์ยังไม่อัปเดต?)") else tr("ยังไม่มีการแจ้งเตือน"), color = HMuted)
                     }
-                    items(matches, key = { "m_" + it.id }) { m ->
-                        val u = rememberUserInfo(m.otherUid)
-                        Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Avatar(u?.avatar ?: "", u?.name ?: "?", 42); Spacer(Modifier.width(10.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text("คุณกับ ${u?.name ?: tr("ผู้ใช้")} แมตช์กันแล้ว 💞", color = HText, fontSize = 14.sp, maxLines = 2)
-                                Text(thaiTimeAgo(m.at), color = HMuted, fontSize = 11.sp)
+                    else -> androidx.compose.foundation.lazy.LazyColumn {
+                        items(l, key = { it.type + "_" + it.uid + "_" + it.at + "_" + it.id }) { n ->
+                            val (icon, iconBg) = when (n.type) {
+                                "friend_request" -> "🤝" to Color(0xFF5B6CF5); "like" -> "❤️" to Color(0xFFFF2D55); "comment" -> "💬" to Color(0xFF22A6F2)
+                                "follow" -> "👤" to Color(0xFF10B981); "match" -> "💞" to Color(0xFFFF2FA8); else -> "🔔" to Color(0xFF8B5CF6)
                             }
-                            if (!m.seen) Box(Modifier.size(8.dp).clip(CircleShape).background(HNeon))
+                            val text = when (n.type) {
+                                "friend_request" -> "${n.name} ${tr("ขอเป็นเพื่อน")}"
+                                "like" -> "${n.name} ${tr("ถูกใจโพสต์ของคุณ")}" + if (n.snippet.isNotBlank()) " “${n.snippet}”" else ""
+                                "comment" -> "${n.name} ${tr("แสดงความคิดเห็น:")} ${n.snippet}"
+                                "follow" -> "${n.name} ${tr("เริ่มติดตามคุณ")}"
+                                "match" -> "${tr("คุณกับ")} ${n.name} ${tr("แมตช์กันแล้ว")} 💞"
+                                else -> n.name
+                            }
+                            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(if (n.unseen) HNeon.copy(alpha = 0.08f) else Color.Transparent)
+                                .clickable { if (n.type == "match" && n.chatId.isNotBlank()) chat = n.chatId else profile = n.uid }.padding(vertical = 8.dp, horizontal = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically) {
+                                Box {
+                                    Avatar(n.avatar, n.name.ifBlank { "?" }, 42)
+                                    Box(Modifier.align(Alignment.BottomEnd).offset(x = 3.dp, y = 3.dp).size(20.dp).clip(CircleShape).background(iconBg)
+                                        .border(1.5.dp, AppThemeMode.dialog, CircleShape), contentAlignment = Alignment.Center) { Text(icon, fontSize = 10.sp) }
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(text, color = HText, fontSize = 14.sp, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                    Text(thaiTimeAgo(n.at), color = HMuted, fontSize = 11.sp)
+                                }
+                                if (n.type == "friend_request") {
+                                    when (done[n.uid]) {
+                                        "accepted" -> Text(tr("เป็นเพื่อนแล้ว"), color = HNeon, fontSize = 12.sp)
+                                        "declined" -> Text(tr("ปฏิเสธแล้ว"), color = HMuted, fontSize = 12.sp)
+                                        else -> {
+                                            Text(tr("ยอมรับ"), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clip(RoundedCornerShape(14.dp))
+                                                .background(Brush.horizontalGradient(listOf(Color(0xFFFF2FA8), Color(0xFF9B3DFF))))
+                                                .clickable { scope.launch { if (NearbyRepo.respond(n.uid, true) != null) done[n.uid] = "accepted"; HomeRepo.refreshCounts() } }.padding(horizontal = 12.dp, vertical = 6.dp))
+                                            Spacer(Modifier.width(6.dp))
+                                            Text(tr("ปฏิเสธ"), color = HSoft, fontSize = 12.sp, modifier = Modifier.clip(RoundedCornerShape(14.dp)).border(1.dp, HMuted, RoundedCornerShape(14.dp))
+                                                .clickable { scope.launch { if (NearbyRepo.respond(n.uid, false) != null) done[n.uid] = "declined"; HomeRepo.refreshCounts() } }.padding(horizontal = 10.dp, vertical = 6.dp))
+                                        }
+                                    }
+                                } else if (n.unseen) Box(Modifier.size(8.dp).clip(CircleShape).background(HNeon))
+                            }
                         }
                     }
                 }
             }
         }
     }
+    profile?.let { com.example.ui.social.UserProfileDialog(it) { profile = null } }
+    chat?.let { com.example.ui.social.RealChatRoomDialog(it) { chat = null } }
 }
