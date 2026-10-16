@@ -110,7 +110,7 @@ secrets {
 googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.ERROR }
 
 dependencies {
-  implementation("com.android.billingclient:billing-ktx:7.1.1")
+  implementation("com.android.billingclient:billing-ktx:8.0.0")
   // Voice/video calls + live streaming (Agora RTC, basic build without optional extensions).
   implementation("io.agora.rtc:full-rtc-basic:4.6.4")
   // Face beauty / colour / low-light filters for the camera (Agora clear-vision extension).

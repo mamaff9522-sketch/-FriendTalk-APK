@@ -44,6 +44,18 @@ private suspend fun connect(client: BillingClient): Boolean = suspendCancellable
     })
 }
 
+// Play Billing 8: plain callback APIs (the result types changed from 7), wrapped as suspend functions here.
+private suspend fun queryDetails(client: BillingClient, params: QueryProductDetailsParams): List<ProductDetails> = suspendCancellableCoroutine { c ->
+    client.queryProductDetailsAsync(params) { r, result ->
+        if (c.isActive) c.resume(if (r.responseCode == BillingClient.BillingResponseCode.OK) result.productDetailsList else emptyList())
+    }
+}
+private suspend fun queryPurchases(client: BillingClient): List<Purchase> = suspendCancellableCoroutine { c ->
+    client.queryPurchasesAsync(QueryPurchasesParams.newBuilder().setProductType(BillingClient.ProductType.INAPP).build()) { r, list ->
+        if (c.isActive) c.resume(if (r.responseCode == BillingClient.BillingResponseCode.OK) list else emptyList())
+    }
+}
+
 @Composable
 fun ShopHost() {
     val tab by Shop.open.collectAsState()
@@ -83,11 +95,9 @@ private fun ShopDialog(initial: String, onClose: () -> Unit) {
         packs = mapOf("diamonds" to parse("diamonds"), "coins" to parse("coins"))
         if (enabled && packs.values.any { it.isNotEmpty() } && connect(client)) {
             val prods = packs.values.flatten().map { QueryProductDetailsParams.Product.newBuilder().setProductId(it.productId).setProductType(BillingClient.ProductType.INAPP).build() }
-            val res = client.queryProductDetails(QueryProductDetailsParams.newBuilder().setProductList(prods).build())
-            details = res.productDetailsList.orEmpty().associateBy { it.productId }
+            details = queryDetails(client, QueryProductDetailsParams.newBuilder().setProductList(prods).build()).associateBy { it.productId }
             // finish any purchase that was paid but not yet credited
-            client.queryPurchasesAsync(QueryPurchasesParams.newBuilder().setProductType(BillingClient.ProductType.INAPP).build()).purchasesList
-                .filter { it.purchaseState == Purchase.PurchaseState.PURCHASED }.forEach { verify(it) }
+            queryPurchases(client).filter { it.purchaseState == Purchase.PurchaseState.PURCHASED }.forEach { verify(it) }
         }
         loading = false
     }
