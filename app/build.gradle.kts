@@ -79,7 +79,7 @@ android {
     }
     create("play") {
       dimension = "dist"
-      applicationId = "com.friendtalk.app"
+      applicationId = "th.friendtalk.app"
       buildConfigField("boolean", "PLAY_STORE", "true")
       // Play splits the bundle per device, so keep 32-bit too (users only download their own ABI)
       ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }

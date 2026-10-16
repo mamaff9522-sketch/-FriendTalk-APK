@@ -1,13 +1,13 @@
-# FriendTalk — Google Play checklist (com.friendtalk.app)
+# FriendTalk — Google Play checklist (th.friendtalk.app)
 
 ## URLs for Play Console
 - Privacy policy: https://friendtalk-brain-123224091480.asia-southeast1.run.app/privacy
 - Delete account: https://friendtalk-brain-123224091480.asia-southeast1.run.app/delete-account
 
 ## Before the first AAB upload
-1. Firebase Console → Project settings → Add app → Android → `com.friendtalk.app` (+ SHA-1 of the upload key; after Play App Signing is on, also add Play's app-signing SHA-1 from Play Console → App integrity).
-2. Download the new `google-services.json` (contains both `com.example` and `com.friendtalk.app`) → GitHub secret `GOOGLE_SERVICES_JSON`.
-3. AdMob: add the app (Android, `com.friendtalk.app`) and link it once it is live on Play.
+1. Firebase Console → Project settings → Add app → Android → `th.friendtalk.app` (+ SHA-1 of the upload key; after Play App Signing is on, also add Play's app-signing SHA-1 from Play Console → App integrity).
+2. Download the new `google-services.json` (contains both `com.example` and `th.friendtalk.app`) → GitHub secret `GOOGLE_SERVICES_JSON`.
+3. AdMob: add the app (Android, `th.friendtalk.app`) and link it once it is live on Play.
 4. Play Console → Monetize → In-app products: create the product IDs used by the shop packs (admin → การเงิน → ราคาแพ็กเพชร/เหรียญ).
 
 ## Data safety form (answers)
