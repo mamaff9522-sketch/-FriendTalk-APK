@@ -1506,6 +1506,13 @@ app.post('/admin/ui/config/revert', perm('config_edit'), w(notBanned), w(async (
 // ===== Phase 1: real chats, swipe match =====
 const STORAGE_BUCKET = process.env.STORAGE_BUCKET || 'friendtalk-4e623.firebasestorage.app';
 const UID_RE = /^[A-Za-z0-9]{10,128}$/;
+/** Everyone's presence (status/{uid} {online, hidden, lastSeen}) as a snapshot-like object; read whole and filtered here,
+ * so no '.indexOn: online' rule is needed (a get() query on an unindexed child fails in RTDB). */
+async function onlineStatus() {
+  const v = (await db.ref('status').get()).val() || {};
+  const list = Object.entries(v).filter(([, x]) => x && x.online === true);
+  return { forEach: fn => { list.forEach(([key, val]) => fn({ key, val: () => val })); }, val: () => Object.fromEntries(list) };
+}
 async function isBanned(uid) {
   const b = (await db.ref(`bans/${uid}`).get()).val();
   return !!(b && (!b.until || b.until > Date.now()));
@@ -1577,7 +1584,7 @@ const publicProfile = (uid, u) => ({ uid, displayName: u.displayName || '', user
 app.get('/swipe/candidates', w(notBanned), w(async (q, r) => {
   const limit = Math.min(20, Math.max(1, parseInt(q.query.limit || '10', 10)));
   // Only people online right now (presence status/{uid}, not hidden) — the swipe page is a live 'who is here' deck.
-  const [users, swiped, bans, st] = await Promise.all([db.ref('users').get(), db.ref(`swipes/${q.uid}`).get(), db.ref('bans').get(), db.ref('status').orderByChild('online').equalTo(true).get()]);
+  const [users, swiped, bans, st] = await Promise.all([db.ref('users').get(), db.ref(`swipes/${q.uid}`).get(), db.ref('bans').get(), onlineStatus()]);
   const s = swiped.val() || {}, b = bans.val() || {}, now = Date.now(), online = new Set();
   st.forEach(c => { const v = c.val(); if (v && v.online === true && v.hidden !== true) online.add(c.key); });
   const icfg = await getInterestCfg(), mineIp = (users.val() || {})[q.uid]?.interestProfile || {};
@@ -1906,7 +1913,7 @@ const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.f
 // All online users (presence status/{uid}.online, not hidden), random order, with age + rounded distance when both shared location.
 app.get('/discover/online', w(notBanned), w(async (q, r) => {
   const f = readFilter(q), now = Date.now(), LOC_MS = 24 * 3600 * 1000;
-  const [st, meR, rad] = await Promise.all([db.ref('status').orderByChild('online').equalTo(true).get(), db.ref(`radar/${q.uid}`).get(), db.ref('radar').get()]);
+  const [st, meR, rad] = await Promise.all([onlineStatus(), db.ref(`radar/${q.uid}`).get(), db.ref('radar').get()]);
   const me = meR.val(), radar = rad.val() || {};
   const ids = []; st.forEach(c => { const v = c.val(); if (c.key !== q.uid && v && v.online === true && v.hidden !== true) ids.push(c.key); });
   const out = [];
@@ -2260,7 +2267,7 @@ app.put('/admin/randomcard-catalog', perm('config_edit'), w(notBanned), w(async 
 app.post('/random/next', w(notBanned), w(quota('randomMatchPerDay')), w(async (q, r) => {
   const f = readFilter(q), me = q.uid, now = Date.now();
   const skip = new Set((Array.isArray(q.body?.skip) ? q.body.skip : []).filter(x => typeof x === 'string').slice(0, 100));
-  const [users, st, seenS] = await Promise.all([db.ref('users').get(), db.ref('status').orderByChild('online').equalTo(true).get(), db.ref(`randomSeen/${me}`).get()]);
+  const [users, st, seenS] = await Promise.all([db.ref('users').get(), onlineStatus(), db.ref(`randomSeen/${me}`).get()]);
   const all = users.val() || {}, online = new Set(), seen = seenS.val() || {};
   st.forEach(c => { const v = c.val(); if (v?.online === true && v.hidden !== true) online.add(c.key); });
   const pick = async ids => {
