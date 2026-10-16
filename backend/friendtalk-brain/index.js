@@ -2082,13 +2082,42 @@ const RC_SEED = {
   frames: { gold: { name: 'ทอง', price: 30, colors: ['#FFD700', '#B8860B', '#FFF3B0'] }, diamond: { name: 'เพชร', price: 50, colors: ['#B9F2FF', '#FFFFFF', '#5CC8E8'] },
     neon: { name: 'นีออน', price: 40, colors: ['#00E5FF', '#FF00C8', '#00E5FF'] }, rose: { name: 'กุหลาบ', price: 30, colors: ['#FFB3C7', '#E8A598', '#FF6F91'] },
     rainbow: { name: 'สายรุ้ง', price: 60, colors: ['#FF5F6D', '#FFC371', '#47E891', '#4FACFE', '#B06AB3'] } },
-  nameFrames: { gold: { name: 'ป้ายทอง', price: 20, colors: ['#FFD700', '#B8860B'] }, neon: { name: 'ป้ายนีออน', price: 25, colors: ['#00E5FF', '#FF00C8'] },
-    rose: { name: 'ป้ายชมพู', price: 20, colors: ['#FF6FD8', '#FF9A8B'] }, galaxy: { name: 'ป้ายกาแล็กซี', price: 35, colors: ['#3A1C71', '#D76D77', '#FFAF7B'] } },
-  effects: { hearts: { name: 'หัวใจลอย', price: 30, glyphs: ['💗', '💖'] }, stars: { name: 'ดาวระยิบ', price: 30, glyphs: ['⭐', '✨'] },
-    sparkle: { name: 'ประกายวิ้ง', price: 40, glyphs: ['✨'] }, petals: { name: 'กลีบซากุระ', price: 30, glyphs: ['🌸', '🌺'] },
-    confetti: { name: 'พลุฉลอง', price: 50, glyphs: ['🎉', '🎊', '✦'] }, fireflies: { name: 'หิ่งห้อย', price: 40, glyphs: ['•'] } }
+  nameFrames: { gold: { name: 'ป้ายทอง', price: 20, colors: ['#FFD700', '#B8860B'], style: 'royal' }, neon: { name: 'ป้ายนีออน', price: 25, colors: ['#00E5FF', '#FF00C8'], style: 'neon' },
+    rose: { name: 'ป้ายชมพู', price: 20, colors: ['#FF6FD8', '#FF9A8B'], style: 'pill' }, galaxy: { name: 'ป้ายกาแล็กซี', price: 35, colors: ['#3A1C71', '#D76D77', '#FFAF7B'], style: 'glitter' } },
+  effects: { hearts: { name: 'หัวใจลอย', price: 30, glyphs: ['💗', '💖'], motion: 'rise' }, stars: { name: 'ดาวระยิบ', price: 30, glyphs: ['⭐', '✨'], motion: 'twinkle' },
+    sparkle: { name: 'ประกายวิ้ง', price: 40, glyphs: ['✨'], motion: 'burst' }, petals: { name: 'กลีบซากุระ', price: 30, glyphs: ['🌸', '🌺'], motion: 'fall' },
+    confetti: { name: 'พลุฉลอง', price: 50, glyphs: ['🎉', '🎊', '✦'], motion: 'rain' }, fireflies: { name: 'หิ่งห้อย', price: 40, glyphs: ['•'], motion: 'sway' } }
 };
-(async () => { try { await db.ref('appConfig/randomCardCatalog').transaction(c => (c === null ? RC_SEED : undefined)); } catch (e) { console.error('seed rc', e.message); } })();
+// v2: more name-frame shapes and effect movements (added once to the live catalog; admin edits stay)
+const RC_STYLES = ['pill', 'neon', 'ribbon', 'bubble', 'badge', 'glitter', 'outline', 'royal', 'cloud', 'tag'];
+const RC_MOTIONS = ['rise', 'fall', 'orbit', 'twinkle', 'burst', 'sway', 'spiral', 'rain', 'zigzag', 'shoot'];
+const RC_V2 = {
+  nameFrames: { ribbon: { name: 'ริบบิ้น', price: 25, colors: ['#FF5F8F', '#FF9AB8'], style: 'ribbon' }, bubble: { name: 'บับเบิลแชท', price: 20, colors: ['#7AF5FF', '#4FACFE'], style: 'bubble' },
+    badge: { name: 'เหรียญตรา', price: 30, colors: ['#9B3DFF', '#FF2FA8'], style: 'badge' }, outline: { name: 'เส้นคู่', price: 15, colors: ['#FFFFFF', '#FFD45C'], style: 'outline' },
+    cloud: { name: 'ก้อนเมฆ', price: 25, colors: ['#E0F2FF', '#B9DCFF'], style: 'cloud' }, tag: { name: 'ป้ายแท็ก', price: 20, colors: ['#47E891', '#00B8D9'], style: 'tag' },
+    sunset: { name: 'พระอาทิตย์ตก', price: 30, colors: ['#FF5F6D', '#FFC371'], style: 'glitter' }, mint: { name: 'มินต์นีออน', price: 25, colors: ['#00FFB3', '#00C2FF'], style: 'neon' } },
+  effects: { snow: { name: 'หิมะโปรย', price: 30, glyphs: ['❄️', '❅', '·'], motion: 'fall' }, bubbles: { name: 'ฟองสบู่', price: 30, glyphs: ['🫧', '○'], motion: 'sway' },
+    orbit: { name: 'หัวใจโคจร', price: 45, glyphs: ['💞', '💗'], motion: 'orbit' }, fireworks: { name: 'พลุระเบิด', price: 50, glyphs: ['🎆', '🎇', '✨'], motion: 'burst' },
+    butterflies: { name: 'ผีเสื้อบิน', price: 40, glyphs: ['🦋'], motion: 'zigzag' }, shooting: { name: 'ดาวตก', price: 45, glyphs: ['🌠', '✦'], motion: 'shoot' },
+    music: { name: 'โน้ตดนตรีหมุน', price: 35, glyphs: ['🎵', '🎶'], motion: 'spiral' }, money: { name: 'ฝนเพชร', price: 60, glyphs: ['💎', '💰'], motion: 'rain' } }
+};
+(async () => {
+  try {
+    await db.ref('appConfig/randomCardCatalog').transaction(c => (c === null ? RC_SEED : undefined));
+    const flag = await db.ref('appConfig/rcCatalogV2').transaction(c => (c ? undefined : { at: Date.now() }));
+    if (flag.committed) await db.ref('appConfig/randomCardCatalog').transaction(c => {
+      if (!c) return c;
+      for (const kind of ['nameFrames', 'effects']) {
+        c[kind] = c[kind] || {};
+        const key = kind === 'effects' ? 'motion' : 'style';
+        for (const [id, v] of Object.entries(c[kind])) if (v && !v[key]) v[key] = RC_SEED[kind][id]?.[key] || (kind === 'effects' ? 'rise' : 'pill');
+        let order = Object.keys(c[kind]).length;
+        for (const [id, v] of Object.entries(RC_V2[kind])) if (!c[kind][id]) c[kind][id] = { ...v, enabled: true, order: order++ };
+      }
+      return c;
+    });
+  } catch (e) { console.error('seed rc', e.message); }
+})();
 async function rcCatalog() { const c = (await db.ref('appConfig/randomCardCatalog').get()).val() || RC_SEED; return { ...RC_SEED, ...c, frames: c.frames || {}, nameFrames: c.nameFrames || {}, effects: c.effects || {} }; }
 const rcItem = (cat, kind, id) => (id && id !== 'none' ? cat[kind]?.[id] : null);
 const clamp01 = v => Math.min(1, Math.max(0, Number(v) || 0));
@@ -2114,10 +2143,13 @@ async function rcQuote(uid, d) {
 /** Public view of a card (style snapshots saved with it, so it still renders if the admin later removes an item). */
 const rcPublic = c => c ? { avatarUrl: c.avatarUrl || '', bgUrl: c.bgUrl || '', intro: c.intro || '', videoUrl: c.videoUrl || '', audioUrl: c.audioUrl || '',
   frame: c.frame || 'none', frameColors: c.frameColors || [], nameFrame: c.nameFrame || 'none', nameFrameColors: c.nameFrameColors || [],
-  effect: c.effect || 'none', effectGlyphs: c.effectGlyphs || [], layout: rcLayout(c.layout), updatedAt: num(c.updatedAt) } : null;
+  effect: c.effect || 'none', effectGlyphs: c.effectGlyphs || [], layout: rcLayout(c.layout), updatedAt: num(c.updatedAt),
+  nameFrameStyle: c.nameFrameStyle || 'pill', effectMotion: c.effectMotion || 'rise', nameDeco: c.nameDeco || '', nameColor: c.nameColor || '' } : null;
+// Free name-tag decoration the owner picks (sticker on the tag + text colour)
+const RC_DECOS = ['', '♡', '✦', '👑', '🌸', '⭐', '🎀', '🔥', '💎', '🦋', '🐱', '🌙'];
 app.get('/randomcard/catalog', w(async (q, r) => {
   const c = await rcCatalog(), list = kind => Object.entries(c[kind] || {}).filter(([, v]) => v && v.enabled !== false)
-    .map(([id, v]) => ({ id, name: v.name || id, price: num(v.price), colors: v.colors || [], glyphs: v.glyphs || [], order: num(v.order) })).sort((a, b) => a.order - b.order || a.price - b.price);
+    .map(([id, v]) => ({ id, name: v.name || id, price: num(v.price), colors: v.colors || [], glyphs: v.glyphs || [], style: v.style || 'pill', motion: v.motion || 'rise', order: num(v.order) })).sort((a, b) => a.order - b.order || a.price - b.price);
   const [t, wl] = await Promise.all([tierOf(q.uid), db.ref(`wallets/${q.uid}/diamonds`).get()]);
   r.json({ enabled: c.enabled !== false, videoPrice: num(c.videoPrice), audioPrice: num(c.audioPrice), frames: list('frames'), nameFrames: list('nameFrames'), effects: list('effects'),
     vip: t.tier === 'vip', diamonds: num(wl.val()) - await pendingSum(q.uid) });
@@ -2155,8 +2187,12 @@ app.post('/randomcard/save', w(notBanned), w(async (q, r) => {
   for (const [kind, key, styleKey, styleField] of [['frames', 'frame', 'frameColors', 'colors'], ['nameFrames', 'nameFrame', 'nameFrameColors', 'colors'], ['effects', 'effect', 'effectGlyphs', 'glyphs']]) {
     const want = typeof d[key] === 'string' ? d[key] : 'none';
     if (want === 'none') { card[key] = 'none'; card[styleKey] = []; }
-    else if (want !== x.saved[key]) { const it = rcItem(x.cat, kind, want); card[key] = want; card[styleKey] = (it?.[styleField] || []).slice(0, 8); }
+    else if (want !== x.saved[key]) { const it = rcItem(x.cat, kind, want); card[key] = want; card[styleKey] = (it?.[styleField] || []).slice(0, 8);
+      if (kind === 'nameFrames') card.nameFrameStyle = RC_STYLES.includes(it?.style) ? it.style : 'pill';
+      if (kind === 'effects') card.effectMotion = RC_MOTIONS.includes(it?.motion) ? it.motion : 'rise'; }
   }
+  card.nameDeco = RC_DECOS.includes(d.nameDeco) ? d.nameDeco : (card.nameDeco || '');
+  card.nameColor = typeof d.nameColor === 'string' && /^#[0-9A-Fa-f]{6}$/.test(d.nameColor) ? d.nameColor : d.nameColor === '' ? '' : (card.nameColor || '');
   card.layout = rcLayout(d.layout); card.updatedAt = Date.now();
   const price = x.total;
   if (price > 0) {
@@ -2182,6 +2218,8 @@ app.put('/admin/randomcard-catalog', perm('config_edit'), w(notBanned), w(async 
       if (!/^[a-z0-9_]{1,24}$/.test(id) || id === 'none' || !v) continue;
       const price = parseInt(v.price); if (!(price >= 0 && price <= 1e6)) return r.status(400).json({ error: `ราคา ${id} ต้องเป็น 0–1,000,000` });
       const item = { name: String(v.name || id).slice(0, 30), price, enabled: v.enabled !== false, order: num(parseInt(v.order)) };
+      if (kind === 'effects') item.motion = RC_MOTIONS.includes(v.motion) ? v.motion : 'rise';
+      if (kind === 'nameFrames') item.style = RC_STYLES.includes(v.style) ? v.style : 'pill';
       if (kind === 'effects') item.glyphs = (Array.isArray(v.glyphs) ? v.glyphs : []).map(g => String(g).slice(0, 4)).filter(Boolean).slice(0, 6);
       else item.colors = (Array.isArray(v.colors) ? v.colors : []).filter(c => HEX.test(c)).slice(0, 6);
       if (kind === 'effects' ? !item.glyphs.length : item.colors.length < 2) return r.status(400).json({ error: `${item.name}: ${kind === 'effects' ? 'ต้องมีอีโมจิอย่างน้อย 1 ตัว' : 'ต้องมีสีอย่างน้อย 2 สี'}` });

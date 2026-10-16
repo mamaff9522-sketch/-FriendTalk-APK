@@ -18,6 +18,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.foundation.shape.CutCornerShape
+import androidx.compose.foundation.shape.GenericShape
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -33,13 +37,18 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
 import kotlin.random.Random
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.sin
 
-/** Which element of the card the editor is moving. */
+/** Which element of the card the editor is moving. (AVATAR kept for old saved layouts; the photo now fills the card.) */
 enum class CardPart { AVATAR, NAME, INTRO }
 
 /**
- * The card: background, effect, profile photo (or looping intro video) in its frame, name tag in its name frame,
- * intro text — each placed by [CardLayout]. [videoUri]/[audioUri] override the URLs (editor preview of local files).
+ * The card: profile photo (or looping intro video) fills the whole card, the chosen frame runs around the card's edge,
+ * the effect plays over it, and the name tag (its own frame shape + the owner's decoration) and intro text sit where the
+ * owner placed them ([CardLayout]). [videoUri]/[audioUri] override the URLs (editor preview of local files).
  * [partModifier] lets the editor attach drag / pinch to each element. Voice greeting plays once automatically.
  */
 @Composable
@@ -48,33 +57,50 @@ fun RandomCardView(
     videoUri: Uri? = null, audioUri: Uri? = null, autoplay: Boolean = true, selected: CardPart? = null,
     partModifier: (CardPart) -> Modifier = { Modifier }
 ) {
-    BoxWithConstraints(modifier.aspectRatio(0.75f).clip(RoundedCornerShape(24.dp))
+    val shape = RoundedCornerShape(24.dp)
+    BoxWithConstraints(modifier.aspectRatio(0.75f).clip(shape)
         .background(Brush.linearGradient(listOf(Color(0xFF2B1660), Color(0xFF5A1A6E), Color(0xFFB0306E))))) {
         val w = maxWidth; val h = maxHeight
-        if (card.bgUrl.isNotBlank()) AsyncImage(model = card.bgUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0x99000000)))))
-        if (card.effect != "none") CardEffect(card.effectGlyphs.ifEmpty { listOf("✨") })
-        val L = card.layout
-        // profile photo / intro video in the frame
-        val av = 0.42f * w.value
-        Placed(L.avatar, w, h, (av * L.avatar.s).dp, partModifier(CardPart.AVATAR), selected == CardPart.AVATAR) {
-            FramedCircle(card.frame, card.frameColors) {
-                val vid = videoUri?.toString() ?: card.videoUrl
-                if (vid.isNotBlank() && autoplay) LoopVideo(vid, Modifier.fillMaxSize())
-                else AsyncImage(model = card.avatarUrl.ifBlank { fallbackAvatar }, contentDescription = name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-            }
+        // full-card photo / video
+        val vid = videoUri?.toString() ?: card.videoUrl
+        val photo = card.avatarUrl.ifBlank { fallbackAvatar }
+        when {
+            vid.isNotBlank() && autoplay -> LoopVideo(vid, Modifier.fillMaxSize())
+            photo.isNotBlank() -> AsyncImage(model = photo, contentDescription = name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            else -> Text(name.take(1).ifBlank { "?" }, color = Color.White.copy(alpha = 0.85f), fontSize = 96.sp, fontWeight = FontWeight.Black, modifier = Modifier.align(Alignment.Center))
         }
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.45f to Color.Transparent, 1f to Color(0xAA000000))))
+        if (card.effect != "none") CardEffect(card.effectGlyphs.ifEmpty { listOf("✨") }, card.effectMotion)
+        val L = card.layout
         // name tag
         Placed(L.name, w, h, null, partModifier(CardPart.NAME), selected == CardPart.NAME) {
-            NameTag(name + (age?.let { ", $it" } ?: ""), card.nameFrame, card.nameFrameColors, L.name.s)
+            NameTag(name + (age?.let { ", $it" } ?: ""), card.nameFrame, card.nameFrameColors, L.name.s, card.nameFrameStyle, card.nameDeco, card.nameColor)
         }
         // intro text
         if (card.intro.isNotBlank()) Placed(L.intro, w, h, null, partModifier(CardPart.INTRO), selected == CardPart.INTRO) {
             Text(card.intro, color = Color.White, fontSize = (13 * L.intro.s).sp, textAlign = TextAlign.Center, maxLines = 4, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.widthIn(max = w * 0.86f).clip(RoundedCornerShape(12.dp)).background(Color(0x55000000)).padding(horizontal = 10.dp, vertical = 6.dp))
         }
+        // frame around the whole card
+        if (card.frame != "none" && card.frameColors.size >= 2) CardFrame(card.frameColors)
         val aud = audioUri?.toString() ?: card.audioUrl
-        if (aud.isNotBlank() && autoplay) VoiceChip(aud, Modifier.align(Alignment.TopEnd).padding(10.dp))
+        if (aud.isNotBlank() && autoplay) VoiceChip(aud, Modifier.align(Alignment.TopEnd).padding(12.dp))
+    }
+}
+
+/** Glowing frame along the card's edge; its colours slowly travel around. */
+@Composable
+fun CardFrame(colors: List<Color>, width: Dp = 6.dp, corner: Dp = 24.dp) {
+    val spin by rememberInfiniteTransition(label = "cframe").animateFloat(0f, 360f, infiniteRepeatable(tween(5000, easing = LinearEasing)), label = "a")
+    androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+        val a = Math.toRadians(spin.toDouble()); val c = androidx.compose.ui.geometry.Offset(size.width / 2, size.height / 2); val r = size.maxDimension / 2
+        val d = androidx.compose.ui.geometry.Offset((kotlin.math.cos(a) * r).toFloat(), (kotlin.math.sin(a) * r).toFloat())
+        val brush = Brush.linearGradient(colors + colors.first(), start = c - d, end = c + d)
+        val sw = width.toPx(); val cr = corner.toPx()
+        drawRoundRect(brush, topLeft = androidx.compose.ui.geometry.Offset(sw / 2, sw / 2), size = androidx.compose.ui.geometry.Size(size.width - sw, size.height - sw),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(cr - sw / 2), style = androidx.compose.ui.graphics.drawscope.Stroke(sw))
+        drawRoundRect(Color.White.copy(alpha = 0.35f), topLeft = androidx.compose.ui.geometry.Offset(sw * 1.4f, sw * 1.4f), size = androidx.compose.ui.geometry.Size(size.width - sw * 2.8f, size.height - sw * 2.8f),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(cr - sw * 1.4f), style = androidx.compose.ui.graphics.drawscope.Stroke(1.2f))
     }
 }
 
@@ -101,29 +127,96 @@ fun FramedCircle(frame: String, colors: List<Color>, content: @Composable () -> 
     }
 }
 
-@Composable
-fun NameTag(text: String, frame: String, colors: List<Color>, scale: Float = 1f) {
-    val bg = if (frame != "none" && colors.size >= 2) Brush.horizontalGradient(colors) else Brush.horizontalGradient(listOf(Color(0x66000000), Color(0x66000000)))
-    Text(text, color = Color.White, fontSize = (17 * scale).sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
-        style = androidx.compose.ui.text.TextStyle(shadow = androidx.compose.ui.graphics.Shadow(Color(0x99000000), blurRadius = 6f)),
-        modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(bg)
-            .then(if (frame != "none") Modifier.border(1.5.dp, Color(0xCCFFFFFF), RoundedCornerShape(20.dp)) else Modifier)
-            .padding(horizontal = (14 * scale).dp, vertical = (6 * scale).dp))
+/** Name-tag decorations the owner can add for free, and text colours. */
+val NAME_DECOS = listOf("" to "ไม่มี", "♡" to "หัวใจ", "✦" to "ประกาย", "👑" to "มงกุฎ", "🌸" to "ดอกไม้", "⭐" to "ดาว", "🎀" to "โบว์", "🔥" to "ไฟ", "💎" to "เพชร", "🦋" to "ผีเสื้อ", "🐱" to "แมว", "🌙" to "พระจันทร์")
+val NAME_COLORS = listOf("", "#FFD45C", "#FF6FB5", "#7AF5FF", "#47E891", "#C9A2FF", "#FF7A59", "#1E1B3A")
+
+private val RibbonShape = GenericShape { s, _ ->
+    val n = s.height * 0.32f
+    moveTo(0f, 0f); lineTo(s.width, 0f); lineTo(s.width - n, s.height / 2); lineTo(s.width, s.height); lineTo(0f, s.height); lineTo(n, s.height / 2); close()
+}
+private val TagShape = GenericShape { s, _ ->
+    val n = s.height * 0.42f
+    moveTo(n, 0f); lineTo(s.width, 0f); lineTo(s.width, s.height); lineTo(n, s.height); lineTo(0f, s.height / 2); close()
 }
 
-/** Floating glyphs + soft light over the whole card. */
+/**
+ * Name tag in the chosen frame [style]: pill, neon, ribbon, bubble, badge, glitter, outline, royal, cloud or tag
+ * (frame "none" = plain dark pill). [deco] = sticker at both ends, [textColor] = #RRGGBB (blank = default).
+ */
 @Composable
-fun CardEffect(glyphs: List<String>) {
-    val t by rememberInfiniteTransition(label = "fx").animateFloat(0f, 1f, infiniteRepeatable(tween(8000, easing = LinearEasing)), label = "t")
-    val glow by rememberInfiniteTransition(label = "glow").animateFloat(0.15f, 0.4f, infiniteRepeatable(tween(1600), androidx.compose.animation.core.RepeatMode.Reverse), label = "g")
-    val seeds = remember { List(16) { Triple(Random.nextFloat(), Random.nextFloat(), 12 + Random.nextInt(10)) } }
+fun NameTag(text: String, frame: String, colors: List<Color>, scale: Float = 1f, style: String = "pill", deco: String = "", textColor: String = "") {
+    val has = frame != "none" && colors.size >= 2
+    val st = if (has) style else "plain"
+    val inf = rememberInfiniteTransition(label = "tag")
+    val pulse by inf.animateFloat(0.55f, 1f, infiniteRepeatable(tween(900), androidx.compose.animation.core.RepeatMode.Reverse), label = "p")
+    val shine by inf.animateFloat(-1f, 2f, infiniteRepeatable(tween(2200, easing = LinearEasing)), label = "s")
+    val shape: Shape = when (st) {
+        "ribbon" -> RibbonShape; "tag" -> TagShape; "badge" -> CutCornerShape(30)
+        "bubble" -> RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomEnd = 18.dp, bottomStart = 4.dp)
+        "neon", "outline" -> RoundedCornerShape(14.dp)
+        else -> RoundedCornerShape(50)
+    }
+    val defaultText = if (st == "cloud") Color(0xFF2B2160) else Color.White
+    val tc = RandomCardRepo.hex(textColor) ?: if (st == "neon") colors.firstOrNull() ?: Color.White else defaultText
+    val bg: Modifier = when (st) {
+        "plain" -> Modifier.background(Color(0x66000000), shape)
+        "neon" -> Modifier.background(Color(0xCC0A0820), shape).border(2.dp, colors.first().copy(alpha = pulse), shape)
+            .border(5.dp, colors.last().copy(alpha = 0.25f * pulse), shape)
+        "outline" -> Modifier.border(2.dp, colors.first(), shape).padding(3.dp).border(1.dp, colors.last(), shape)
+        "cloud" -> Modifier.background(Brush.verticalGradient(colors), shape).border(2.dp, Color.White, shape)
+        "royal" -> Modifier.background(Brush.horizontalGradient(colors + colors.first()), shape).border(1.5.dp, Color(0xFFFFF3B0), shape)
+        else -> Modifier.background(Brush.horizontalGradient(colors), shape).border(1.5.dp, Color(0xCCFFFFFF), shape)
+    }
+    val padH = when (st) { "ribbon" -> 26; "tag" -> 22; else -> 14 }
+    Box(contentAlignment = Alignment.Center) {
+        Row(Modifier.padding(top = if (st == "royal") (14 * scale).dp else 0.dp).then(bg).clip(shape)
+            .then(if (st == "glitter") Modifier.drawWithContent {
+                drawContent()
+                drawRect(Brush.linearGradient(listOf(Color.Transparent, Color.White.copy(alpha = 0.45f), Color.Transparent),
+                    start = androidx.compose.ui.geometry.Offset(size.width * shine, 0f), end = androidx.compose.ui.geometry.Offset(size.width * shine + size.height * 1.5f, size.height)))
+            } else Modifier)
+            .padding(start = (padH * scale).dp, end = (padH * scale).dp, top = (6 * scale).dp, bottom = (6 * scale).dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            if (deco.isNotBlank()) Text(deco, color = tc, fontSize = (15 * scale).sp, modifier = Modifier.padding(end = 5.dp))
+            if (st == "glitter") Text("✦", color = Color.White.copy(alpha = pulse), fontSize = (10 * scale).sp, modifier = Modifier.padding(end = 4.dp))
+            Text(text, color = tc, fontSize = (17 * scale).sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                style = androidx.compose.ui.text.TextStyle(shadow = if (st == "cloud") null else androidx.compose.ui.graphics.Shadow(if (st == "neon") tc.copy(alpha = pulse) else Color(0x99000000), blurRadius = if (st == "neon") 14f else 6f)))
+            if (st == "glitter") Text("✦", color = Color.White.copy(alpha = 1.5f - pulse), fontSize = (10 * scale).sp, modifier = Modifier.padding(start = 4.dp))
+            if (deco.isNotBlank()) Text(deco, color = tc, fontSize = (15 * scale).sp, modifier = Modifier.padding(start = 5.dp))
+        }
+        if (st == "royal") Text("👑", fontSize = (18 * scale).sp, modifier = Modifier.align(Alignment.TopCenter).offset(y = (-4).dp))
+    }
+}
+
+/** Effect over the whole card: the glyphs move in the item's own way ([motion]) + a soft light. */
+@Composable
+fun CardEffect(glyphs: List<String>, motion: String = "rise") {
+    val t by rememberInfiniteTransition(label = "fx").animateFloat(0f, 1f, infiniteRepeatable(tween(if (motion == "rain" || motion == "shoot") 3200 else 7000, easing = LinearEasing)), label = "t")
+    val glow by rememberInfiniteTransition(label = "glow").animateFloat(0.12f, 0.35f, infiniteRepeatable(tween(1600), androidx.compose.animation.core.RepeatMode.Reverse), label = "g")
+    val n = when (motion) { "rain" -> 22; "orbit", "spiral" -> 10; "shoot" -> 6; else -> 16 }
+    val seeds = remember(motion) { List(n) { Triple(Random.nextFloat(), Random.nextFloat(), 12 + Random.nextInt(10)) } }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize().background(Brush.radialGradient(listOf(Color(0xFFFF6FD8).copy(alpha = glow), Color.Transparent))))
         val w = maxWidth; val h = maxHeight
         seeds.forEachIndexed { i, (sx, sy, sz) ->
-            val y = 1f - ((sy + t) % 1f)
-            Text(glyphs[i % glyphs.size], fontSize = sz.sp, color = Color.White.copy(alpha = 0.8f),
-                modifier = Modifier.offset(x = w * sx, y = h * y).graphicsLayer { alpha = (1f - kotlin.math.abs(y - 0.5f) * 1.6f).coerceIn(0f, 1f) })
+            val ph = (sy + t) % 1f
+            val tw = 2f * PI.toFloat()
+            var scale = 1f
+            val (x, y, a) = when (motion) {
+                "fall" -> Triple(sx + sin(ph * 6f + i) * 0.05f, ph, 1f - abs(ph - 0.5f) * 1.6f)
+                "rain" -> Triple(sx, ph * 1.1f - 0.05f, 0.9f)
+                "sway" -> Triple(sx + sin(ph * 10f + i) * 0.1f, 1f - ph, 1f - abs(ph - 0.5f) * 1.6f)
+                "twinkle" -> { val k = abs(sin((ph * 2f + i * 0.37f) * tw / 2)); scale = 0.6f + 0.6f * k; Triple(sx, sy, k) }
+                "burst" -> { val ang = sx * tw; val d = ph * 0.55f; Triple(0.5f + cos(ang) * d, 0.42f + sin(ang) * d * 0.75f, 1f - ph) }
+                "orbit" -> { val ang = (t + i.toFloat() / n) * tw; Triple(0.5f + cos(ang) * 0.38f, 0.42f + sin(ang) * 0.28f, 0.95f) }
+                "spiral" -> { val ang = (ph * 2f + i.toFloat() / n) * tw; val r = 0.05f + ph * 0.42f; Triple(0.5f + cos(ang) * r, 0.45f + sin(ang) * r * 0.8f, 1f - ph) }
+                "zigzag" -> Triple(ph, sy * 0.8f + 0.1f + (if (((ph * 8f).toInt()) % 2 == 0) (ph * 8f % 1f) else 1f - (ph * 8f % 1f)) * 0.06f, 1f - abs(ph - 0.5f) * 1.6f)
+                "shoot" -> Triple(sx * 0.6f - 0.2f + ph * 0.9f, sy * 0.5f - 0.1f + ph * 0.7f, (1f - ph) * (if (ph < 0.08f) ph * 12f else 1f))
+                else -> Triple(sx, 1f - ph, 1f - abs(ph - 0.5f) * 1.6f) // rise
+            }
+            Text(glyphs[i % glyphs.size], fontSize = sz.sp, color = Color.White.copy(alpha = 0.85f),
+                modifier = Modifier.offset(x = w * x, y = h * y).graphicsLayer { alpha = a.coerceIn(0f, 1f); scaleX = scale; scaleY = scale; rotationZ = if (motion == "spiral" || motion == "fall") ph * 360f else 0f })
         }
     }
 }

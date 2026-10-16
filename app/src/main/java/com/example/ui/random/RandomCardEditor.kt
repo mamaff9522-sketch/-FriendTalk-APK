@@ -52,7 +52,7 @@ private val EGold = Color(0xFFFFC94D)
  * VIP editor for the สุ่มหาเพื่อน card. Everything is a draft with a live preview until 'ยืนยันและใช้การ์ดนี้':
  * then media is uploaded, the SERVER prices the changes, the user sees the list + total and confirms, and only then
  * diamonds are taken (server-side) and the card goes public. Closing / cancelling before that costs nothing.
- * Free: photos, background, intro text, positions. Paid: frame, name frame, effect, video, voice — every change.
+ * Free: card photo (fills the card), intro text, positions, name-tag decoration. Paid: frame, name frame, effect, video, voice — every change.
  */
 @Composable
 fun RandomCardEditor(onClose: () -> Unit) {
@@ -69,7 +69,7 @@ fun RandomCardEditor(onClose: () -> Unit) {
     var newBg by remember { mutableStateOf<Uri?>(null) }; var clearBg by remember { mutableStateOf(false) }
     var newVideo by remember { mutableStateOf<Uri?>(null) }; var clearVideo by remember { mutableStateOf(false) }
     var newAudio by remember { mutableStateOf<java.io.File?>(null) }; var clearAudio by remember { mutableStateOf(false) }
-    var sel by remember { mutableStateOf(CardPart.AVATAR) }
+    var sel by remember { mutableStateOf(CardPart.NAME) }
     var tab by remember { mutableIntStateOf(0) }
     var msg by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf("") }
@@ -121,6 +121,7 @@ fun RandomCardEditor(onClose: () -> Unit) {
         val L = card.layout
         fun p(x: Place) = JSONObject().put("x", x.x.toDouble()).put("y", x.y.toDouble()).put("s", x.s.toDouble())
         return JSONObject().put("intro", card.intro.take(200)).put("frame", card.frame).put("nameFrame", card.nameFrame).put("effect", card.effect)
+            .put("nameDeco", card.nameDeco).put("nameColor", card.nameColor)
             .put("layout", JSONObject().put("avatar", p(L.avatar)).put("name", p(L.name)).put("intro", p(L.intro)))
             .apply { refs.forEach { (k, v) -> if (v != null) put(k, v) } }
     }
@@ -188,13 +189,10 @@ fun RandomCardEditor(onClose: () -> Unit) {
                     when (tab) {
                         0 -> {
                             FreeNote()
+                            Text("รูปจะแสดงเต็มการ์ด", color = Color.White.copy(alpha = 0.6f), fontSize = 11.sp, modifier = Modifier.padding(bottom = 6.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Pill("📷 เปลี่ยนรูปโปรไฟล์") { imageTarget = "avatar"; pickImage2.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
-                                Pill("🖼️ เปลี่ยนพื้นหลัง") { imageTarget = "bg"; pickImage2.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
-                            }
-                            Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Pill("📷 เลือกรูปการ์ด") { imageTarget = "avatar"; pickImage2.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                                 if (preview.avatarUrl.isNotBlank()) Pill("ใช้รูปโปรไฟล์ปกติ", ghost = true) { newAvatar = null; clearAvatar = true; dirty = true }
-                                if (preview.bgUrl.isNotBlank()) Pill("ลบพื้นหลัง", ghost = true) { newBg = null; clearBg = true; dirty = true }
                             }
                         }
                         1 -> {
@@ -204,8 +202,31 @@ fun RandomCardEditor(onClose: () -> Unit) {
                             Text("${card.intro.length}/200", color = Color.White.copy(alpha = 0.5f), fontSize = 11.sp)
                         }
                         2 -> Options(c.frames, card.frame, base.frame) { id, item -> card = card.copy(frame = id, frameColors = item?.colors ?: emptyList()); dirty = true }
-                        3 -> Options(c.nameFrames, card.nameFrame, base.nameFrame) { id, item -> card = card.copy(nameFrame = id, nameFrameColors = item?.colors ?: emptyList()); dirty = true }
-                        4 -> Options(c.effects, card.effect, base.effect) { id, item -> card = card.copy(effect = id, effectGlyphs = item?.glyphs ?: emptyList()); dirty = true }
+                        3 -> {
+                            NameFrameOptions(c.nameFrames, card.nameFrame, base.nameFrame, card.nameDeco, card.nameColor) { id, item ->
+                                card = card.copy(nameFrame = id, nameFrameColors = item?.colors ?: emptyList(), nameFrameStyle = item?.style ?: "pill"); dirty = true }
+                            FreeNote()
+                            Text("ตกแต่งกรอบป้ายชื่อ", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Row(Modifier.horizontalScroll(rememberScrollState()).padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                NAME_DECOS.forEach { (g, label) ->
+                                    val on = card.nameDeco == g
+                                    Text(if (g.isBlank()) label else "$g $label", color = Color.White, fontSize = 12.sp, modifier = Modifier.clip(RoundedCornerShape(14.dp))
+                                        .background(if (on) EPink else Color(0x22FFFFFF)).clickable { card = card.copy(nameDeco = g); dirty = true }.padding(horizontal = 10.dp, vertical = 6.dp))
+                                }
+                            }
+                            Text("สีตัวอักษร", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
+                            Row(Modifier.horizontalScroll(rememberScrollState()).padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                NAME_COLORS.forEach { hx ->
+                                    val col = RandomCardRepo.hex(hx)
+                                    Box(Modifier.size(30.dp).clip(CircleShape).background(col ?: Color.White)
+                                        .border(if (card.nameColor == hx) 3.dp else 1.dp, if (card.nameColor == hx) EPink else Color(0x55FFFFFF), CircleShape)
+                                        .clickable { card = card.copy(nameColor = hx); dirty = true }, contentAlignment = Alignment.Center) {
+                                        if (hx.isBlank()) Text("A", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                        4 -> Options(c.effects, card.effect, base.effect) { id, item -> card = card.copy(effect = id, effectGlyphs = item?.glyphs ?: emptyList(), effectMotion = item?.motion ?: "rise"); dirty = true }
                         5 -> {
                             PaidNote(c.videoPrice, "วิดีโอ (ไม่เกิน 30 วินาที) เล่นอัตโนมัติแทนรูปโปรไฟล์")
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -280,20 +301,42 @@ private fun Options(items: List<CardItem>, cur: String, savedId: String, onPick:
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         OptionTile("ไม่ใช้", "ฟรี", null, emptyList(), cur == "none") { onPick("none", null) }
         items.forEach { item ->
-            OptionTile(item.name, if (item.id == savedId) "ใช้อยู่" else "💎${item.price}", item.colors.takeIf { c -> c.size >= 2 }, item.glyphs, cur == item.id) { onPick(item.id, item) }
+            OptionTile(item.name + (if (item.glyphs.isNotEmpty()) MOTION_TH[item.motion]?.let { " · $it" } ?: "" else ""), if (item.id == savedId) "ใช้อยู่" else "💎${item.price}",
+                item.colors.takeIf { c -> c.size >= 2 }, item.glyphs, cur == item.id) { onPick(item.id, item) }
+        }
+    }
+}
+
+private val MOTION_TH = mapOf("rise" to "ลอยขึ้น", "fall" to "โปรยลง", "orbit" to "โคจร", "twinkle" to "กะพริบ", "burst" to "ระเบิด", "sway" to "พลิ้ว",
+    "spiral" to "หมุนวน", "rain" to "ฝนตก", "zigzag" to "บินซิกแซก", "shoot" to "พุ่ง")
+
+/** Name frames shown as real mini name tags, so each shape can be seen before choosing. */
+@Composable
+private fun NameFrameOptions(items: List<CardItem>, cur: String, savedId: String, deco: String, color: String, onPick: (String, CardItem?) -> Unit) {
+    Text("กรอบป้ายชื่อ · คิดเพชรทุกครั้งที่เปลี่ยน", color = Color.White.copy(alpha = 0.6f), fontSize = 11.sp, modifier = Modifier.padding(bottom = 6.dp))
+    Row(Modifier.horizontalScroll(rememberScrollState()).padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Bottom) {
+        (listOf<CardItem?>(null) + items).forEach { item ->
+            val id = item?.id ?: "none"; val on = cur == id
+            Column(Modifier.clip(RoundedCornerShape(12.dp)).background(if (on) Color(0x33FF2FA8) else Color.Transparent)
+                .border(if (on) 2.dp else 0.dp, if (on) EPink else Color.Transparent, RoundedCornerShape(12.dp)).clickable { onPick(id, item) }.padding(6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally) {
+                NameTag("ชื่อ", id, item?.colors ?: emptyList(), 0.7f, item?.style ?: "pill", deco, color)
+                Text(item?.name ?: "ไม่ใช้", color = if (on) EPink else Color.White, fontSize = 11.sp, maxLines = 1, modifier = Modifier.padding(top = 4.dp))
+                Text(when { item == null -> "ฟรี"; item.id == savedId -> "ใช้อยู่"; else -> "💎${item.price}" }, color = Color(0xFF7AF5FF), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
         }
     }
 }
 
 @Composable
 private fun OptionTile(name: String, price: String, colors: List<Color>?, glyphs: List<String>, on: Boolean, onClick: () -> Unit) {
-    Column(Modifier.width(78.dp).clickable(onClick = onClick), horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(Modifier.width(92.dp).clickable(onClick = onClick), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.size(58.dp).clip(CircleShape)
             .background(if (colors != null) Brush.sweepGradient(colors + colors.first()) else Brush.linearGradient(listOf(Color(0x22FFFFFF), Color(0x22FFFFFF))))
             .border(if (on) 3.dp else 1.dp, if (on) Color.White else Color(0x33FFFFFF), CircleShape), contentAlignment = Alignment.Center) {
             if (glyphs.isNotEmpty()) Text(glyphs.first(), fontSize = 24.sp) else if (colors == null) Text("🚫", fontSize = 20.sp)
         }
-        Text(name, color = if (on) EPink else Color.White, fontSize = 11.sp, maxLines = 1, modifier = Modifier.padding(top = 4.dp))
+        Text(name, color = if (on) EPink else Color.White, fontSize = 11.sp, maxLines = 2, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.padding(top = 4.dp))
         Text(price, color = Color(0xFF7AF5FF), fontSize = 11.sp, fontWeight = FontWeight.Bold)
     }
 }

@@ -22,10 +22,14 @@ data class CardLayout(val avatar: Place = Place(0.5f, 0.36f), val name: Place = 
 data class RandomCard(
     val avatarUrl: String = "", val bgUrl: String = "", val intro: String = "", val videoUrl: String = "", val audioUrl: String = "",
     val frame: String = "none", val frameColors: List<Color> = emptyList(), val nameFrame: String = "none", val nameFrameColors: List<Color> = emptyList(),
-    val effect: String = "none", val effectGlyphs: List<String> = emptyList(), val layout: CardLayout = CardLayout()
+    val effect: String = "none", val effectGlyphs: List<String> = emptyList(), val layout: CardLayout = CardLayout(),
+    /** shape of the name frame (pill, neon, ribbon, bubble, badge, glitter, outline, royal, cloud, tag) and how the effect moves */
+    val nameFrameStyle: String = "pill", val effectMotion: String = "rise",
+    /** free decoration of the name tag: sticker glyph + text colour (#RRGGBB, blank = white) */
+    val nameDeco: String = "", val nameColor: String = ""
 )
 
-data class CardItem(val id: String, val name: String, val price: Int, val colors: List<Color>, val glyphs: List<String>)
+data class CardItem(val id: String, val name: String, val price: Int, val colors: List<Color>, val glyphs: List<String>, val style: String = "pill", val motion: String = "rise")
 data class CardCatalog(val enabled: Boolean, val videoPrice: Int, val audioPrice: Int, val frames: List<CardItem>, val nameFrames: List<CardItem>,
                        val effects: List<CardItem>, val vip: Boolean, val diamonds: Int)
 
@@ -42,7 +46,8 @@ object RandomCardRepo {
         return RandomCard(o.optString("avatarUrl"), o.optString("bgUrl"), o.optString("intro"), o.optString("videoUrl"), o.optString("audioUrl"),
             o.optString("frame", "none"), colors(o.optJSONArray("frameColors")), o.optString("nameFrame", "none"), colors(o.optJSONArray("nameFrameColors")),
             o.optString("effect", "none"), strs(o.optJSONArray("effectGlyphs")),
-            CardLayout(place(l?.optJSONObject("avatar"), d.avatar), place(l?.optJSONObject("name"), d.name), place(l?.optJSONObject("intro"), d.intro)))
+            CardLayout(place(l?.optJSONObject("avatar"), d.avatar), place(l?.optJSONObject("name"), d.name), place(l?.optJSONObject("intro"), d.intro)),
+            o.optString("nameFrameStyle", "pill"), o.optString("effectMotion", "rise"), o.optString("nameDeco"), o.optString("nameColor"))
     }
 
     sealed class Next {
@@ -69,7 +74,7 @@ object RandomCardRepo {
         val u = user() ?: return null
         val j = BrainApi.call(u, "GET", "/randomcard/catalog").json ?: return null
         fun list(k: String) = j.optJSONArray(k)?.let { a -> (0 until a.length()).map { a.getJSONObject(it) }.map {
-            CardItem(it.optString("id"), it.optString("name"), it.optInt("price"), colors(it.optJSONArray("colors")), strs(it.optJSONArray("glyphs"))) } } ?: emptyList()
+            CardItem(it.optString("id"), it.optString("name"), it.optInt("price"), colors(it.optJSONArray("colors")), strs(it.optJSONArray("glyphs")), it.optString("style", "pill"), it.optString("motion", "rise")) } } ?: emptyList()
         return CardCatalog(j.optBoolean("enabled", true), j.optInt("videoPrice"), j.optInt("audioPrice"), list("frames"), list("nameFrames"), list("effects"), j.optBoolean("vip"), j.optInt("diamonds"))
     }
     data class Mine(val card: RandomCard?, val videoRef: String, val audioRef: String)
