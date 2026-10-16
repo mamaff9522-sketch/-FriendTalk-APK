@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -32,7 +33,7 @@ import kotlinx.coroutines.launch
 
 
 /**
- * สุ่มหาเพื่อน: a big turtle in the middle — tap it, it spins while searching, then the person's intro card shows
+ * สุ่มหาเพื่อน: a big dice in the middle — tap it, it rolls while searching, then the person's intro card shows
  * (photo/video, name, age, intro, voice greeting, VIP frame / name frame / effect). ❤️ = like → chat, 💔 = next one.
  * No timer. 'แต่งหน้าสุ่ม' (VIP) opens the card editor. If nobody fits, a labelled AI character may show (as before).
  */
@@ -54,7 +55,7 @@ fun RandomMatchView(users: List<User>, onStartChatWithUser: (User) -> Unit) {
         scope.launch {
             val t0 = System.currentTimeMillis()
             val r = com.example.ui.random.RandomCardRepo.next(skipped)
-            val wait = 1200 - (System.currentTimeMillis() - t0) // let the turtle spin a little
+            val wait = 1200 - (System.currentTimeMillis() - t0) // let the dice roll a little
             if (wait > 0) kotlinx.coroutines.delay(wait)
             searching = false
             if (r is com.example.ui.random.RandomCardRepo.Next.Nobody) status = r.msg else result = r
@@ -117,32 +118,49 @@ fun RandomMatchView(users: List<User>, onStartChatWithUser: (User) -> Unit) {
             }
             else -> {
                 Spacer(Modifier.height(36.dp))
-                Turtle(searching) { roll() }
+                Dice(searching) { roll() }
             }
         }
         if (searching && r == null) Text("กำลังหาเพื่อนให้คุณ…", color = Slate300, fontSize = 13.sp, modifier = Modifier.padding(top = 10.dp))
         if (status.isNotBlank()) Text(status, color = Amber400, fontSize = 13.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.padding(top = 10.dp))
-        if (r != null) Text("แตะ 🐢 ด้านล่างเพื่อกลับไปหน้าสุ่ม", color = Slate400, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp).clickable { result = null })
+        if (r != null) Text("แตะตรงนี้เพื่อกลับไปหน้าลูกเต๋า 🎲", color = Slate400, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp).clickable { result = null })
     }
     if (editor) com.example.ui.random.RandomCardEditor(onClose = { editor = false })
     if (vipInfo) com.example.ui.feed.VipDetailsDialog { vipInfo = false }
 }
 
-/** Big turtle; spins while searching. */
+/** Big dice in the middle; tumbles and flips through its faces while searching. */
 @Composable
-private fun Turtle(spinning: Boolean, onTap: () -> Unit) {
-    val inf = androidx.compose.animation.core.rememberInfiniteTransition(label = "turtle")
-    val spin by inf.animateFloat(0f, 360f, androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(700, easing = androidx.compose.animation.core.LinearEasing)), label = "spin")
+private fun Dice(rolling: Boolean, onTap: () -> Unit) {
+    val inf = androidx.compose.animation.core.rememberInfiniteTransition(label = "dice")
+    val spin by inf.animateFloat(0f, 360f, androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(650, easing = androidx.compose.animation.core.LinearEasing)), label = "spin")
     val bob by inf.animateFloat(-6f, 6f, androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(1400), androidx.compose.animation.core.RepeatMode.Reverse), label = "bob")
+    var face by remember { mutableStateOf(5) }
+    LaunchedEffect(rolling) { while (rolling) { face = (1..6).random(); kotlinx.coroutines.delay(110) } }
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.size(230.dp).clip(CircleShape)
-            .background(androidx.compose.ui.graphics.Brush.radialGradient(listOf(androidx.compose.ui.graphics.Color(0x6634D399), androidx.compose.ui.graphics.Color(0x2210B981), androidx.compose.ui.graphics.Color.Transparent)))
-            .clickable(enabled = !spinning, onClick = onTap), contentAlignment = Alignment.Center) {
-            androidx.compose.material3.Text("🐢", fontSize = 140.sp, modifier = Modifier.graphicsLayer {
-                if (spinning) rotationZ = spin else translationY = bob
-            })
+            .background(androidx.compose.ui.graphics.Brush.radialGradient(listOf(androidx.compose.ui.graphics.Color(0x66FF2FA8), androidx.compose.ui.graphics.Color(0x229B3DFF), androidx.compose.ui.graphics.Color.Transparent)))
+            .clickable(enabled = !rolling, onClick = onTap), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(132.dp).graphicsLayer {
+                cameraDistance = 12f * density
+                if (rolling) { rotationZ = spin; rotationX = spin * 2f; rotationY = spin } else { translationY = bob; rotationZ = -8f }
+            }.clip(androidx.compose.foundation.shape.RoundedCornerShape(28.dp))
+                .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(androidx.compose.ui.graphics.Color.White, androidx.compose.ui.graphics.Color(0xFFFFE3F2))))
+                .border(3.dp, androidx.compose.ui.graphics.Color(0xFFFF8FCB), androidx.compose.foundation.shape.RoundedCornerShape(28.dp))) {
+                androidx.compose.foundation.Canvas(Modifier.fillMaxSize().padding(18.dp)) {
+                    val w = size.width; val r = w * 0.11f
+                    val pos = mapOf(1 to listOf(0.5f to 0.5f), 2 to listOf(0.15f to 0.15f, 0.85f to 0.85f), 3 to listOf(0.15f to 0.15f, 0.5f to 0.5f, 0.85f to 0.85f),
+                        4 to listOf(0.15f to 0.15f, 0.85f to 0.15f, 0.15f to 0.85f, 0.85f to 0.85f),
+                        5 to listOf(0.15f to 0.15f, 0.85f to 0.15f, 0.5f to 0.5f, 0.15f to 0.85f, 0.85f to 0.85f),
+                        6 to listOf(0.15f to 0.15f, 0.85f to 0.15f, 0.15f to 0.5f, 0.85f to 0.5f, 0.15f to 0.85f, 0.85f to 0.85f))
+                    pos.getValue(face).forEach { (x, y) ->
+                        drawCircle(if (face == 1) androidx.compose.ui.graphics.Color(0xFFFF2F6E) else androidx.compose.ui.graphics.Color(0xFFB0307E), r * (if (face == 1) 1.5f else 1f),
+                            androidx.compose.ui.geometry.Offset(w * x, size.height * y))
+                    }
+                }
+            }
         }
-        Text(if (spinning) "กำลังสุ่ม…" else "กดสุ่ม", color = White, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(top = 6.dp))
+        Text(if (rolling) "กำลังสุ่ม…" else "กดสุ่ม", color = White, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(top = 6.dp))
     }
 }
 
