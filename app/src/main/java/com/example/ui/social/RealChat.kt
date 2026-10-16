@@ -251,9 +251,7 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                 Box(Modifier.fillMaxWidth().background(AppThemeMode.dialog), contentAlignment = Alignment.Center) { com.example.ads.PlacementBanner("chatRoom") }
                 if (isFriend == false) Row(Modifier.fillMaxWidth().background(AppThemeMode.card).padding(horizontal = 14.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(tr("คุณยังไม่ได้เป็นเพื่อนกัน"), color = AppThemeMode.muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                    Box(Modifier.clip(RoundedCornerShape(14.dp)).background(Brush.linearGradient(listOf(Color(0xFFFF2FA8), Color(0xFF9B3DFF))))
-                        .clickable { scope.launch { status = if (com.example.social.NearbyRepo.requestFriend(otherUid) != null) tr("ส่งคำขอเป็นเพื่อนแล้ว") else tr("ส่งคำขอไม่สำเร็จ"); csTick++ } }
-                        .padding(horizontal = 12.dp, vertical = 5.dp)) { Text(tr("➕ เพิ่มเพื่อน"), color = PureWhite, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                    if (otherUid.isNotBlank()) FriendButton(otherUid, small = true, onSent = { csTick++ }, onError = { status = it })
                 }
                 decorState?.hiddenReason?.takeIf { it.isNotBlank() }?.let { Text("✨ $it", color = Slate400, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 12.dp)) }
                 Box(Modifier.weight(1f).background(chatPageBrush())) {

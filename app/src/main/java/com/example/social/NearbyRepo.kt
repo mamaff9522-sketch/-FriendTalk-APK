@@ -54,6 +54,12 @@ object NearbyRepo {
         val r = BrainApi.call(u, "POST", "/friends/request", JSONObject().put("toUid", toUid))
         return if (r.code == 200) r.json?.optString("status") else null
     }
+    /** friends / requested (I asked) / incoming (they asked me) / none / self; null = unknown (offline, old server). */
+    suspend fun friendStatus(otherUid: String): String? {
+        val u = user() ?: return null
+        val r = BrainApi.call(u, "GET", "/friends/status/$otherUid")
+        return if (r.code == 200) r.json?.optString("status")?.ifBlank { null } else null
+    }
     suspend fun respond(fromUid: String, accept: Boolean): String? {
         val u = user() ?: return null
         val r = BrainApi.call(u, "POST", "/friends/respond", JSONObject().put("fromUid", fromUid).put("accept", accept))

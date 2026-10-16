@@ -1949,6 +1949,13 @@ app.get('/friends', w(async (q, r) => {
   const [profiles, st] = await Promise.all([Promise.all(ids.map(summary)), Promise.all(ids.map(id => db.ref(`status/${id}`).get()))]);
   r.json({ friends: profiles.map((p, i) => p && { ...p, online: (s => !!s && s.online === true && s.hidden !== true)(st[i].val()) }).filter(Boolean) });
 }));
+// Friend state with one person, for the 'เพิ่มเพื่อน' button: friends / requested (I asked) / incoming (they asked me) / none.
+app.get('/friends/status/:uid', w(async (q, r) => {
+  const o = q.params.uid; if (!UID_RE.test(o)) return r.status(400).json({ error: 'bad uid' });
+  if (o === q.uid) return r.json({ status: 'self' });
+  const [f, out, inc] = await Promise.all([db.ref(`friends/${q.uid}/${o}`).get(), db.ref(`friendRequests/${o}/${q.uid}`).get(), db.ref(`friendRequests/${q.uid}/${o}`).get()]);
+  r.json({ status: f.exists() ? 'friends' : out.exists() ? 'requested' : inc.exists() ? 'incoming' : 'none' });
+}));
 app.get('/friends/requests', w(async (q, r) => {
   const reqs = (await db.ref(`friendRequests/${q.uid}`).get()).val() || {};
   const out = [];

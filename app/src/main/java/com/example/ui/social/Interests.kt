@@ -135,11 +135,8 @@ fun UserProfileDialog(uid: String, distance: String? = null, onDismiss: () -> Un
                     }
                 }
                 Spacer(Modifier.height(12.dp))
-                if (uid != FirebaseAuth.getInstance().currentUser?.uid) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { scope.launch {
-                        val r = InterestsRepo.sendFriendRequest(uid)
-                        if (r == null) msg = "ส่งคำขอไม่สำเร็จ" else sent = r
-                    } }, colors = ButtonDefaults.buttonColors(containerColor = Purple600)) { Text("เพิ่มเพื่อน") }
+                if (uid != FirebaseAuth.getInstance().currentUser?.uid) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    FriendButton(uid, onSent = { sent = it }, onError = { msg = it }) // เพิ่มเพื่อน → ส่งคำขอแล้ว → เพื่อน
                     Button(onClick = { scope.launch {
                         val cid = SocialRepo.openChatWith(uid)
                         if (cid != null) { onDismiss(); SocialRepo.openChat.value = cid } else msg = SocialRepo.lastOpenError.ifBlank { "เปิดแชทไม่สำเร็จ" }
