@@ -13,11 +13,12 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 data class CatalogItem(val id: String, val name: String, val price: Int, val imageUrl: String, val icon: String,
-                       val category: String, val enabled: Boolean, val order: Int, val animationEffect: String = "POP")
+                       val category: String, val enabled: Boolean, val order: Int, val animationEffect: String = "POP",
+                       /** animated effect (GIF / WebP) — เปย์เปิดใจ gifts */ val effectUrl: String = "")
 
 /** Gift catalog (live / vip / chat / stickers), chat gifts and VIP room decor — all via brain + RTDB catalog/. */
 object GiftRepo {
-    val CHANNELS = listOf("chat" to "แชท", "live" to "ไลฟ์", "vip" to "VIP", "stickers" to "สติกเกอร์ห้อง", "chatStickers" to "สติกเกอร์แชท")
+    val CHANNELS = listOf("chat" to "แชท", "live" to "ไลฟ์", "vip" to "VIP", "stickers" to "สติกเกอร์ห้อง", "chatStickers" to "สติกเกอร์แชท", "payopen" to "เปย์เปิดใจ")
     private val db by lazy { FirebaseDatabase.getInstance(SocialRepo.DB_URL) }
     private fun user() = FirebaseAuth.getInstance().currentUser
 
@@ -62,7 +63,7 @@ object GiftRepo {
         val u = user() ?: return emptyList<CatalogItem>() to 0
         val r = BrainApi.call(u, "GET", "/admin/catalog/$ch?page=$page&size=$size"); val a = r.json?.optJSONArray("items") ?: return emptyList<CatalogItem>() to 0
         return (0 until a.length()).map { a.getJSONObject(it) }.map { o ->
-            CatalogItem(o.optString("id"), o.optString("name"), o.optInt("price"), o.optString("imageUrl"), o.optString("icon"), o.optString("category"), o.optBoolean("enabled", true), o.optInt("order"), o.optString("animationEffect", "POP"))
+            CatalogItem(o.optString("id"), o.optString("name"), o.optInt("price"), o.optString("imageUrl"), o.optString("icon"), o.optString("category"), o.optBoolean("enabled", true), o.optInt("order"), o.optString("animationEffect", "POP"), o.optString("effectUrl"))
         } to (r.json?.optInt("total") ?: 0)
     }
     suspend fun adminSave(ch: String, it: CatalogItem): Res {

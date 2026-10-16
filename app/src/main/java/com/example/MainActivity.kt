@@ -562,6 +562,7 @@ fun FriendTalkApp(
 
     com.example.ads.AdRoomHost()
     com.example.rtc.RtcHost()
+    com.example.ui.payopen.PayOpenHost()
     val askInterests by com.example.ui.social.InterestsPrompt.show.collectAsStateWithLifecycle()
     if (askInterests) com.example.ui.social.InterestsEditorDialog(onDismiss = { com.example.ui.social.InterestsPrompt.show.value = false }, skippable = true)
 

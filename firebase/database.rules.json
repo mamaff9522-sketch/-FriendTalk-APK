@@ -175,6 +175,21 @@
         ".write": false
       }
     },
+    "payOpenInbox": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": false
+      }
+    },
+    "payOpenResults": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": false
+      }
+    },
+    "payOpens": {
+      ".indexOn": ["state"]
+    },
     "liveViewers": {
       ".read": "(auth != null) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
       "$liveId": {

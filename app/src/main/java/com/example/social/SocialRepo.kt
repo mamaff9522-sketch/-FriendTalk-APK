@@ -266,6 +266,22 @@ object SocialRepo {
         }
     }
 
+    /** Swipe deck: online people only (server-side), each with their สุ่มหาเพื่อน intro card (null = plain profile). null = could not load. */
+    suspend fun swipeDeck(): List<Pair<RealProfile, com.example.ui.random.RandomCard?>>? {
+        val u = FirebaseAuth.getInstance().currentUser ?: return null
+        val r = BrainApi.call(u, "GET", "/swipe/candidates?limit=20")
+        val arr = r.json?.optJSONArray("candidates") ?: return if (r.code == 200) emptyList() else null
+        return (0 until arr.length()).map { i ->
+            val o = arr.getJSONObject(i)
+            val ints = o.optJSONArray("interests")
+            RealProfile(o.optString("uid"), o.optString("displayName"), o.optString("username"), o.optString("avatar"),
+                o.optString("bio"), if (o.isNull("age")) null else o.optInt("age"), o.optString("gender"),
+                if (ints == null) emptyList() else (0 until ints.length()).map { ints.optString(it) },
+                similarity = InterestsRepo.parseSim(o.optJSONObject("similarity")), distance = o.optString("distance")) to
+                com.example.ui.random.RandomCardRepo.parseCard(o.optJSONObject("card"))
+        }
+    }
+
     data class SwipeResult(val ok: Boolean, val matched: Boolean, val chatId: String?)
     suspend fun swipe(targetUid: String, action: String): SwipeResult {
         val u = FirebaseAuth.getInstance().currentUser ?: return SwipeResult(false, false, null)

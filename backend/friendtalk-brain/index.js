@@ -58,7 +58,7 @@ async function isSuper(req, res, next) {
   req.role = r; next();
 }
 const w = fn => (q, r, n) => fn(q, r, n).catch(e => { console.error(e.message); r.status(e.code === 404 ? 404 : 500).json({ error: e.code === 404 ? 'user not found' : 'internal' }); });
-app.use(['/push', '/coins', '/age', '/config', '/admin', '/superadmin', '/me', '/match', '/bot', '/ui', '/chats', '/swipe', '/posts', '/feed', '/friends', '/radar', '/shake', '/limits', '/quota', '/search', '/users', '/interests', '/bots', '/gifts', '/rooms', '/reports', '/creator', '/blocks', '/chat-rules', '/companion-apply', '/companion', '/shop', '/follow', '/views', '/withdraw', '/onboarding', '/idv', '/chat-send', '/rtc', '/calls', '/lives', '/vip', '/discover', '/anon', '/notifications', '/random', '/randomcard'], w(auth));
+app.use(['/push', '/coins', '/age', '/config', '/admin', '/superadmin', '/me', '/match', '/bot', '/ui', '/chats', '/swipe', '/posts', '/feed', '/friends', '/radar', '/shake', '/limits', '/quota', '/search', '/users', '/interests', '/bots', '/gifts', '/rooms', '/reports', '/creator', '/blocks', '/chat-rules', '/companion-apply', '/companion', '/shop', '/follow', '/views', '/withdraw', '/onboarding', '/idv', '/chat-send', '/rtc', '/calls', '/lives', '/vip', '/discover', '/anon', '/notifications', '/random', '/randomcard', '/payopen'], w(auth));
 app.get('/me', w(async (q, r) => {
   const dh = String(q.get('X-Device-Hash') || ''); if (/^[a-f0-9]{16,64}$/.test(dh)) { db.ref(`deviceOf/${q.uid}`).set(dh).catch(() => {}); db.ref(`devices/${dh}/${q.uid}`).set(Date.now()).catch(() => {}); }
   // Safeguard: if /roles has no superadmin at all (data loss), re-seed it for the configured owner email (verified Google sign-in only; server-side).
@@ -93,7 +93,7 @@ const PART_OF = q => {
   if (/^\/(match|random)(\/|$)/.test(p)) return 'random';
   if (/^\/(shake|anon)(\/|$)/.test(p)) return 'shake';
   if (/^\/radar(\/|$)/.test(p)) return 'radar';
-  if (/^\/swipe(\/|$)/.test(p)) return 'swipe';
+  if (/^\/(swipe|payopen)(\/|$)/.test(p)) return 'swipe';
   if (/^\/interests\/(similar|match)/.test(p)) return 'similar';
   if (/^\/friends\/(request|respond|requests)/.test(p)) return 'requests';
   if (/^\/search(\/|$)/.test(p)) return 'discover';
@@ -363,7 +363,7 @@ app.post('/companion/chats/:chatId/send', w(notBanned), w(async (q, r) => {
     }
   }
   const t = Date.now(), id = db.ref(`messages/${chatId}`).push().key;
-  await db.ref().update({ [`messages/${chatId}/${id}`]: { senderUid: q.uid, at: t, text }, [`chats/${chatId}/lastMessage`]: text.slice(0, 100), [`chats/${chatId}/lastAt`]: t, [`chats/${chatId}/lastSenderUid`]: q.uid });
+  await db.ref().update({ [`messages/${chatId}/${db.ref(`messages/${chatId}`).push().key}`]: { senderUid: q.uid, at: t, text }, [`chats/${chatId}/lastMessage`]: text.slice(0, 100), [`chats/${chatId}/lastAt`]: t, [`chats/${chatId}/lastSenderUid`]: q.uid });
   r.json({ id, charged, balance });
 }));
 // เพื่อนคุย ratings: only payers (companionPaid) can rate; one per user per partner (editable); aggregate on companions/{p}/rating.
@@ -491,7 +491,7 @@ app.post('/chat-send/:chatId', w(notBanned), w(async (q, r) => {
   const m = await moderateText(q.uid, text, { kind: 'chat', chatId, ref: chatId });
   if (!m.ok) return r.status(422).json({ code: 'moderated', error: m.message, flags: m.flags });
   const t = Date.now(), id = db.ref(`messages/${chatId}`).push().key;
-  await db.ref().update({ [`messages/${chatId}/${id}`]: { senderUid: q.uid, at: t, text }, [`chats/${chatId}/lastMessage`]: text.slice(0, 100), [`chats/${chatId}/lastAt`]: t, [`chats/${chatId}/lastSenderUid`]: q.uid });
+  await db.ref().update({ [`messages/${chatId}/${db.ref(`messages/${chatId}`).push().key}`]: { senderUid: q.uid, at: t, text }, [`chats/${chatId}/lastMessage`]: text.slice(0, 100), [`chats/${chatId}/lastAt`]: t, [`chats/${chatId}/lastSenderUid`]: q.uid });
   r.json({ id, warning: m.warn ? m.message : '' });
 }));
 app.get('/admin/moderation', perm('manage_content'), w(async (q, r) => {
@@ -1576,15 +1576,17 @@ const publicProfile = (uid, u) => ({ uid, displayName: u.displayName || '', user
   cover: u.cover || '', province: u.province || '', occupation: u.occupation || '', lookingFor: Array.isArray(u.lookingFor) ? u.lookingFor : [] });
 app.get('/swipe/candidates', w(notBanned), w(async (q, r) => {
   const limit = Math.min(20, Math.max(1, parseInt(q.query.limit || '10', 10)));
-  const [users, swiped, bans] = await Promise.all([db.ref('users').get(), db.ref(`swipes/${q.uid}`).get(), db.ref('bans').get()]);
-  const s = swiped.val() || {}, b = bans.val() || {}, now = Date.now();
+  // Only people online right now (presence status/{uid}, not hidden) — the swipe page is a live 'who is here' deck.
+  const [users, swiped, bans, st] = await Promise.all([db.ref('users').get(), db.ref(`swipes/${q.uid}`).get(), db.ref('bans').get(), db.ref('status').orderByChild('online').equalTo(true).get()]);
+  const s = swiped.val() || {}, b = bans.val() || {}, now = Date.now(), online = new Set();
+  st.forEach(c => { const v = c.val(); if (v && v.online === true && v.hidden !== true) online.add(c.key); });
   const icfg = await getInterestCfg(), mineIp = (users.val() || {})[q.uid]?.interestProfile || {};
   // Distance only between people who both opened the radar (their own consent) in the last 24 h, rounded like the radar.
   const [meR, radarAll] = await Promise.all([db.ref(`radar/${q.uid}`).get(), db.ref('radar').get()]);
   const me = meR.val(), rad = radarAll.val() || {}, LOC_MS = 24 * 3600 * 1000, RECYCLE_MS = 24 * 3600 * 1000, sf = readFilter(q);
   const out = [];
   for (const [uid, u] of Object.entries(users.val() || {})) {
-    if (uid === q.uid || !u || !u.displayName) continue;
+    if (uid === q.uid || !u || !u.displayName || !online.has(uid)) continue;
     // Likes stay out; people passed more than a day ago come back (small user base at launch).
     const sw = s[uid]; if (sw && (sw.action !== 'pass' || now - num(sw.at) < RECYCLE_MS)) continue;
     const ban = b[uid]; if (ban && (!ban.until || ban.until > now)) continue;
@@ -1597,7 +1599,9 @@ app.get('/swipe/candidates', w(notBanned), w(async (q, r) => {
   }
   // New faces first, then nearest, then most similar.
   out.sort((x, y) => (x._seen - y._seen) || (x._km - y._km) || (y.similarity.score - x.similarity.score));
-  r.json({ candidates: out.slice(0, limit).map(({ _km, _seen, ...x }) => x) });
+  const top = out.slice(0, limit);
+  const cards = await Promise.all(top.map(x => db.ref(`randomCards/${x.uid}`).get().then(c => rcPublic(c.val())).catch(() => null)));
+  r.json({ candidates: top.map(({ _km, _seen, ...x }, i) => ({ ...x, online: true, card: cards[i] })) });
 }));
 app.post('/swipe', w(notBanned), w(async (q, r) => {
   const { targetUid, action } = q.body || {};
@@ -2290,7 +2294,8 @@ app.post('/anon/:id/leave', w(async (q, r) => {
 }));
 // ===== Gift catalog (live / vip / chat) + stickers; admin-managed, images in Storage giftAssets/{id}.webp =====
 // chatStickers = free stickers users send as chat messages (admin uploads them); stickers = VIP room-decor stickers
-const CHANNELS = ['live', 'vip', 'chat', 'stickers', 'chatStickers'];
+// payopen = 'เปย์เปิดใจ' gifts on the swipe page (picture + optional animated effect GIF/WebP)
+const CHANNELS = ['live', 'vip', 'chat', 'stickers', 'chatStickers', 'payopen'];
 const FREE_OK = ['stickers', 'chatStickers'];
 const ITEM_ID = /^[A-Za-z0-9_-]{1,40}$/;
 const SEED_LIVE = [
@@ -2392,7 +2397,7 @@ const GIFT_CFG_SEED = { enabled: true, autoFriend: true, adminPercent: 20, recip
 async function giftCfg() { return { ...GIFT_CFG_SEED, ...((await db.ref('appConfig/gifts').get()).val() || {}) }; }
 const assetUrl = id => `https://friendtalk-brain-123224091480.asia-southeast1.run.app/gift-assets/${id}`;
 app.get('/gift-assets/:id', w(async (q, r) => {
-  if (!ITEM_ID.test(q.params.id)) return r.status(400).end();
+  if (!/^[A-Za-z0-9_-]{1,90}$/.test(q.params.id)) return r.status(400).end();
   const file = admin.storage().bucket(STORAGE_BUCKET).file(`giftAssets/${q.params.id}.webp`);
   const [meta] = await file.getMetadata().catch(() => [null]);
   if (!meta) return r.status(404).end();
@@ -2419,6 +2424,7 @@ app.put('/admin/catalog/:ch/:id', catPerm, w(notBanned), w(async (q, r) => {
   if (!Number.isInteger(order)) order = Object.keys((await db.ref(`catalog/${ch}`).get()).val() || {}).length;
   const item = { name, price, category: String(b.category || cur.category || ch).slice(0, 30), enabled: b.enabled !== false, order,
     icon: String(b.icon ?? cur.icon ?? '').slice(0, 8), animationEffect: String(b.animationEffect ?? cur.animationEffect ?? 'POP').slice(0, 12), imagePath: cur.imagePath || '', imageUrl: cur.imageUrl || '', updatedAt: Date.now(), updatedBy: q.uid };
+  if (cur.effectUrl) { item.effectUrl = cur.effectUrl; item.effectPath = cur.effectPath || ''; }
   await ref.set(item); r.json({ id, ...item });
 }));
 app.put('/admin/catalog/:ch/:id/image', catPerm, express.raw({ type: 'image/*', limit: '600kb' }), w(async (q, r) => {
@@ -2434,10 +2440,31 @@ app.put('/admin/catalog/:ch/:id/image', catPerm, express.raw({ type: 'image/*', 
   await ref.update({ imagePath: `giftAssets/${fileId}.webp`, imageUrl: url });
   r.json({ imageUrl: url, bytes: buf.length });
 }));
+// Animated effect for a gift (GIF / animated WebP / PNG, ≤ 2 MB) — plays in the middle of the recipient's screen (เปย์เปิดใจ).
+app.put('/admin/catalog/:ch/:id/effect', catPerm, express.raw({ type: 'image/*', limit: '2100kb' }), w(async (q, r) => {
+  const { ch, id } = q.params; if (!CHANNELS.includes(ch) || !ITEM_ID.test(id)) return r.status(400).json({ error: 'bad channel/id' });
+  const ref = db.ref(`catalog/${ch}/${id}`); if (!(await ref.get()).exists()) return r.status(404).json({ error: 'save item first' });
+  const buf = q.body; if (!Buffer.isBuffer(buf) || !buf.length) return r.status(400).json({ error: 'image body required' });
+  if (buf.length > 2 * 1024 * 1024) return r.status(413).json({ error: 'effect too large (max 2MB)' });
+  const isWebp = buf.slice(0, 4).toString() === 'RIFF' && buf.slice(8, 12).toString() === 'WEBP', isPng = buf[0] === 0x89 && buf[1] === 0x50, isGif = buf.slice(0, 3).toString() === 'GIF';
+  if (!isWebp && !isPng && !isGif) return r.status(400).json({ error: 'gif, webp or png only' });
+  const fileId = `${ch}_${id}_fx`;
+  await admin.storage().bucket(STORAGE_BUCKET).file(`giftAssets/${fileId}.webp`).save(buf, { contentType: isGif ? 'image/gif' : isWebp ? 'image/webp' : 'image/png', resumable: false });
+  const url = `${assetUrl(fileId)}?v=${Date.now()}`;
+  await ref.update({ effectPath: `giftAssets/${fileId}.webp`, effectUrl: url });
+  r.json({ effectUrl: url, bytes: buf.length });
+}));
+app.delete('/admin/catalog/:ch/:id/effect', catPerm, w(async (q, r) => {
+  const { ch, id } = q.params; if (!CHANNELS.includes(ch) || !ITEM_ID.test(id)) return r.status(400).json({ error: 'bad channel/id' });
+  await db.ref(`catalog/${ch}/${id}`).update({ effectUrl: null, effectPath: null });
+  await admin.storage().bucket(STORAGE_BUCKET).file(`giftAssets/${ch}_${id}_fx.webp`).delete().catch(() => {});
+  r.json({ ok: true });
+}));
 app.delete('/admin/catalog/:ch/:id', catPerm, w(async (q, r) => {
   const { ch, id } = q.params; if (!CHANNELS.includes(ch) || !ITEM_ID.test(id)) return r.status(400).json({ error: 'bad channel/id' });
   await db.ref(`catalog/${ch}/${id}`).remove();
   await admin.storage().bucket(STORAGE_BUCKET).file(`giftAssets/${ch}_${id}.webp`).delete().catch(() => {});
+  await admin.storage().bucket(STORAGE_BUCKET).file(`giftAssets/${ch}_${id}_fx.webp`).delete().catch(() => {});
   r.json({ deleted: id });
 }));
 app.post('/admin/catalog/:ch/order', catPerm, w(async (q, r) => {
@@ -2533,6 +2560,185 @@ app.get('/gifts/wallet', w(async (q, r) => {
   const [c, dm, p] = await Promise.all([db.ref(`wallets/${q.uid}/coins`).get(), db.ref(`wallets/${q.uid}/diamonds`).get(), pendingSum(q.uid)]);
   // Gifts are priced/paid in diamonds; pending = diamonds reserved by unaccepted gifts.
   r.json({ coins: num(c.val()), diamonds: num(dm.val()), pending: p, available: num(dm.val()) - p, currency: 'diamonds' });
+}));
+// ===== เปย์เปิดใจ (swipe page): send a gift → recipient has 10 s to accept =====
+// Diamonds are taken at send (escrow on payOpens/{id}); accept → recipient share + system share, friends both ways, chat opened;
+// reject / no answer by the deadline → full refund to the sender. Exactly one outcome per gift: state pending → settling → accepted|refunded,
+// the money and the final state are written together in ONE multi-path update (ServerValue.increment), so nothing is charged or refunded twice.
+// payOpenInbox/{to}/{id} (recipient's app shows the effect + buttons), payOpenResults/{from}/{id} (sender's app plays the refund effect).
+const PO_ID = /^po[0-9a-z]{8,40}$/;
+const PO_MS = 30000; // ~4 s effect + 10 s countdown on screen + slack for slow networks; the server is the clock that matters
+const inc = n => admin.database.ServerValue.increment(n);
+const PO_SEED = [ // pack picture, name, price, its own effect style (app draws a different show for each)
+  ['wingheart', 'หัวใจวิ้ง', 20, 'HEARTS'], ['luckystar', 'ดาวนำโชค', 30, 'STARS'], ['loveballoon', 'ลูกโป่งรัก', 40, 'BALLOONS'], ['teddy', 'ตุ๊กตาหมี', 50, 'BOUNCE'],
+  ['bubbletea', 'ชานมไข่มุก', 60, 'BUBBLES'], ['bouquet', 'ช่อดอกไม้', 80, 'PETALS'], ['lovekey', 'กุญแจรัก', 100, 'ORBIT'], ['rainbow', 'สายรุ้ง', 120, 'RAINBOW'],
+  ['butterfly', 'ผีเสื้อคริสตัล', 150, 'BUTTERFLY'], ['diamondring', 'แหวนเพชร', 300, 'SPARKLE'], ['goldcrown', 'มงกุฎทอง', 500, 'ROYAL'], ['rocket', 'จรวดทะยานฟ้า', 800, 'FIREWORK']];
+(async () => {
+  try {
+    const flag = await db.ref('appConfig/payOpenPackV1').transaction(c => (c ? undefined : { at: Date.now() }));
+    if (!flag.committed) return; // added once; admins own the list afterwards
+    const t = Date.now(), upd = {};
+    PO_SEED.forEach(([pic, name, price, fx], i) => { upd[`catalog/payopen/po_${pic}`] = { name, icon: '', price, animationEffect: fx, category: 'payopen', enabled: true, order: i, imagePath: '', imageUrl: `${PACK_URL}${pic}.webp?v=4`, updatedAt: t, updatedBy: 'system' }; });
+    await db.ref().update(upd).catch(async e => { await db.ref('appConfig/payOpenPackV1').remove().catch(() => {}); throw e; });
+  } catch (e) { console.error('seed payopen', e.message); }
+})();
+// Voices: appConfig/payOpenVoices/{id} {text, gender male|female, kind arrival|refund, audioUrl, audioPath, order}. No audio → the app speaks the text (on-device TTS, free).
+const PO_REFUND_LINES = ['แห้วเลยจ้า~', 'ขอโทษนะจ๊ะ~', 'ไว้ลองใหม่เนอะ~', 'อุ๊ย! นกแล้วจ้า~', 'ยังไม่ใช่เนื้อคู่จ้า~', 'เพชรกลับมาแล้วจ้า~', 'อย่าเพิ่งเสียใจน้า~', 'จีบใหม่อีกทีนะ~'];
+(async () => {
+  try {
+    await db.ref('appConfig/payOpenVoices').transaction(c => {
+      if (c !== null) return undefined;
+      const v = { arr_f: { text: 'สายเปย์มาแล้ว~', gender: 'female', kind: 'arrival', audioUrl: '', audioPath: '', order: 0 },
+        arr_m: { text: 'สายเปย์มาแล้ว~', gender: 'male', kind: 'arrival', audioUrl: '', audioPath: '', order: 1 } };
+      PO_REFUND_LINES.forEach((text, i) => { for (const g of ['female', 'male']) v[`r${i + 1}_${g[0]}`] = { text, gender: g, kind: 'refund', audioUrl: '', audioPath: '', order: 10 + i }; });
+      return v;
+    });
+  } catch (e) { console.error('seed payopen voices', e.message); }
+})();
+const poVoiceList = v => Object.entries(v || {}).filter(([, x]) => x && x.text).map(([id, x]) => ({ id, text: String(x.text), gender: x.gender === 'male' ? 'male' : 'female',
+  kind: x.kind === 'arrival' ? 'arrival' : 'refund', audioUrl: x.audioUrl || '', order: num(x.order) })).sort((a, b) => a.order - b.order);
+app.get('/payopen/voices', w(async (_q, r) => r.json({ voices: poVoiceList((await db.ref('appConfig/payOpenVoices').get()).val()) })));
+app.get('/payopen/catalog', w(async (q, r) => {
+  const v = (await db.ref('catalog/payopen').get()).val() || {};
+  const items = Object.entries(v).filter(([, x]) => x && x.enabled !== false && num(x.price) > 0).map(([id, x]) => ({ id, name: x.name || id, price: num(x.price), imageUrl: x.imageUrl || '', effectUrl: x.effectUrl || '', icon: x.icon || '', fx: x.animationEffect || 'HEARTS', order: num(x.order) })).sort((a, b) => a.order - b.order);
+  const [dm, pend] = await Promise.all([db.ref(`wallets/${q.uid}/diamonds`).get(), pendingSum(q.uid)]);
+  r.json({ items, diamonds: num(dm.val()) - pend });
+}));
+async function poPeople(uid) { const u = (await db.ref(`users/${uid}`).get()).val() || {}; return { name: String(u.displayName || 'ผู้ใช้').slice(0, 40), avatar: u.avatar || '', gender: genderOf(u) }; }
+/** Settle once. want = 'accept' | 'refund'. Returns the final payOpens node (or null if missing). */
+async function poSettle(id, want, reason) {
+  const ref = db.ref(`payOpens/${id}`), t = Date.now();
+  const lock = await ref.transaction(p => {
+    if (p === null) return null; // cold cache: the SDK retries with the real value
+    if (p.state === 'pending') { const to = want === 'accept' && t <= num(p.deadline) ? 'accept' : 'refund'; return { ...p, state: 'settling', settleTo: to, lockAt: t, reason: to === 'refund' ? (want === 'accept' ? 'expired' : reason) : '' }; }
+    if (p.state === 'settling' && t - num(p.lockAt) > 120000) return { ...p, lockAt: t }; // a crashed settle: money not moved yet (it moves with the final state)
+    return undefined;
+  });
+  const p = lock.snapshot.val();
+  if (!lock.committed || !p || p.state !== 'settling' || num(p.lockAt) !== t) return p;
+  const upd = { [`payOpenInbox/${p.to}/${id}`]: null, [`payOpens/${id}/settledAt`]: t, [`payOpens/${id}/lockAt`]: null };
+  if (p.settleTo === 'accept') {
+    const cfg = await giftCfg(), price = num(p.price), share = Math.floor(price * num(cfg.recipientPercent) / 100), sys = price - share;
+    const { chatId } = await openDirectChat(p.from, p.to);
+    Object.assign(upd, {
+      [`wallets/${p.to}/diamonds`]: inc(share), [`wallets/${p.to}/earnedDiamonds`]: inc(share), 'wallets/_system/diamonds': inc(sys),
+      [`payOpens/${id}/state`]: 'accepted', [`payOpens/${id}/chatId`]: chatId, [`payOpens/${id}/split`]: { recipientShare: share, adminShare: sys },
+      [`friends/${p.from}/${p.to}`]: t, [`friends/${p.to}/${p.from}`]: t, [`friendRequests/${p.to}/${p.from}`]: null, [`friendRequests/${p.from}/${p.to}`]: null,
+      [`messages/${chatId}/${db.ref(`messages/${chatId}`).push().key}`]: { senderUid: p.from, at: t, text: `💝 เปย์เปิดใจด้วย ${p.giftName} — เป็นเพื่อนกันแล้ว 🎉` },
+      [`chats/${chatId}/lastMessage`]: `💝 เปย์เปิดใจ ${p.giftName}`, [`chats/${chatId}/lastAt`]: t, [`chats/${chatId}/lastSenderUid`]: p.from,
+      [`payOpenResults/${p.from}/${id}`]: { state: 'accepted', chatId, giftName: p.giftName, toName: p.toName || '', at: t }
+    });
+  } else {
+    Object.assign(upd, {
+      [`wallets/${p.from}/diamonds`]: inc(num(p.price)), [`payOpens/${id}/state`]: 'refunded', [`payOpens/${id}/refunded`]: num(p.price),
+      [`payOpenResults/${p.from}/${id}`]: { state: 'refunded', price: num(p.price), giftName: p.giftName, voiceGender: p.fromGender === 'male' ? 'female' : p.fromGender === 'female' ? 'male' : '', at: t }
+    });
+  }
+  await db.ref().update(upd); // money + final state together: either both happened or neither (then the 2-min retry above finishes it)
+  await db.ref(`payOpenTx/${id}`).set({ from: p.from, to: p.to, giftId: p.giftId, price: num(p.price), state: p.settleTo === 'accept' ? 'accepted' : 'refunded', reason: p.reason || '', at: num(p.at), settledAt: t }).catch(() => {});
+  if (p.settleTo === 'accept') sendPush(p.from, 'เปย์เปิดใจสำเร็จ 💝', `${p.toName || 'เพื่อน'} รับ ${p.giftName} แล้ว เป็นเพื่อนกันแล้ว`, { type: 'chat', chatId: upd[`payOpens/${id}/chatId`] });
+  return (await ref.get()).val();
+}
+let poSweepAt = 0;
+async function poSweep() { // refund everything past its deadline (also runs lazily on each payopen call — Cloud Run may idle the timer)
+  if (Date.now() - poSweepAt < 5000) return; poSweepAt = Date.now();
+  const s = await db.ref('payOpens').orderByChild('state').equalTo('pending').limitToFirst(200).get(), late = [];
+  s.forEach(c => { if (num(c.val()?.deadline) < Date.now()) late.push(c.key); });
+  const stuck = await db.ref('payOpens').orderByChild('state').equalTo('settling').limitToFirst(50).get();
+  stuck.forEach(c => { if (Date.now() - num(c.val()?.lockAt) > 120000) late.push(c.key); });
+  for (const id of late) await poSettle(id, 'refund', 'timeout').catch(e => console.error('payopen settle', id, e.message));
+}
+setInterval(() => { poSweep().catch(e => console.error('payopen sweep', e.message)); }, 10000).unref?.();
+const poView = (id, p) => p ? { id, state: p.state === 'settling' ? 'pending' : p.state, from: p.from, to: p.to, giftId: p.giftId, giftName: p.giftName, imageUrl: p.imageUrl || '', effectUrl: p.effectUrl || '', fx: p.fx || '',
+  price: num(p.price), at: num(p.at), deadline: num(p.deadline), chatId: p.chatId || '', fromName: p.fromName || '', fromAvatar: p.fromAvatar || '', fromGender: p.fromGender || '',
+  voiceGender: p.fromGender === 'male' ? 'female' : p.fromGender === 'female' ? 'male' : '', serverNow: Date.now() } : null;
+app.post('/payopen/send', w(notBanned), w(async (q, r) => {
+  const to = q.body?.toUid, giftId = q.body?.giftId;
+  if (typeof to !== 'string' || !UID_RE.test(to) || to === q.uid || typeof giftId !== 'string' || !ITEM_ID.test(giftId)) return r.status(400).json({ error: 'toUid/giftId required' });
+  poSweep().catch(() => {});
+  const cfg = await giftCfg(); if (!cfg.enabled) return r.status(403).json({ code: 'gifts_disabled', error: 'ปิดระบบของขวัญชั่วคราว' });
+  if (!(await db.ref(`users/${to}`).get()).exists()) return r.status(404).json({ error: 'ไม่พบผู้ใช้' });
+  if (await isBanned(to) || await blockedEither(q.uid, to)) return r.status(403).json({ error: 'ส่งให้ผู้ใช้นี้ไม่ได้' });
+  if ((await db.ref(`friends/${q.uid}/${to}`).get()).exists()) return r.status(409).json({ code: 'already_friends', error: 'เป็นเพื่อนกันอยู่แล้ว' });
+  const waiting = (await db.ref(`payOpenInbox/${to}`).get()).val() || {};
+  if (Object.values(waiting).some(x => x?.from === q.uid)) return r.status(409).json({ code: 'waiting', error: 'กำลังรออีกฝ่ายตอบอยู่' });
+  const item = (await db.ref(`catalog/payopen/${giftId}`).get()).val();
+  if (!item || item.enabled === false || !(num(item.price) > 0)) return r.status(404).json({ error: 'ไม่พบของขวัญนี้' });
+  // price from the catalog only (never from the app); the app's expectedPrice is only compared, so an admin price change is never silently charged
+  const price = num(item.price);
+  if (q.body?.expectedPrice !== undefined && num(q.body.expectedPrice) !== price) return r.status(409).json({ code: 'price_changed', error: `ราคาเปลี่ยนเป็น 💎${price} แล้ว`, price });
+  const pend = await pendingSum(q.uid);
+  const d = await db.ref(`wallets/${q.uid}/diamonds`).transaction(c => (c === null ? null : num(c) - pend >= price ? num(c) - price : undefined));
+  if (!d.committed || d.snapshot.val() === null) return r.status(402).json({ code: 'insufficient', error: `เพชรไม่พอ (ต้องการ 💎${price})`, price });
+  const t = Date.now(), id = 'po' + t.toString(36) + crypto.randomBytes(4).toString('hex');
+  try {
+    const [me, them] = await Promise.all([poPeople(q.uid), poPeople(to)]);
+    const p = { from: q.uid, to, giftId, giftName: item.name || '', imageUrl: item.imageUrl || '', effectUrl: item.effectUrl || '', fx: item.animationEffect || 'HEARTS', icon: item.icon || '',
+      price, state: 'pending', at: t, deadline: t + PO_MS, fromName: me.name, fromAvatar: me.avatar, fromGender: me.gender, toName: them.name };
+    await db.ref().update({ [`payOpens/${id}`]: p, [`payOpenInbox/${to}/${id}`]: { id, ...poView(id, p), state: 'pending' } });
+  } catch (e) { // could not create the gift → give the diamonds straight back
+    await db.ref(`wallets/${q.uid}/diamonds`).set(inc(price)).catch(() => {});
+    throw e;
+  }
+  sendPush(to, 'สายเปย์มาแล้ว~ 💝', `${(await poPeople(q.uid)).name} ส่งของขวัญเปิดใจให้คุณ เปิดแอปเพื่อรับภายใน 10 วินาที`, { type: 'payopen', id });
+  r.json({ id, state: 'pending', price, diamonds: d.snapshot.val(), deadline: t + PO_MS });
+}));
+app.get('/payopen/inbox', w(async (q, r) => {
+  await poSweep().catch(() => {});
+  const v = (await db.ref(`payOpenInbox/${q.uid}`).get()).val() || {};
+  r.json({ items: Object.values(v).filter(x => x && x.deadline > Date.now()).map(x => ({ ...x, serverNow: Date.now() })) });
+}));
+app.get('/payopen/:id', w(async (q, r) => {
+  const id = q.params.id; if (!PO_ID.test(id)) return r.status(400).json({ error: 'bad id' });
+  let p = (await db.ref(`payOpens/${id}`).get()).val();
+  if (!p || (p.from !== q.uid && p.to !== q.uid)) return r.status(404).json({ error: 'not found' });
+  if (p.state === 'pending' && Date.now() > num(p.deadline)) p = await poSettle(id, 'refund', 'timeout');
+  r.json(poView(id, p));
+}));
+app.post('/payopen/:id/respond', w(notBanned), w(async (q, r) => {
+  const id = q.params.id; if (!PO_ID.test(id)) return r.status(400).json({ error: 'bad id' });
+  const p0 = (await db.ref(`payOpens/${id}`).get()).val();
+  if (!p0 || p0.to !== q.uid) return r.status(404).json({ error: 'not found' });
+  const accept = q.body?.accept === true && !(await blockedEither(p0.from, p0.to)) && !(await isBanned(p0.from));
+  const p = await poSettle(id, accept ? 'accept' : 'refund', accept ? '' : 'rejected');
+  r.json(poView(id, p));
+}));
+// --- admin: voices (text, gender, audio file) — the app reads them live, no APK update
+const PV_ID = /^[a-z0-9_]{1,30}$/;
+app.get('/admin/payopen-voices', catPerm, w(async (_q, r) => r.json({ voices: poVoiceList((await db.ref('appConfig/payOpenVoices').get()).val()) })));
+app.put('/admin/payopen-voices/:id', catPerm, w(notBanned), w(async (q, r) => {
+  const id = q.params.id; if (!PV_ID.test(id)) return r.status(400).json({ error: 'bad id' });
+  const b = q.body || {}, text = String(b.text || '').trim().slice(0, 60);
+  if (!text) return r.status(400).json({ error: 'ต้องใส่ข้อความ' });
+  if (!['male', 'female'].includes(b.gender)) return r.status(400).json({ error: 'gender male|female' });
+  const ref = db.ref(`appConfig/payOpenVoices/${id}`), cur = (await ref.get()).val() || {};
+  const order = Number.isInteger(b.order) ? b.order : Number.isInteger(cur.order) ? cur.order : 100 + Object.keys((await db.ref('appConfig/payOpenVoices').get()).val() || {}).length;
+  const v = { text, gender: b.gender, kind: b.kind === 'arrival' ? 'arrival' : 'refund', audioUrl: cur.audioUrl || '', audioPath: cur.audioPath || '', order, updatedAt: Date.now(), updatedBy: q.uid };
+  await ref.set(v); r.json({ id, ...v });
+}));
+app.put('/admin/payopen-voices/:id/audio', catPerm, express.raw({ type: 'audio/*', limit: '2100kb' }), w(async (q, r) => {
+  const id = q.params.id; if (!PV_ID.test(id)) return r.status(400).json({ error: 'bad id' });
+  const ref = db.ref(`appConfig/payOpenVoices/${id}`), cur = (await ref.get()).val(); if (!cur) return r.status(404).json({ error: 'save the line first' });
+  const buf = q.body; if (!Buffer.isBuffer(buf) || buf.length < 200) return r.status(400).json({ error: 'audio required' });
+  const mime = /^audio\/[a-z0-9.+-]{1,30}$/.test(String(q.headers['content-type'] || '')) ? String(q.headers['content-type']) : 'audio/mpeg';
+  const ext = { 'audio/mpeg': 'mp3', 'audio/mp3': 'mp3', 'audio/mp4': 'm4a', 'audio/aac': 'aac', 'audio/ogg': 'ogg', 'audio/wav': 'wav', 'audio/x-wav': 'wav', 'audio/webm': 'webm' }[mime] || 'audio';
+  const path = `payOpenVoices/${id}_${Date.now()}.${ext}`, tok = crypto.randomUUID(), bucket = admin.storage().bucket(STORAGE_BUCKET);
+  await bucket.file(path).save(buf, { contentType: mime, resumable: false, metadata: { metadata: { firebaseStorageDownloadTokens: tok } } });
+  const url = `https://firebasestorage.googleapis.com/v0/b/${STORAGE_BUCKET}/o/${encodeURIComponent(path)}?alt=media&token=${tok}`;
+  if (cur.audioPath) await bucket.file(cur.audioPath).delete().catch(() => {});
+  await ref.update({ audioUrl: url, audioPath: path, updatedAt: Date.now(), updatedBy: q.uid });
+  r.json({ audioUrl: url, bytes: buf.length });
+}));
+app.delete('/admin/payopen-voices/:id', catPerm, w(async (q, r) => {
+  const id = q.params.id; if (!PV_ID.test(id)) return r.status(400).json({ error: 'bad id' });
+  const ref = db.ref(`appConfig/payOpenVoices/${id}`), cur = (await ref.get()).val();
+  if (cur?.audioPath) await admin.storage().bucket(STORAGE_BUCKET).file(cur.audioPath).delete().catch(() => {});
+  await ref.remove(); r.json({ deleted: id });
+}));
+app.get('/admin/payopen/tx', perm('coins_confirm'), w(async (q, r) => {
+  let qq = db.ref('payOpenTx').orderByKey(); if (q.query.cursor) qq = qq.endBefore(String(q.query.cursor));
+  const s = await qq.limitToLast(50).get(), out = []; s.forEach(c => { out.push({ id: c.key, ...c.val() }); });
+  out.reverse(); r.json({ tx: out, nextCursor: out.length === 50 ? out[out.length - 1].id : null });
 }));
 // ===== Voice/video calls + live streaming (Agora RTC; free 10,000 min/month on the Free package, service pauses instead of billing) =====
 // Env (set on Cloud Run, never in the app): AGORA_APP_ID, AGORA_APP_CERTIFICATE. Clients only ever get a short-lived token from here.
@@ -3102,7 +3308,7 @@ app.post('/admin/coins/reject', perm('coins_confirm'), w(notBanned), w(async (q,
 // reports/bans made against the account (safety), plus messages already delivered to the other member of a chat (shown as a deleted user).
 const PER_UID = ['users', 'wallets', 'giftPending', 'vip', 'pushTokens', 'radar', 'shakeWaiting', 'shakeResults', 'swipes', 'friendRequests', 'matchQueue',
   'private', 'idv', 'kyc', 'ageInfo', 'onboarding', 'usage', 'quotaBonus', 'quotaGrants', 'chatRulesAccepted', 'termsAccepted', 'creators', 'creatorMetrics',
-  'creatorApplications', 'companionApplications', 'userChats', 'callInbox', 'following', 'followers', 'followCounts', 'friends', 'authorPosts',
+  'creatorApplications', 'companionApplications', 'userChats', 'callInbox', 'payOpenInbox', 'payOpenResults', 'following', 'followers', 'followCounts', 'friends', 'authorPosts',
   'deviceOf', 'postBlocks', 'chatBlocks', 'blocks', 'notifSeen', 'randomCards', 'randomSeen'];
 async function deleteAccountData(uid) {
   const del = {};
