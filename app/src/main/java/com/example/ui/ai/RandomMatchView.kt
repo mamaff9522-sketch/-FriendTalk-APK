@@ -70,7 +70,8 @@ fun RandomMatchView(users: List<User>, onStartChatWithUser: (User) -> Unit) {
         return
     }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    // fits the screen without scrolling: the card shrinks to the space left above the buttons (bottom padding clears the raised nav bar)
+    Column(Modifier.fillMaxSize().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         // 'แต่งหน้าสุ่ม' capsule, top right
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             Row(Modifier.clip(RoundedCornerShape(16.dp)).background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(androidx.compose.ui.graphics.Color(0xFFFFC94D), androidx.compose.ui.graphics.Color(0xFFFF2FA8))))
@@ -89,10 +90,13 @@ fun RandomMatchView(users: List<User>, onStartChatWithUser: (User) -> Unit) {
         val r = result
         when (r) {
             is com.example.ui.random.RandomCardRepo.Next.Person -> {
-                Spacer(Modifier.height(8.dp))
-                com.example.ui.random.RandomCardView(r.card ?: com.example.ui.random.RandomCard(intro = r.profile.bio), r.profile.displayName, r.profile.age, r.profile.avatar,
-                    Modifier.fillMaxWidth(0.92f))
-                if (r.online) Text("🟢 ออนไลน์อยู่", color = Emerald400, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+                Spacer(Modifier.height(6.dp))
+                BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    val w = minOf(maxWidth * 0.92f, maxHeight * 0.75f) // card is 3:4
+                    com.example.ui.random.RandomCardView(r.card ?: com.example.ui.random.RandomCard(intro = r.profile.bio), r.profile.displayName, r.profile.age, r.profile.avatar,
+                        Modifier.width(w))
+                }
+                if (r.online) Text("🟢 ออนไลน์อยู่", color = Emerald400, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
                 LikeRow(
                     onPass = { skipped.add(r.profile.uid); roll() },
                     onLike = {
@@ -106,7 +110,7 @@ fun RandomMatchView(users: List<User>, onStartChatWithUser: (User) -> Unit) {
             is com.example.ui.random.RandomCardRepo.Next.Bot -> {
                 val b = r.bot
                 Spacer(Modifier.height(12.dp))
-                Column(Modifier.fillMaxWidth(0.92f).clip(RoundedCornerShape(24.dp)).background(Slate800).padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(Modifier.fillMaxWidth(0.92f).weight(1f, fill = false).clip(RoundedCornerShape(24.dp)).background(Slate800).padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     AsyncImage(model = b.avatarUrl, contentDescription = b.name, contentScale = ContentScale.Crop, modifier = Modifier.size(110.dp).clip(CircleShape))
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
                         Text(b.name, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = White); Spacer(Modifier.width(6.dp)); AiBadge()
@@ -117,8 +121,7 @@ fun RandomMatchView(users: List<User>, onStartChatWithUser: (User) -> Unit) {
                 LikeRow(onPass = { roll() }, onLike = { chatBot = b })
             }
             else -> {
-                Spacer(Modifier.height(36.dp))
-                Dice(searching) { roll() }
+                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { Dice(searching) { roll() } }
             }
         }
         if (searching && r == null) Text("กำลังหาเพื่อนให้คุณ…", color = Slate300, fontSize = 13.sp, modifier = Modifier.padding(top = 10.dp))
@@ -167,14 +170,14 @@ private fun Dice(rolling: Boolean, onTap: () -> Unit) {
 /** 💔 = not interested, find another · ❤️ = like → chat. */
 @Composable
 private fun LikeRow(onPass: () -> Unit, onLike: () -> Unit) {
-    Row(Modifier.padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(40.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(40.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(Modifier.size(70.dp).clip(CircleShape).background(Slate800).clickable(onClick = onPass), contentAlignment = Alignment.Center) { androidx.compose.material3.Text("💔", fontSize = 34.sp) }
+            Box(Modifier.size(62.dp).clip(CircleShape).background(Slate800).clickable(onClick = onPass), contentAlignment = Alignment.Center) { androidx.compose.material3.Text("💔", fontSize = 30.sp) }
             Text("สุ่มใหม่", color = Slate400, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(Modifier.size(84.dp).clip(CircleShape).background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(androidx.compose.ui.graphics.Color(0xFFFF2FA8), androidx.compose.ui.graphics.Color(0xFF9B3DFF))))
-                .clickable(onClick = onLike), contentAlignment = Alignment.Center) { androidx.compose.material3.Text("❤️", fontSize = 40.sp) }
+            Box(Modifier.size(74.dp).clip(CircleShape).background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(androidx.compose.ui.graphics.Color(0xFFFF2FA8), androidx.compose.ui.graphics.Color(0xFF9B3DFF))))
+                .clickable(onClick = onLike), contentAlignment = Alignment.Center) { androidx.compose.material3.Text("❤️", fontSize = 36.sp) }
             Text("ถูกใจ · แชทเลย", color = Pink400, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
         }
     }
