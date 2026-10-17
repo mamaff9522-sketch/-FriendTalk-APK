@@ -63,7 +63,8 @@ fun DiscoverTab(
     DisposableEffect(f) { com.example.ui.components.TabSwipe.locked = f != null; onDispose { com.example.ui.components.TabSwipe.locked = false } }
     if (f != null) {
         Column(Modifier.fillMaxSize().background(AppThemeMode.pageBrush)) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            // สุ่มหาเพื่อน has no header row: the phone's back button returns to the grid (BackHandler above)
+            if (f != "random") Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = { fn = null }) { Text(tr("← หาเพื่อน"), color = White, fontSize = 15.sp) }
                 Text(TILES.firstOrNull { it.first == f }?.second ?: "", color = Slate300, fontSize = 14.sp)
             }
