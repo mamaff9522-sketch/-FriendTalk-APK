@@ -40,12 +40,38 @@ private val PALETTE = listOf("#FF2FA8", "#9B3DFF", "#6D5BFF", "#1C7ED6", "#00E5F
 @Composable
 fun AdminDecorOptionsPane() {
     val scope = rememberCoroutineScope()
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var status by remember { mutableStateOf("") }
+    // picture for the new option (sent before the option itself) / for an existing option
+    var newImg by remember { mutableStateOf<Pair<ByteArray, String>?>(null) }
+    var newImgUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var imgFor by remember { mutableStateOf<String?>(null) }
+    fun readImg(uri: android.net.Uri): Pair<ByteArray, String>? {
+        val b = runCatching { ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull() ?: run { status = "อ่านรูปไม่ได้"; return null }
+        if (b.size > 2 * 1024 * 1024) { status = "รูปต้องไม่เกิน 2MB (ตอนนี้ ${b.size / 1024}KB)"; return null }
+        return b to (ctx.contentResolver.getType(uri)?.takeIf { it.startsWith("image/") } ?: "image/png")
+    }
+    suspend fun uploadImg(k: String, id: String, img: Pair<ByteArray, String>): Boolean {
+        val u = FirebaseAuth.getInstance().currentUser ?: return false
+        val r = BrainApi.callRaw(u, "PUT", "/admin/decor-options/$k/$id/image", img.first, img.second)
+        if (r.code != 200) status = r.json?.optString("error")?.ifBlank { null } ?: "อัปโหลดรูปไม่สำเร็จ (${r.code})"
+        return r.code == 200
+    }
+    val newPicker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) readImg(uri)?.let { newImg = it; newImgUri = uri; status = "" }
+    }
     LaunchedEffect(Unit) { DecorOptions.start() }
     var kind by remember { mutableStateOf("themes") }
-    var status by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
     var colors by remember { mutableStateOf(listOf<String>()) }
     var glyphs by remember { mutableStateOf("") }
+    val rowPicker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri ->
+        val id = imgFor; imgFor = null
+        if (uri == null || id == null) return@rememberLauncherForActivityResult
+        val img = readImg(uri) ?: return@rememberLauncherForActivityResult
+        status = "กำลังอัปโหลดรูป…"; val k = kind
+        scope.launch { if (uploadImg(k, id, img)) status = "ใส่รูปแล้ว ✅ ผู้ใช้เห็นทันที" }
+    }
 
     fun optsOf(k: String) = when (k) { "themes" -> DecorOptions.themes; "frames" -> DecorOptions.frames; else -> DecorOptions.effects }
     fun save(next: Map<String, List<DecorOptions.Opt>>) {
@@ -77,7 +103,7 @@ fun AdminDecorOptionsPane() {
         Text("เพิ่มธีม กรอบ และเอฟเฟกต์ใหม่ได้เองโดยไม่ต้องอัปเดตแอป · สติกเกอร์เพิ่มได้ที่แท็บ 'ของขวัญ & สติกเกอร์' หมวดสติกเกอร์ห้อง", color = Slate400, fontSize = 11.sp)
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             listOf("themes" to "ธีม", "frames" to "กรอบ", "effects" to "เอฟเฟกต์").forEach { (k, l) ->
-                FilterChip(selected = kind == k, onClick = { kind = k; colors = emptyList(); glyphs = ""; name = "" }, label = { Text(l) })
+                FilterChip(selected = kind == k, onClick = { kind = k; colors = emptyList(); glyphs = ""; name = ""; newImg = null; newImgUri = null }, label = { Text(l) })
             }
         }
 
@@ -86,11 +112,18 @@ fun AdminDecorOptionsPane() {
         if (cur.isEmpty()) Text("ยังไม่มีรายการที่เพิ่มเอง", color = Slate400, fontSize = 12.sp)
         cur.forEach { o ->
             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Slate900).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Preview(kind, o.colors, o.glyphs)
+                Preview(kind, o.colors, o.glyphs, o.imageUrl)
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text(o.name, color = White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    Text(o.id, color = Slate400, fontSize = 11.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(if (o.imageUrl.isBlank()) "🖼 ใส่รูป" else "🖼 เปลี่ยนรูป", color = Pink400, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clickable { imgFor = o.id; rowPicker.launch("image/*") })
+                        if (o.imageUrl.isNotBlank()) Text("เอารูปออก", color = Slate400, fontSize = 12.sp, modifier = Modifier.clickable {
+                            if (o.colors.size < 2 && kind != "effects" || kind == "effects" && o.glyphs.isEmpty()) status = "รายการนี้ไม่มีสี/อีโมจิสำรอง ใส่รูปใหม่แทน หรือลบรายการ"
+                            else scope.launch { FirebaseAuth.getInstance().currentUser?.let { u -> BrainApi.call(u, "DELETE", "/admin/decor-options/$kind/${o.id}/image") }; status = "เอารูปออกแล้ว" }
+                        })
+                    }
                 }
                 Switch(checked = o.enabled, onCheckedChange = { on -> save(mapOf(kind to cur.map { if (it.id == o.id) it.copy(enabled = on) else it })) })
                 IconButton(onClick = { save(mapOf(kind to cur.filter { it.id != o.id })) }) { Icon(Icons.Filled.Delete, "ลบ", tint = Rose500) }
@@ -102,6 +135,12 @@ fun AdminDecorOptionsPane() {
         Text("เพิ่ม" + when (kind) { "themes" -> "ธีม"; "frames" -> "กรอบ"; else -> "เอฟเฟกต์" } + "ใหม่", color = White, fontWeight = FontWeight.Bold)
         OutlinedTextField(name, { name = it.take(30) }, label = { Text("ชื่อที่ผู้ใช้เห็น") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
             colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White))
+        Text(when (kind) { "themes" -> "รูปพื้นหลังห้อง"; "frames" -> "รูปกรอบ (PNG โปร่งใสตรงกลาง)"; else -> "รูปเอฟเฟกต์ (GIF / WebP เคลื่อนไหวได้)" } + " · ไม่เกิน 2MB · ใส่รูปแล้วไม่ต้องเลือกสี/อีโมจิ",
+            color = Slate400, fontSize = 11.sp)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { newPicker.launch("image/*") }) { Text(if (newImg == null) "🖼 อัปโหลดรูป" else "🖼 เปลี่ยนรูป", color = White) }
+            if (newImg != null) TextButton(onClick = { newImg = null; newImgUri = null }) { Text("เอาออก", color = Pink400) }
+        }
         if (kind == "effects") {
             OutlinedTextField(glyphs, { glyphs = it.take(20) }, label = { Text("อีโมจิที่ลอย (1–3 ตัว เว้นวรรค) เช่น 🍀 🌼") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White))
@@ -118,18 +157,21 @@ fun AdminDecorOptionsPane() {
         val gl = glyphs.trim().split(Regex("\\s+")).filter { it.isNotBlank() }.take(3)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("ตัวอย่าง: ", color = Slate400, fontSize = 12.sp)
-            Preview(kind, colors.map { hexColor(it) }, gl)
+            Preview(kind, colors.map { hexColor(it) }, gl, newImgUri?.toString().orEmpty())
         }
         Button(onClick = {
             val n = name.trim()
             when {
                 n.isBlank() -> status = "ใส่ชื่อก่อน"
-                kind != "effects" && colors.size < 2 -> status = "เลือกอย่างน้อย 2 สี"
-                kind == "effects" && gl.isEmpty() -> status = "ใส่อีโมจิอย่างน้อย 1 ตัว"
+                newImg == null && kind != "effects" && colors.size < 2 -> status = "เลือกอย่างน้อย 2 สี หรืออัปโหลดรูป"
+                newImg == null && kind == "effects" && gl.isEmpty() -> status = "ใส่อีโมจิอย่างน้อย 1 ตัว หรืออัปโหลดรูป"
                 else -> {
                     val id = "c_" + System.currentTimeMillis().toString(36)
                     val opt = DecorOptions.Opt(id, n, glyphs = gl, hex = colors)
-                    save(mapOf(kind to optsOf(kind) + opt)); name = ""; colors = emptyList(); glyphs = ""
+                    val img = newImg; val k = kind
+                    if (img != null) { status = "กำลังอัปโหลดรูป…"; scope.launch { if (uploadImg(k, id, img)) save(mapOf(k to optsOf(k) + opt)) } } // picture first, then the option
+                    else save(mapOf(kind to optsOf(kind) + opt))
+                    name = ""; colors = emptyList(); glyphs = ""; newImg = null; newImgUri = null
                 }
             }
         }, colors = ButtonDefaults.buttonColors(containerColor = Pink500)) { Text("เพิ่มและบันทึก") }
@@ -138,8 +180,15 @@ fun AdminDecorOptionsPane() {
 }
 
 @Composable
-private fun Preview(kind: String, colors: List<Color>, glyphs: List<String>) {
+private fun Preview(kind: String, colors: List<Color>, glyphs: List<String>, imageUrl: String = "") {
     val shape = RoundedCornerShape(10.dp)
+    if (imageUrl.isNotBlank()) {
+        Box(Modifier.size(width = 40.dp, height = 56.dp).clip(shape).background(Slate950)) {
+            coil.compose.AsyncImage(model = imageUrl, imageLoader = com.example.ui.social.rememberGifLoader(), contentDescription = null,
+                contentScale = if (kind == "frames") androidx.compose.ui.layout.ContentScale.FillBounds else androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        }
+        return
+    }
     when (kind) {
         "themes" -> Box(Modifier.size(width = 40.dp, height = 56.dp).clip(shape)
             .background(if (colors.size >= 2) Brush.verticalGradient(colors) else Brush.verticalGradient(listOf(Slate800, Slate900))))

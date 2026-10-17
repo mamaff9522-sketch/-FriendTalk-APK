@@ -130,8 +130,10 @@ fun RandomCardEditor(onClose: () -> Unit) {
         avatarUrl = if (clearAvatar) "" else newAvatar?.toString() ?: card.avatarUrl,
         bgUrl = if (clearBg) "" else newBg?.toString() ?: card.bgUrl,
         videoUrl = if (clearVideo) "" else card.videoUrl, audioUrl = if (clearAudio) "" else card.audioUrl,
-        frameImageUrl = newFrameImg?.toString() ?: card.frameImageUrl, nameFrameImageUrl = newNameImg?.toString() ?: card.nameFrameImageUrl,
-        effectImageUrl = newFxImg?.toString() ?: card.effectImageUrl)
+        // own upload only while 'custom' is picked; a catalog item shows its admin picture (set when picked)
+        frameImageUrl = if (card.frame == "custom") newFrameImg?.toString() ?: card.frameImageUrl else card.frameImageUrl,
+        nameFrameImageUrl = if (card.nameFrame == "custom") newNameImg?.toString() ?: card.nameFrameImageUrl else card.nameFrameImageUrl,
+        effectImageUrl = if (card.effect == "custom") newFxImg?.toString() ?: card.effectImageUrl else card.effectImageUrl)
 
     fun draftJson(refs: Map<String, String?>): JSONObject {
         val L = card.layout
@@ -225,13 +227,13 @@ fun RandomCardEditor(onClose: () -> Unit) {
                         2 -> {
                             UploadOwn("📤 อัปโหลดกรอบการ์ดเอง", "แนะนำ PNG พื้นใส ขนาดสัดส่วน 3:4", c.customFramePrice, card.frame == "custom", base.frame == "custom" && newFrameImg == null) {
                                 decorTarget = "frame"; pickDecor.launch("image/*") }
-                            Options(c.frames, card.frame, base.frame) { id, item -> card = card.copy(frame = id, frameColors = item?.colors ?: emptyList()); dirty = true }
+                            Options(c.frames, card.frame, base.frame) { id, item -> card = card.copy(frame = id, frameColors = item?.colors ?: emptyList(), frameImageUrl = item?.imageUrl.orEmpty()); dirty = true }
                         }
                         3 -> {
                             UploadOwn("📤 อัปโหลดกรอบชื่อเอง", "รูปจะยืดอยู่หลังชื่อ · PNG พื้นใสสวยที่สุด", c.customNameFramePrice, card.nameFrame == "custom", base.nameFrame == "custom" && newNameImg == null) {
                                 decorTarget = "name"; pickDecor.launch("image/*") }
                             NameFrameOptions(c.nameFrames, card.nameFrame, base.nameFrame, card.nameDeco, card.nameColor) { id, item ->
-                                card = card.copy(nameFrame = id, nameFrameColors = item?.colors ?: emptyList(), nameFrameStyle = item?.style ?: "pill"); dirty = true }
+                                card = card.copy(nameFrame = id, nameFrameColors = item?.colors ?: emptyList(), nameFrameStyle = item?.style ?: "pill", nameFrameImageUrl = item?.imageUrl.orEmpty()); dirty = true }
                             FreeNote()
                             Text("ตกแต่งกรอบป้ายชื่อ", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             Row(Modifier.horizontalScroll(rememberScrollState()).padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -256,7 +258,7 @@ fun RandomCardEditor(onClose: () -> Unit) {
                         4 -> {
                             UploadOwn("📤 อัปโหลดเอฟเฟกต์เอง", "GIF / WebP เคลื่อนไหว พื้นใส · เล่นทับทั้งการ์ด", c.customEffectPrice, card.effect == "custom", base.effect == "custom" && newFxImg == null) {
                                 decorTarget = "effect"; pickDecor.launch("image/*") }
-                            Options(c.effects, card.effect, base.effect) { id, item -> card = card.copy(effect = id, effectGlyphs = item?.glyphs ?: emptyList(), effectMotion = item?.motion ?: "rise"); dirty = true }
+                            Options(c.effects, card.effect, base.effect) { id, item -> card = card.copy(effect = id, effectGlyphs = item?.glyphs ?: emptyList(), effectMotion = item?.motion ?: "rise", effectImageUrl = item?.imageUrl.orEmpty()); dirty = true }
                         }
                         5 -> {
                             PaidNote(c.videoPrice, "วิดีโอ (ไม่เกิน 30 วินาที) เล่นอัตโนมัติแทนรูปโปรไฟล์")
@@ -349,7 +351,7 @@ private fun Options(items: List<CardItem>, cur: String, savedId: String, onPick:
         OptionTile("ไม่ใช้", "ฟรี", null, emptyList(), cur == "none") { onPick("none", null) }
         items.forEach { item ->
             OptionTile(item.name + (if (item.glyphs.isNotEmpty()) MOTION_TH[item.motion]?.let { " · $it" } ?: "" else ""), if (item.id == savedId) "ใช้อยู่" else "💎${item.price}",
-                item.colors.takeIf { c -> c.size >= 2 }, item.glyphs, cur == item.id) { onPick(item.id, item) }
+                item.colors.takeIf { c -> c.size >= 2 }, item.glyphs, cur == item.id, item.imageUrl) { onPick(item.id, item) }
         }
     }
 }
@@ -367,7 +369,7 @@ private fun NameFrameOptions(items: List<CardItem>, cur: String, savedId: String
             Column(Modifier.clip(RoundedCornerShape(12.dp)).background(if (on) Color(0x33FF2FA8) else Color.Transparent)
                 .border(if (on) 2.dp else 0.dp, if (on) EPink else Color.Transparent, RoundedCornerShape(12.dp)).clickable { onPick(id, item) }.padding(6.dp),
                 horizontalAlignment = Alignment.CenterHorizontally) {
-                NameTag("ชื่อ", id, item?.colors ?: emptyList(), 0.7f, item?.style ?: "pill", deco, color)
+                NameTag("ชื่อ", id, item?.colors ?: emptyList(), 0.7f, item?.style ?: "pill", deco, color, item?.imageUrl.orEmpty())
                 Text(item?.name ?: "ไม่ใช้", color = if (on) EPink else Color.White, fontSize = 11.sp, maxLines = 1, modifier = Modifier.padding(top = 4.dp))
                 Text(when { item == null -> "ฟรี"; item.id == savedId -> "ใช้อยู่"; else -> "💎${item.price}" }, color = Color(0xFF7AF5FF), fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
@@ -376,12 +378,13 @@ private fun NameFrameOptions(items: List<CardItem>, cur: String, savedId: String
 }
 
 @Composable
-private fun OptionTile(name: String, price: String, colors: List<Color>?, glyphs: List<String>, on: Boolean, onClick: () -> Unit) {
+private fun OptionTile(name: String, price: String, colors: List<Color>?, glyphs: List<String>, on: Boolean, imageUrl: String = "", onClick: () -> Unit) {
     Column(Modifier.width(92.dp).clickable(onClick = onClick), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.size(58.dp).clip(CircleShape)
             .background(if (colors != null) Brush.sweepGradient(colors + colors.first()) else Brush.linearGradient(listOf(Color(0x22FFFFFF), Color(0x22FFFFFF))))
             .border(if (on) 3.dp else 1.dp, if (on) Color.White else Color(0x33FFFFFF), CircleShape), contentAlignment = Alignment.Center) {
-            if (glyphs.isNotEmpty()) Text(glyphs.first(), fontSize = 24.sp) else if (colors == null) Text("🚫", fontSize = 20.sp)
+            if (imageUrl.isNotBlank()) coil.compose.AsyncImage(model = imageUrl, imageLoader = com.example.ui.social.rememberGifLoader(), contentDescription = null, contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            else if (glyphs.isNotEmpty()) Text(glyphs.first(), fontSize = 24.sp) else if (colors == null) Text("🚫", fontSize = 20.sp)
         }
         Text(name, color = if (on) EPink else Color.White, fontSize = 11.sp, maxLines = 2, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.padding(top = 4.dp))
         Text(price, color = Color(0xFF7AF5FF), fontSize = 11.sp, fontWeight = FontWeight.Bold)

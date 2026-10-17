@@ -71,7 +71,7 @@ fun RandomCardView(
         }
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.45f to Color.Transparent, 1f to Color(0xAA000000))))
         val gif = com.example.ui.social.rememberGifLoader()
-        if (card.effect == "custom") { if (card.effectImageUrl.isNotBlank()) AsyncImage(model = card.effectImageUrl, imageLoader = gif, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
+        if (card.effect == "custom" || (card.effect != "none" && card.effectImageUrl.isNotBlank())) { if (card.effectImageUrl.isNotBlank()) AsyncImage(model = card.effectImageUrl, imageLoader = gif, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
         else if (card.effect != "none") CardEffect(card.effectGlyphs.ifEmpty { listOf("✨") }, card.effectMotion)
         val L = card.layout
         // name tag
@@ -84,7 +84,7 @@ fun RandomCardView(
                 modifier = Modifier.widthIn(max = w * 0.86f).clip(RoundedCornerShape(12.dp)).background(Color(0x55000000)).padding(horizontal = 10.dp, vertical = 6.dp))
         }
         // frame around the whole card
-        if (card.frame == "custom") { if (card.frameImageUrl.isNotBlank()) AsyncImage(model = card.frameImageUrl, imageLoader = gif, contentDescription = null, contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxSize()) }
+        if (card.frame == "custom" || (card.frame != "none" && card.frameImageUrl.isNotBlank())) { if (card.frameImageUrl.isNotBlank()) AsyncImage(model = card.frameImageUrl, imageLoader = gif, contentDescription = null, contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxSize()) }
         else if (card.frame != "none" && card.frameColors.size >= 2) CardFrame(card.frameColors)
         val aud = audioUri?.toString() ?: card.audioUrl
         if (aud.isNotBlank() && autoplay) VoiceChip(aud, Modifier.align(Alignment.TopEnd).padding(12.dp))
@@ -150,7 +150,7 @@ private val TagShape = GenericShape { s, _ ->
 @Composable
 fun NameTag(text: String, frame: String, colors: List<Color>, scale: Float = 1f, style: String = "pill", deco: String = "", textColor: String = "", imageUrl: String = "") {
     val has = frame != "none" && colors.size >= 2
-    val st = when { frame == "custom" -> "image"; has -> style; else -> "plain" }
+    val st = when { frame == "custom" || (frame != "none" && imageUrl.isNotBlank()) -> "image"; has -> style; else -> "plain" } // admin / own picture
     val inf = rememberInfiniteTransition(label = "tag")
     val pulse by inf.animateFloat(0.55f, 1f, infiniteRepeatable(tween(900), androidx.compose.animation.core.RepeatMode.Reverse), label = "p")
     val shine by inf.animateFloat(-1f, 2f, infiniteRepeatable(tween(2200, easing = LinearEasing)), label = "s")

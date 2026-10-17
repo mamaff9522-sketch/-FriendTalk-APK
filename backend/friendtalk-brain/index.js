@@ -135,7 +135,7 @@ app.put('/admin/ad-placements', perm('config_edit'), w(notBanned), w(async (q, r
 const DECOR_OPT_ID = /^[a-z0-9_]{2,30}$/;
 app.put('/admin/decor-options', perm('config_edit'), w(notBanned), w(async (q, r) => {
   const b = q.body || {}, out = { themes: {}, frames: {}, effects: {} };
-  const builtIn = { themes: THEMES, frames: FRAMES, effects: EFFECTS };
+  const builtIn = { themes: THEMES, frames: FRAMES, effects: EFFECTS }, imgs = (await db.ref('appConfig/decorImages').get()).val() || {};
   for (const kind of ['themes', 'frames', 'effects']) {
     const src = b[kind] && typeof b[kind] === 'object' ? b[kind] : {};
     const ids = Object.keys(src); if (ids.length > 40) return r.status(400).json({ error: `${kind}: ไม่เกิน 40 รายการ` });
@@ -143,7 +143,13 @@ app.put('/admin/decor-options', perm('config_edit'), w(notBanned), w(async (q, r
       const v = src[id] || {};
       if (!DECOR_OPT_ID.test(id) || builtIn[kind].includes(id)) return r.status(400).json({ error: `${kind}: รหัส '${id}' ใช้ไม่ได้ (a-z 0-9 _ และห้ามซ้ำของในระบบ)` });
       const name = String(v.name || '').trim().slice(0, 30); if (!name) return r.status(400).json({ error: `${kind}.${id}: ต้องมีชื่อ` });
-      const o = { name, enabled: v.enabled !== false };
+      const o = { name, enabled: v.enabled !== false }, img = imgs[kind]?.[id];
+      if (typeof img === 'string' && img) o.imageUrl = img;
+      if (o.imageUrl) { // picture option: colours / emojis are optional extras
+        if (kind === 'effects') o.glyphs = (Array.isArray(v.glyphs) ? v.glyphs : []).map(x => String(x).trim()).filter(x => x && [...x].length <= 4).slice(0, 3);
+        else o.colors = (Array.isArray(v.colors) ? v.colors : []).filter(x => /^#[0-9A-Fa-f]{6}$/.test(x)).slice(0, 3);
+        out[kind][id] = o; continue;
+      }
       if (kind === 'effects') {
         const g = (Array.isArray(v.glyphs) ? v.glyphs : []).map(x => String(x).trim()).filter(x => x && [...x].length <= 4).slice(0, 3);
         if (!g.length) return r.status(400).json({ error: `effects.${id}: ใส่อีโมจิอย่างน้อย 1 ตัว` }); o.glyphs = g;
@@ -2180,13 +2186,14 @@ const rcPublic = c => c ? { avatarUrl: c.avatarUrl || '', bgUrl: c.bgUrl || '', 
   frame: c.frame || 'none', frameColors: c.frameColors || [], nameFrame: c.nameFrame || 'none', nameFrameColors: c.nameFrameColors || [],
   effect: c.effect || 'none', effectGlyphs: c.effectGlyphs || [], layout: rcLayout(c.layout), updatedAt: num(c.updatedAt),
   nameFrameStyle: c.nameFrameStyle || 'pill', effectMotion: c.effectMotion || 'rise', nameDeco: c.nameDeco || '', nameColor: c.nameColor || '',
-  frameImageUrl: c.frame === 'custom' ? c.frameImageUrl || '' : '', nameFrameImageUrl: c.nameFrame === 'custom' ? c.nameFrameImageUrl || '' : '',
-  effectImageUrl: c.effect === 'custom' ? c.effectImageUrl || '' : '' } : null;
+  frameImageUrl: c.frame === 'custom' ? c.frameImageUrl || '' : c.frame !== 'none' ? c.frameItemImageUrl || '' : '',
+  nameFrameImageUrl: c.nameFrame === 'custom' ? c.nameFrameImageUrl || '' : c.nameFrame !== 'none' ? c.nameFrameItemImageUrl || '' : '',
+  effectImageUrl: c.effect === 'custom' ? c.effectImageUrl || '' : c.effect !== 'none' ? c.effectItemImageUrl || '' : '' } : null;
 // Free name-tag decoration the owner picks (sticker on the tag + text colour)
 const RC_DECOS = ['', '♡', '✦', '👑', '🌸', '⭐', '🎀', '🔥', '💎', '🦋', '🐱', '🌙'];
 app.get('/randomcard/catalog', w(async (q, r) => {
   const c = await rcCatalog(), list = kind => Object.entries(c[kind] || {}).filter(([, v]) => v && v.enabled !== false)
-    .map(([id, v]) => ({ id, name: v.name || id, price: num(v.price), colors: v.colors || [], glyphs: v.glyphs || [], style: v.style || 'pill', motion: v.motion || 'rise', order: num(v.order) })).sort((a, b) => a.order - b.order || a.price - b.price);
+    .map(([id, v]) => ({ id, name: v.name || id, price: num(v.price), colors: v.colors || [], glyphs: v.glyphs || [], style: v.style || 'pill', motion: v.motion || 'rise', imageUrl: v.imageUrl || '', order: num(v.order) })).sort((a, b) => a.order - b.order || a.price - b.price);
   const [t, wl] = await Promise.all([tierOf(q.uid), db.ref(`wallets/${q.uid}/diamonds`).get()]);
   r.json({ enabled: c.enabled !== false, videoPrice: num(c.videoPrice), audioPrice: num(c.audioPrice),
     customFramePrice: num(c.customFramePrice), customNameFramePrice: num(c.customNameFramePrice), customEffectPrice: num(c.customEffectPrice), frames: list('frames'), nameFrames: list('nameFrames'), effects: list('effects'),
@@ -2234,8 +2241,8 @@ app.post('/randomcard/save', w(notBanned), w(async (q, r) => {
       card[key] = 'custom'; card[styleKey] = [];
       continue;
     }
-    if (want === 'none') { card[key] = 'none'; card[styleKey] = []; }
-    else if (want !== x.saved[key]) { const it = rcItem(x.cat, kind, want); card[key] = want; card[styleKey] = (it?.[styleField] || []).slice(0, 8);
+    if (want === 'none') { card[key] = 'none'; card[styleKey] = []; card[`${key}ItemImageUrl`] = ''; }
+    else if (want !== x.saved[key]) { const it = rcItem(x.cat, kind, want); card[key] = want; card[styleKey] = (it?.[styleField] || []).slice(0, 8); card[`${key}ItemImageUrl`] = it?.imageUrl || '';
       if (kind === 'nameFrames') card.nameFrameStyle = RC_STYLES.includes(it?.style) ? it.style : 'pill';
       if (kind === 'effects') card.effectMotion = RC_MOTIONS.includes(it?.motion) ? it.motion : 'rise'; }
   }
@@ -2261,7 +2268,7 @@ app.put('/admin/randomcard-catalog', perm('config_edit'), w(notBanned), w(async 
   const pr = v => Math.min(1e6, Math.max(0, parseInt(v) || 0));
   const b = q.body || {}, out = { enabled: b.enabled !== false, videoPrice: pr(b.videoPrice), audioPrice: pr(b.audioPrice),
     customFramePrice: pr(b.customFramePrice), customNameFramePrice: pr(b.customNameFramePrice), customEffectPrice: pr(b.customEffectPrice) };
-  const HEX = /^#[0-9A-Fa-f]{6}$/;
+  const HEX = /^#[0-9A-Fa-f]{6}$/, prev = (await db.ref('appConfig/randomCardCatalog').get()).val() || {};
   for (const kind of RC_KINDS) {
     out[kind] = {};
     for (const [id, v] of Object.entries(b[kind] || {}).slice(0, 40)) {
@@ -2272,7 +2279,9 @@ app.put('/admin/randomcard-catalog', perm('config_edit'), w(notBanned), w(async 
       if (kind === 'nameFrames') item.style = RC_STYLES.includes(v.style) ? v.style : 'pill';
       if (kind === 'effects') item.glyphs = (Array.isArray(v.glyphs) ? v.glyphs : []).map(g => String(g).slice(0, 4)).filter(Boolean).slice(0, 6);
       else item.colors = (Array.isArray(v.colors) ? v.colors : []).filter(c => HEX.test(c)).slice(0, 6);
-      if (kind === 'effects' ? !item.glyphs.length : item.colors.length < 2) return r.status(400).json({ error: `${item.name}: ${kind === 'effects' ? 'ต้องมีอีโมจิอย่างน้อย 1 ตัว' : 'ต้องมีสีอย่างน้อย 2 สี'}` });
+      const img = prev[kind]?.[id]?.imageUrl; if (typeof img === 'string' && img && v.dropImage !== true) item.imageUrl = img; // admin picture (uploaded separately)
+      const willImg = !!item.imageUrl || v.pendingImage === true;
+      if (!willImg && (kind === 'effects' ? !item.glyphs.length : item.colors.length < 2)) return r.status(400).json({ error: `${item.name}: ${kind === 'effects' ? 'ต้องมีอีโมจิอย่างน้อย 1 ตัว หรือใส่รูป' : 'ต้องมีสีอย่างน้อย 2 สี หรือใส่รูป'}` });
       out[kind][id] = item;
     }
   }
@@ -2280,6 +2289,42 @@ app.put('/admin/randomcard-catalog', perm('config_edit'), w(notBanned), w(async 
   await db.ref('appConfig/randomCardCatalog').set(out);
   await db.ref('adminLog').push({ action: 'randomcard_catalog', by: q.uid, at: out.at });
   r.json(out);
+}));
+// Admin picture for one catalog item (PNG / GIF / WebP / JPEG ≤ 2MB): frame = overlay on the card edge, name frame = tag background, effect = animated overlay.
+const decorImg = buf => { const webp = buf.slice(0, 4).toString() === 'RIFF' && buf.slice(8, 12).toString() === 'WEBP', png = buf[0] === 0x89 && buf[1] === 0x50, gif = buf.slice(0, 3).toString() === 'GIF', jpg = buf[0] === 0xff && buf[1] === 0xd8;
+  return webp ? 'image/webp' : png ? 'image/png' : gif ? 'image/gif' : jpg ? 'image/jpeg' : null; };
+async function saveDecorAsset(name, buf) {
+  const ct = decorImg(buf); if (!ct) return null;
+  const fileId = `${name}_${Date.now().toString(36)}`;
+  await admin.storage().bucket(STORAGE_BUCKET).file(`giftAssets/${fileId}.webp`).save(buf, { contentType: ct, resumable: false });
+  return `${assetUrl(fileId)}`;
+}
+app.put('/admin/randomcard-catalog/:kind/:id/image', perm('config_edit'), express.raw({ type: 'image/*', limit: '2100kb' }), w(async (q, r) => {
+  const { kind, id } = q.params; if (!RC_KINDS.includes(kind) || !/^[a-z0-9_]{1,24}$/.test(id)) return r.status(400).json({ error: 'bad kind/id' });
+  const ref = db.ref(`appConfig/randomCardCatalog/${kind}/${id}`); if (!(await ref.child('name').get()).exists()) return r.status(404).json({ error: 'บันทึกรายการก่อน แล้วค่อยใส่รูป' });
+  const buf = q.body; if (!Buffer.isBuffer(buf) || !buf.length) return r.status(400).json({ error: 'image required' });
+  if (buf.length > 2 * 1024 * 1024) return r.status(413).json({ error: 'รูปต้องไม่เกิน 2MB' });
+  const url = await saveDecorAsset(`rc_${kind}_${id}`, buf); if (!url) return r.status(400).json({ error: 'รองรับ PNG, GIF, WebP, JPG' });
+  await ref.update({ imageUrl: url }); r.json({ imageUrl: url });
+}));
+app.delete('/admin/randomcard-catalog/:kind/:id/image', perm('config_edit'), w(async (q, r) => {
+  const { kind, id } = q.params; if (!RC_KINDS.includes(kind) || !/^[a-z0-9_]{1,24}$/.test(id)) return r.status(400).json({ error: 'bad kind/id' });
+  await db.ref(`appConfig/randomCardCatalog/${kind}/${id}/imageUrl`).remove(); r.json({ ok: true });
+}));
+// Room decor option picture (theme = background, frame = overlay, effect = animated overlay). Stored next to the option; PUT /admin/decor-options keeps it.
+app.put('/admin/decor-options/:kind/:id/image', perm('config_edit'), express.raw({ type: 'image/*', limit: '2100kb' }), w(async (q, r) => {
+  const { kind, id } = q.params; if (!['themes', 'frames', 'effects'].includes(kind) || !DECOR_OPT_ID.test(id)) return r.status(400).json({ error: 'bad kind/id' });
+  const buf = q.body; if (!Buffer.isBuffer(buf) || !buf.length) return r.status(400).json({ error: 'image required' });
+  if (buf.length > 2 * 1024 * 1024) return r.status(413).json({ error: 'รูปต้องไม่เกิน 2MB' });
+  const url = await saveDecorAsset(`decor_${kind}_${id}`, buf); if (!url) return r.status(400).json({ error: 'รองรับ PNG, GIF, WebP, JPG' });
+  await db.ref(`appConfig/decorImages/${kind}/${id}`).set(url); decorOptCache = { at: 0, v: null };
+  if ((await db.ref(`appConfig/decorOptions/${kind}/${id}/name`).get()).exists()) await db.ref(`appConfig/decorOptions/${kind}/${id}/imageUrl`).set(url);
+  r.json({ imageUrl: url });
+}));
+app.delete('/admin/decor-options/:kind/:id/image', perm('config_edit'), w(async (q, r) => {
+  const { kind, id } = q.params; if (!['themes', 'frames', 'effects'].includes(kind) || !DECOR_OPT_ID.test(id)) return r.status(400).json({ error: 'bad kind/id' });
+  await db.ref().update({ [`appConfig/decorImages/${kind}/${id}`]: null, [`appConfig/decorOptions/${kind}/${id}/imageUrl`]: null }); decorOptCache = { at: 0, v: null };
+  r.json({ ok: true });
 }));
 // สุ่มหาเพื่อน: tap the turtle → one random real person (online first), shown with their card; 💔 = next, ❤️ = chat.
 // Uses the 'ต้องการ' filter and the randomMatchPerDay quota. Falls back to a labelled AI character when nobody fits.

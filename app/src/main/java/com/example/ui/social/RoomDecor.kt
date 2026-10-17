@@ -73,7 +73,9 @@ val DECOR_BUILTIN_STICKERS: List<com.example.social.CatalogItem> = com.example.s
 fun hexColor(h: String, fb: Color = Color.Transparent): Color = runCatching { Color(android.graphics.Color.parseColor(h)) }.getOrDefault(fb)
 /** Decor options the admin adds later (RTDB appConfig/decorOptions, live). Built-in options stay in code; these are appended. */
 object DecorOptions {
-    data class Opt(val id: String, val name: String, val colors: List<Color> = emptyList(), val glyphs: List<String> = emptyList(), val enabled: Boolean = true, val hex: List<String> = emptyList())
+    /** [imageUrl] = admin picture: theme → room background, frame → overlay on the room edge, effect → animated overlay (GIF/WebP). */
+    data class Opt(val id: String, val name: String, val colors: List<Color> = emptyList(), val glyphs: List<String> = emptyList(), val enabled: Boolean = true, val hex: List<String> = emptyList(),
+                   val imageUrl: String = "")
     var themes by mutableStateOf<List<Opt>>(emptyList())
     var frames by mutableStateOf<List<Opt>>(emptyList())
     var effects by mutableStateOf<List<Opt>>(emptyList())
@@ -87,7 +89,7 @@ object DecorOptions {
                         val name = c.child("name").getValue(String::class.java) ?: return@mapNotNull null
                         val hex = c.child("colors").children.mapNotNull { it.getValue(String::class.java) }
                         Opt(c.key ?: return@mapNotNull null, name, hex.map { hexColor(it, Color.Gray) }, c.child("glyphs").children.mapNotNull { it.getValue(String::class.java) },
-                            c.child("enabled").getValue(Boolean::class.java) != false, hex)
+                            c.child("enabled").getValue(Boolean::class.java) != false, hex, c.child("imageUrl").getValue(String::class.java).orEmpty())
                     }
                     themes = list("themes"); frames = list("frames"); effects = list("effects")
                 }
@@ -132,16 +134,22 @@ fun DecorBackground(chatId: String, d: Decor, token: String?, stickers: Map<Stri
     val cols = themeOf(d.theme)?.second ?: listOf(Slate950, Slate950)
     val fc = frameColors(d.frame)
     val gif = rememberGifLoader()
+    val themeImg = DecorOptions.themes.firstOrNull { it.id == d.theme }?.imageUrl.orEmpty()
+    val frameImg = DecorOptions.frames.firstOrNull { it.id == d.frame }?.imageUrl.orEmpty()
+    val fxImg = DecorOptions.effects.firstOrNull { it.id == d.effect }?.imageUrl.orEmpty()
     Box(modifier.fillMaxSize().background(Brush.verticalGradient(cols))) {
+        if (themeImg.isNotBlank()) AsyncImage(model = themeImg, imageLoader = gif, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         if (d.bgColor.isNotBlank()) Box(Modifier.fillMaxSize().background(hexColor(d.bgColor).copy(alpha = 0.55f)))
         if (d.pattern != "none") PatternLayer(d.pattern)
         if (d.imagePath.isNotBlank()) AsyncImage(
             model = ImageRequest.Builder(ctx).data(GiftRepo.decorImageUrl(chatId, d.imagePath)).addHeader("Authorization", "Bearer ${token.orEmpty()}")
                 .apply { if (lite || !d.animated) decoderFactory(coil.decode.BitmapFactoryDecoder.Factory()) }.memoryCacheKey(d.imagePath + lite).build(),
             imageLoader = gif, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(), alpha = 0.85f)
-        if (d.effect != "none" && !lite) EffectLayer(d.effect)
+        if (fxImg.isNotBlank()) { if (!lite) AsyncImage(model = fxImg, imageLoader = gif, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
+        else if (d.effect != "none" && !lite) EffectLayer(d.effect)
         StickerLayer(d.items, DECOR_BUILTIN_STICKERS.associateBy { it.id } + stickers)
-        if (fc.isNotEmpty()) Box(Modifier.fillMaxSize().border(4.dp, Brush.linearGradient(fc), RoundedCornerShape(0.dp)))
+        if (frameImg.isNotBlank()) AsyncImage(model = frameImg, imageLoader = gif, contentDescription = null, contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxSize())
+        else if (fc.isNotEmpty()) Box(Modifier.fillMaxSize().border(4.dp, Brush.linearGradient(fc), RoundedCornerShape(0.dp)))
     }
 }
 

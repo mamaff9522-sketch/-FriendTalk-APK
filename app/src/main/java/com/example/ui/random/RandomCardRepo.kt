@@ -31,7 +31,8 @@ data class RandomCard(
     val frameImageUrl: String = "", val nameFrameImageUrl: String = "", val effectImageUrl: String = ""
 )
 
-data class CardItem(val id: String, val name: String, val price: Int, val colors: List<Color>, val glyphs: List<String>, val style: String = "pill", val motion: String = "rise")
+data class CardItem(val id: String, val name: String, val price: Int, val colors: List<Color>, val glyphs: List<String>, val style: String = "pill", val motion: String = "rise",
+                    /** admin picture (frame overlay / name-tag background / animated effect) */ val imageUrl: String = "")
 data class CardCatalog(val enabled: Boolean, val videoPrice: Int, val audioPrice: Int, val frames: List<CardItem>, val nameFrames: List<CardItem>,
                        val effects: List<CardItem>, val vip: Boolean, val diamonds: Int,
                        val customFramePrice: Int = 0, val customNameFramePrice: Int = 0, val customEffectPrice: Int = 0)
@@ -78,7 +79,7 @@ object RandomCardRepo {
         val u = user() ?: return null
         val j = BrainApi.call(u, "GET", "/randomcard/catalog").json ?: return null
         fun list(k: String) = j.optJSONArray(k)?.let { a -> (0 until a.length()).map { a.getJSONObject(it) }.map {
-            CardItem(it.optString("id"), it.optString("name"), it.optInt("price"), colors(it.optJSONArray("colors")), strs(it.optJSONArray("glyphs")), it.optString("style", "pill"), it.optString("motion", "rise")) } } ?: emptyList()
+            CardItem(it.optString("id"), it.optString("name"), it.optInt("price"), colors(it.optJSONArray("colors")), strs(it.optJSONArray("glyphs")), it.optString("style", "pill"), it.optString("motion", "rise"), it.optString("imageUrl")) } } ?: emptyList()
         return CardCatalog(j.optBoolean("enabled", true), j.optInt("videoPrice"), j.optInt("audioPrice"), list("frames"), list("nameFrames"), list("effects"), j.optBoolean("vip"), j.optInt("diamonds"),
             j.optInt("customFramePrice"), j.optInt("customNameFramePrice"), j.optInt("customEffectPrice"))
     }
