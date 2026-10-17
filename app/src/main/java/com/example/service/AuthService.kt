@@ -808,7 +808,8 @@ class AuthService private constructor() {
             .addOnFailureListener { e ->
                 val err = when (e) {
                     is FirebaseAuthInvalidUserException -> "ไม่พบบัญชีผู้ใช้นี้ในระบบ กรุณาสมัครสมาชิกใหม่"
-                    is FirebaseAuthInvalidCredentialsException -> "อีเมลหรือรหัสผ่านไม่ถูกต้อง"
+                    // the Firebase code tells "wrong password" apart from e.g. reCAPTCHA / app-verification problems
+                    is FirebaseAuthInvalidCredentialsException -> "อีเมลหรือรหัสผ่านไม่ถูกต้อง (${e.errorCode})"
                     else -> "เข้าสู่ระบบด้วยอีเมลไม่สำเร็จ: ${e.localizedMessage}"
                 }
                 _authError.value = err
