@@ -325,7 +325,6 @@ fun RoomDecorEditor(chatId: String, initial: Decor?, token: String?, onClose: (s
                                 OptionRow(listOf("none" to "ไม่มี", "sparkle" to "✨ วิบวับ", "hearts" to "💗 หัวใจ", "stars" to "⭐ ดาว", "snow" to "❄ หิมะ", "bubbles" to "○ ฟอง",
                                     "petals" to "🌸 กลีบซากุระ", "confetti" to "🎉 ปาร์ตี้", "fireflies" to "• หิ่งห้อย") +
                                     DecorOptions.effects.filter { it.enabled || it.id == d.effect }.map { it.id to (it.glyphs.firstOrNull().orEmpty() + " " + it.name).trim() }, d.effect) { d = d.copy(effect = it) }
-                                Text("ผู้รับเลือก 'โหมดประหยัด' เพื่อหยุดเอฟเฟกต์ได้", color = Slate400, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
                             }
                             else -> {
                                 Section("แตะเพื่อวางสติกเกอร์ (${d.items.size}/30)")

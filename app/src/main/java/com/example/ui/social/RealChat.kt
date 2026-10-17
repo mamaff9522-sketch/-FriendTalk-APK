@@ -166,8 +166,7 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
     val decorState by produceState<com.example.social.GiftRepo.DecorState?>(null, chatId, decorRev, decorTick) { value = com.example.social.GiftRepo.decor(chatId) }
     val decor = decorState?.decor
     val stickerList by remember { com.example.social.GiftRepo.catalog("stickers") }.collectAsState(initial = emptyList())
-    val prefs = remember { context.getSharedPreferences("friendtalk", 0) }
-    var lite by remember { mutableStateOf(prefs.getBoolean("decorLite", false)) }
+    val lite = false // saver mode removed from the menu; animations always play
     var editDecor by remember { mutableStateOf(false) }
     var vipInfo by remember { mutableStateOf(false) }
     var giftSheet by remember { mutableStateOf(false) }
@@ -240,7 +239,6 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                                 DropdownMenuItem(text = { Text(tr("🛡 กติกาการแชท")) }, onClick = { menu = false; showRules = true })
                                 if (c?.closed == true && c.closedByMe) DropdownMenuItem(text = { Text(tr("🔓 เปิดแชทอีกครั้ง")) }, onClick = { menu = false; scope.launch { status = SocialRepo.setClosed(chatId, false).orEmpty(); csTick++ } })
                                 else if (c?.closed != true) DropdownMenuItem(text = { Text(tr("🔒 ปิดแชทนี้")) }, onClick = { menu = false; scope.launch { status = SocialRepo.setClosed(chatId, true).orEmpty(); csTick++ } })
-                                if (decor != null) DropdownMenuItem(text = { Text(if (lite) tr("🎞 เปิดภาพเคลื่อนไหว") else tr("🪶 โหมดประหยัด (หยุด GIF)")) }, onClick = { menu = false; lite = !lite; prefs.edit().putBoolean("decorLite", lite).apply() })
                                 if (decor != null && ds?.ownerUid != me) DropdownMenuItem(text = { Text(tr("🚩 รายงานพื้นหลังไม่เหมาะสม")) }, onClick = { menu = false; scope.launch { status = if (com.example.social.GiftRepo.reportDecor(chatId, "inappropriate")) tr("รายงานแล้ว ขอบคุณ") else tr("รายงานไม่สำเร็จ") } })
                             }
                         }
