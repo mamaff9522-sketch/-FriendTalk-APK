@@ -197,10 +197,14 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
             // Insets: the input row was drawn behind the navigation bar (edge-to-edge dialog window) → pad for system bars + keyboard.
             Column(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding().imePadding()) {
                 val askCallPerm = com.example.rtc.rememberRtcPermission { status = tr("ต้องอนุญาตไมโครโฟน/กล้องก่อนโทร") }
-                fun startCall(video: Boolean) = askCallPerm(video) {
+                fun callLocked(video: Boolean) = com.example.ui.components.AppGates.partLocked(if (video) "videoCall" else "voiceCall") && !com.example.ui.components.AppGates.isStaff
+                fun startCall(video: Boolean) {
+                    if (callLocked(video)) { status = if (video) tr("วิดีโอคอลปิดใช้งานชั่วคราว") else tr("การโทรปิดใช้งานชั่วคราว"); return }
+                    askCallPerm(video) {
                     status = if (video) tr("กำลังเริ่มวิดีโอคอล…") else tr("กำลังโทร…")
                     com.example.rtc.RtcScope.launch {
                         status = com.example.rtc.CallManager.start(context, chatId, video, otherUid, other?.displayName ?: "เพื่อน").orEmpty()
+                    }
                     }
                 }
                 Box(Modifier.fillMaxWidth().background(chatHeaderBrush())) {
@@ -218,8 +222,8 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                                 null -> {}
                             }
                         }
-                        IconButton(onClick = { startCall(false) }, modifier = Modifier.size(40.dp)) { Icon(Icons.Filled.Call, tr("โทรเสียง"), tint = PureWhite) }
-                        IconButton(onClick = { startCall(true) }, modifier = Modifier.size(40.dp)) { Icon(Icons.Filled.Videocam, tr("วิดีโอคอล"), tint = PureWhite) }
+                        IconButton(onClick = { startCall(false) }, modifier = Modifier.size(40.dp)) { Icon(Icons.Filled.Call, tr("โทรเสียง"), tint = PureWhite.copy(alpha = if (callLocked(false)) 0.35f else 1f)) }
+                        IconButton(onClick = { startCall(true) }, modifier = Modifier.size(40.dp)) { Icon(Icons.Filled.Videocam, tr("วิดีโอคอล"), tint = PureWhite.copy(alpha = if (callLocked(true)) 0.35f else 1f)) }
                         IconButton(onClick = { giftSheet = true }, modifier = Modifier.size(40.dp)) { Icon(Icons.Filled.CardGiftcard, tr("ส่งของขวัญ"), tint = Color(0xFFFFC94D)) }
                         var menu by remember { mutableStateOf(false) }
                         Box {

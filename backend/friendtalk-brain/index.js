@@ -85,7 +85,7 @@ app.use(w(async (q, r, n) => {
   r.status(423).json({ error: 'app locked', message: l.message || 'แอปปิดชั่วคราว' });
 }));
 // Per-feature lock: appConfig/featureLocks {parts:{part:true}, message}. Feature stays visible in the app (greyed + lock badge) but its endpoints return 423 {code:'feature_locked', part} for non-staff.
-const PARTS = ['home','posting','discover','random','shake','radar','swipe','similar','requests','companion','live','video','chat','ai','ads','gifts','decor'];
+const PARTS = ['home','posting','discover','random','shake','radar','swipe','similar','requests','companion','live','video','chat','ai','ads','gifts','decor','voiceCall','videoCall'];
 const PART_OF = q => {
   const p = q.path;
   if (/^\/posts\/?$/.test(p) && q.method === 'POST') return 'posting';
@@ -2849,6 +2849,11 @@ app.get('/rtc/status', w(async (_q, r) => r.json({ ready: rtcReady() })));
 app.post('/calls', w(notBanned), w(async (q, r) => {
   if (!rtcReady()) return rtcOff(r);
   const chatId = String(q.body?.chatId || ''); const video = q.body?.video === true;
+  { // admin lock for voice / video calls separately (staff can still call)
+    const f = await featureLocks(), part = video ? 'videoCall' : 'voiceCall';
+    if (f.parts && f.parts[part]) { const role = await loadRole(q.uid); if (!(role && ['admin', 'superadmin', 'moderator'].includes(role.role)))
+      return r.status(423).json({ error: 'feature locked', code: 'feature_locked', part, message: f.message || (video ? 'วิดีโอคอลปิดใช้งานชั่วคราว' : 'การโทรปิดใช้งานชั่วคราว') }); }
+  }
   if (!/^[A-Za-z0-9_-]{1,300}$/.test(chatId)) return r.status(400).json({ error: 'bad chatId' });
   const other = await chatOther(chatId, q.uid); if (!other) return r.status(403).json({ error: 'not a member' });
   if ((await db.ref(`chats/${chatId}/closed`).get()).exists()) return r.status(403).json({ error: 'แชทนี้ถูกปิดอยู่' });
