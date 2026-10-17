@@ -147,6 +147,12 @@ fun RtcHost() {
     LaunchedEffect(uid) { CallManager.listen(uid) }
     val inc = CallManager.incoming
     val act = CallManager.active
+    // keep the screen on for the whole call (voice and video, full screen or minimized)
+    val rootView = androidx.compose.ui.platform.LocalView.current
+    DisposableEffect(act != null) {
+        if (act != null) rootView.keepScreenOn = true
+        onDispose { rootView.keepScreenOn = false }
+    }
     when {
         act != null -> if (CallManager.minimized) CallBubble(act) else CallScreen(act)
         inc != null -> IncomingCallScreen(inc)
@@ -213,6 +219,8 @@ private fun CallScreen(a: CallManager.Active) {
     // back button → minimize (the call keeps going); the call only ends with วางสาย
     Dialog(onDismissRequest = { CallManager.minimized = true }, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnBackPress = true, dismissOnClickOutside = false)) {
         val ctx = LocalContext.current
+        val dv = androidx.compose.ui.platform.LocalView.current
+        DisposableEffect(Unit) { dv.keepScreenOn = true; onDispose { } } // the call window itself also keeps the screen awake
         Box(Modifier.fillMaxSize().background(CallBg)) {
             if (a.video && remote != null) key(remote) { AndroidView(factory = { Rtc.remoteView(it, remote) }, modifier = Modifier.fillMaxSize()) }
             Column(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding()) {
