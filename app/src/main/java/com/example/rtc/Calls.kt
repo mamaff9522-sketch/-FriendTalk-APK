@@ -6,6 +6,8 @@ import android.media.RingtoneManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -46,6 +48,8 @@ object CallManager {
     var active by mutableStateOf<Active?>(null)
     var connectedAt by mutableLongStateOf(0L)
     var note by mutableStateOf("")
+    /** Back (or ⌄) shrinks the call to a floating bubble so other screens can be used; tap the bubble to return. */
+    var minimized by mutableStateOf(false)
     private var inboxRef: DatabaseReference? = null
     private var inboxL: ValueEventListener? = null
     private var callRef: DatabaseReference? = null
@@ -126,7 +130,7 @@ object CallManager {
     private fun finish(msg: String) {
         if (active == null) return
         unwatch(); Rtc.leave()
-        active = null; connectedAt = 0L; note = msg
+        active = null; connectedAt = 0L; note = msg; minimized = false
     }
 }
 
@@ -144,7 +148,7 @@ fun RtcHost() {
     val inc = CallManager.incoming
     val act = CallManager.active
     when {
-        act != null -> CallScreen(act)
+        act != null -> if (CallManager.minimized) CallBubble(act) else CallScreen(act)
         inc != null -> IncomingCallScreen(inc)
     }
     if (act == null) {
@@ -206,7 +210,8 @@ private fun CallScreen(a: CallManager.Active) {
         remote == null -> "กำลังเชื่อมต่อ…"
         else -> ((now - since) / 1000).let { "%02d:%02d".format(it / 60, it % 60) }
     }
-    Dialog(onDismissRequest = {}, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnBackPress = false, dismissOnClickOutside = false)) {
+    // back button → minimize (the call keeps going); the call only ends with วางสาย
+    Dialog(onDismissRequest = { CallManager.minimized = true }, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnBackPress = true, dismissOnClickOutside = false)) {
         val ctx = LocalContext.current
         Box(Modifier.fillMaxSize().background(CallBg)) {
             if (a.video && remote != null) key(remote) { AndroidView(factory = { Rtc.remoteView(it, remote) }, modifier = Modifier.fillMaxSize()) }
@@ -227,6 +232,8 @@ private fun CallScreen(a: CallManager.Active) {
                     }
                 }
                 Spacer(Modifier.weight(1f))
+                Text("กดปุ่มย้อนกลับเพื่อย่อหน้าจอ แล้วใช้หน้าอื่นได้", color = Color.White.copy(alpha = 0.6f), fontSize = 11.sp,
+                    modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 10.dp))
                 Row(Modifier.fillMaxWidth().padding(bottom = 36.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                     RoundAction(if (Rtc.micOn) Icons.Filled.Mic else Icons.Filled.MicOff, if (Rtc.micOn) "ปิดไมค์" else "เปิดไมค์", if (Rtc.micOn) Color(0x33FFFFFF) else Color.White, 56.dp, dark = !Rtc.micOn) { Rtc.toggleMic() }
                     if (a.video) RoundAction(if (Rtc.camOn) Icons.Filled.Videocam else Icons.Filled.VideocamOff, "กล้อง", if (Rtc.camOn) Color(0x33FFFFFF) else Color.White, 56.dp, dark = !Rtc.camOn) { Rtc.toggleCam() }
@@ -238,6 +245,31 @@ private fun CallScreen(a: CallManager.Active) {
             if (a.video && Rtc.camOn) Box(Modifier.align(Alignment.TopEnd).systemBarsPadding().padding(top = 70.dp, end = 14.dp).size(width = 110.dp, height = 160.dp)
                 .clip(RoundedCornerShape(16.dp)).border(2.dp, Color(0x88FFFFFF), RoundedCornerShape(16.dp))) {
                 AndroidView(factory = { Rtc.localView(ctx, overlay = true) }, modifier = Modifier.fillMaxSize())
+            }
+        }
+    }
+}
+
+/** Minimized call: small draggable bubble over the app (avatar + timer); tap = back to the full call screen, red button = hang up. */
+@Composable
+fun CallBubble(a: CallManager.Active) {
+    val avatar by produceState("", a.peerUid) { value = runCatching { com.example.ui.feed.HomeRepo.user(a.peerUid).avatar }.getOrDefault("") }
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) { while (true) { delay(1000); now = System.currentTimeMillis() } }
+    val since = CallManager.connectedAt
+    val label = if (since == 0L) (if (a.outgoing) "กำลังโทร…" else "กำลังเชื่อมต่อ…") else ((now - since) / 1000).let { "%02d:%02d".format(it / 60, it % 60) }
+    var off by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+    Box(Modifier.fillMaxSize().systemBarsPadding().padding(top = 90.dp, end = 12.dp), contentAlignment = Alignment.TopEnd) {
+        Column(Modifier.offset { androidx.compose.ui.unit.IntOffset(off.x.toInt(), off.y.toInt()) }
+            .pointerInput(Unit) { detectDragGestures { c, d -> c.consume(); off += d } }
+            .width(92.dp).clip(RoundedCornerShape(22.dp)).background(CallBg).border(2.dp, Color(0xFF22C55E), RoundedCornerShape(22.dp))
+            .clickable { CallManager.minimized = false }.padding(vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            com.example.ui.social.Avatar(avatar, a.name, 52)
+            Text(if (a.video) "🎥 $label" else "📞 $label", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 6.dp))
+            Text(a.name, color = Color.White.copy(alpha = 0.8f), fontSize = 10.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 6.dp))
+            Box(Modifier.padding(top = 6.dp).size(34.dp).clip(CircleShape).background(Color(0xFFFF3B5C)).clickable { CallManager.hangup() }, contentAlignment = Alignment.Center) {
+                Icon(Icons.Filled.CallEnd, "วางสาย", tint = Color.White, modifier = Modifier.size(18.dp))
             }
         }
     }

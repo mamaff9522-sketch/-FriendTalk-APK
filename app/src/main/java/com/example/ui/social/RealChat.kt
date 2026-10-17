@@ -37,6 +37,7 @@ import com.example.ui.components.ft.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -194,6 +195,8 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
 
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(Modifier.fillMaxSize(), color = Slate950) {
+            // a minimized call floats over the chat too (this dialog is its own window, above the app-level bubble)
+            com.example.rtc.CallManager.active?.let { a -> if (com.example.rtc.CallManager.minimized) Box(Modifier.fillMaxSize().zIndex(10f)) { com.example.rtc.CallBubble(a) } }
             // Insets: the input row was drawn behind the navigation bar (edge-to-edge dialog window) → pad for system bars + keyboard.
             Column(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding().imePadding()) {
                 val askCallPerm = com.example.rtc.rememberRtcPermission { status = tr("ต้องอนุญาตไมโครโฟน/กล้องก่อนโทร") }
