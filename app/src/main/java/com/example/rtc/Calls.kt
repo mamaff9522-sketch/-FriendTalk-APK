@@ -50,6 +50,9 @@ object CallManager {
     var note by mutableStateOf("")
     /** Back (or ⌄) shrinks the call to a floating bubble so other screens can be used; tap the bubble to return. */
     var minimized by mutableStateOf(false)
+    /** Where my own video preview sits (right/left edge, 0..1 height). Starts top-right like before. */
+    var pipRight = true
+    var pipY = 0f
     private var inboxRef: DatabaseReference? = null
     private var inboxL: ValueEventListener? = null
     private var callRef: DatabaseReference? = null
@@ -130,7 +133,7 @@ object CallManager {
     private fun finish(msg: String) {
         if (active == null) return
         unwatch(); Rtc.leave()
-        active = null; connectedAt = 0L; note = msg; minimized = false
+        active = null; connectedAt = 0L; note = msg; minimized = false; pipRight = true; pipY = 0f
     }
 }
 
@@ -250,10 +253,37 @@ private fun CallScreen(a: CallManager.Active) {
                     RoundAction(Icons.Filled.CallEnd, "วางสาย", Color(0xFFFF3B5C), 64.dp) { CallManager.hangup() }
                 }
             }
-            if (a.video && Rtc.camOn) Box(Modifier.align(Alignment.TopEnd).systemBarsPadding().padding(top = 70.dp, end = 14.dp).size(width = 110.dp, height = 160.dp)
-                .clip(RoundedCornerShape(16.dp)).border(2.dp, Color(0x88FFFFFF), RoundedCornerShape(16.dp))) {
-                AndroidView(factory = { Rtc.localView(ctx, overlay = true) }, modifier = Modifier.fillMaxSize())
+            if (a.video && Rtc.camOn) SelfPreview(ctx)
+        }
+    }
+}
+
+/** My own camera in a video call: drag it anywhere; on release it snaps to the nearest side edge (left / right),
+ *  staying at the height where it was dropped (so top, middle or bottom). Position is kept for the rest of the call. */
+@Composable
+private fun SelfPreview(ctx: Context) {
+    BoxWithConstraints(Modifier.fillMaxSize().systemBarsPadding().padding(start = 12.dp, end = 12.dp, top = 64.dp, bottom = 150.dp)) { // bottom keeps it off the call buttons
+        val d = androidx.compose.ui.platform.LocalDensity.current
+        val w = 110.dp; val h = 160.dp
+        val maxX = with(d) { (maxWidth - w).toPx() }.coerceAtLeast(0f); val maxY = with(d) { (maxHeight - h).toPx() }.coerceAtLeast(0f)
+        val scope = rememberCoroutineScope()
+        val x = remember { androidx.compose.animation.core.Animatable(if (CallManager.pipRight) maxX else 0f) }
+        val y = remember { androidx.compose.animation.core.Animatable(CallManager.pipY * maxY) }
+        Box(Modifier.offset { androidx.compose.ui.unit.IntOffset(x.value.toInt(), y.value.toInt()) }.size(width = w, height = h)
+            .pointerInput(maxX, maxY) {
+                detectDragGestures(
+                    onDragEnd = {
+                        val right = x.value > maxX / 2
+                        CallManager.pipRight = right; CallManager.pipY = if (maxY > 0f) y.value / maxY else 0f
+                        scope.launch { x.animateTo(if (right) maxX else 0f, androidx.compose.animation.core.spring(dampingRatio = 0.75f)) }
+                    }
+                ) { c, dd ->
+                    c.consume()
+                    scope.launch { x.snapTo((x.value + dd.x).coerceIn(0f, maxX)); y.snapTo((y.value + dd.y).coerceIn(0f, maxY)) }
+                }
             }
+            .clip(RoundedCornerShape(16.dp)).border(2.dp, Color(0x88FFFFFF), RoundedCornerShape(16.dp))) {
+            AndroidView(factory = { Rtc.localView(ctx, overlay = true) }, modifier = Modifier.fillMaxSize())
         }
     }
 }
