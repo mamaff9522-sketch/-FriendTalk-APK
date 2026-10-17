@@ -70,7 +70,8 @@ object BrainApi {
             try {
                 val req = Request.Builder().url("$BASE_URL$path").header("Authorization", "Bearer $token")
                     .method(method, bytes.toRequestBody(mime.toMediaType())).build()
-                client.newCall(req).execute().use { resp -> ApiResponse(resp.code, runCatching { JSONObject(resp.body?.string().orEmpty()) }.getOrNull()) }
+                val c = if (bytes.size > 1_000_000) client.newBuilder().writeTimeout(120, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build() else client // videos
+                c.newCall(req).execute().use { resp -> ApiResponse(resp.code, runCatching { JSONObject(resp.body?.string().orEmpty()) }.getOrNull()) }
             } catch (e: Exception) { ApiResponse(0, null) }
         }
     }

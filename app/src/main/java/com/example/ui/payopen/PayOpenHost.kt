@@ -120,7 +120,8 @@ private fun ReceiveDialog(g: PayOpen, onClose: () -> Unit) {
     Dialog(onDismissRequest = {}, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnBackPress = false, dismissOnClickOutside = false)) {
         Box(Modifier.fillMaxSize().background(Color(0x8C000000)), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 24.dp)) {
-                PayGiftEffect(g.fx, g.imageUrl, g.effectUrl)
+                if (g.videoUrl.isNotBlank()) Box(Modifier.fillMaxWidth().heightIn(max = 340.dp)) { com.example.ui.components.GiftVideoFx(g.videoUrl, {}, dim = false, maxMs = 3_600L) }
+                else PayGiftEffect(g.fx, g.imageUrl, g.effectUrl)
                 Row(Modifier.clip(RoundedCornerShape(28.dp)).background(Brush.horizontalGradient(listOf(Color(0xE6FF2FA8), Color(0xCC9B3DFF))))
                     .padding(start = 4.dp, end = 16.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     com.example.ui.social.Avatar(g.fromAvatar, g.fromName.ifBlank { "?" }, 38)

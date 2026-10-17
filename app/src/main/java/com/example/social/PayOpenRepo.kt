@@ -14,14 +14,15 @@ import kotlinx.coroutines.launch
 import org.json.JSONObject
 
 /** One 'เปย์เปิดใจ' gift in the catalog (admin-managed, prices live from the server). */
-data class PayGift(val id: String, val name: String, val price: Int, val imageUrl: String, val effectUrl: String, val icon: String, val fx: String)
+data class PayGift(val id: String, val name: String, val price: Int, val imageUrl: String, val effectUrl: String, val icon: String, val fx: String, val videoUrl: String = "")
 
 /** A gift sent to me that is waiting for ยอมรับ / ปฏิเสธ (or the sender's view of one). */
 data class PayOpen(
     val id: String, val state: String, val from: String, val to: String, val giftName: String, val imageUrl: String, val effectUrl: String, val fx: String,
     val price: Int, val deadline: Long, val chatId: String, val fromName: String, val fromAvatar: String, val fromGender: String, val voiceGender: String,
     /** server clock − my clock (ms), so the countdown uses the server's deadline correctly */
-    val skew: Long = 0
+    val skew: Long = 0,
+    val videoUrl: String = ""
 )
 
 data class PayVoice(val id: String, val text: String, val gender: String, val kind: String, val audioUrl: String, val order: Int)
@@ -41,7 +42,7 @@ object PayOpenRepo {
     fun parse(o: JSONObject, skew: Long = 0) = PayOpen(o.optString("id"), o.optString("state"), o.optString("from"), o.optString("to"), o.optString("giftName"),
         o.optString("imageUrl"), o.optString("effectUrl"), o.optString("fx"), o.optInt("price"), o.optLong("deadline"), o.optString("chatId"),
         o.optString("fromName"), o.optString("fromAvatar"), o.optString("fromGender"), o.optString("voiceGender"),
-        if (o.has("serverNow")) o.optLong("serverNow") - System.currentTimeMillis() else skew)
+        if (o.has("serverNow")) o.optLong("serverNow") - System.currentTimeMillis() else skew, o.optString("videoUrl"))
 
     private fun snap(s: DataSnapshot): PayOpen? {
         val v = s.value as? Map<*, *> ?: return null
@@ -63,7 +64,7 @@ object PayOpenRepo {
         if (r.code != 200) return null
         val a = j.optJSONArray("items") ?: return emptyList<PayGift>() to j.optInt("diamonds")
         return (0 until a.length()).map { a.getJSONObject(it) }.map {
-            PayGift(it.optString("id"), it.optString("name"), it.optInt("price"), it.optString("imageUrl"), it.optString("effectUrl"), it.optString("icon"), it.optString("fx"))
+            PayGift(it.optString("id"), it.optString("name"), it.optInt("price"), it.optString("imageUrl"), it.optString("effectUrl"), it.optString("icon"), it.optString("fx"), it.optString("videoUrl"))
         } to j.optInt("diamonds")
     }
 

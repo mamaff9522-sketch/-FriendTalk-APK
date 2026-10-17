@@ -76,7 +76,7 @@ fun rememberLiveRooms(): List<LiveRoom>? {
 
 data class LiveMsg(val id: String, val type: String, val uid: String, val name: String, val avatar: String, val text: String,
                    val giftId: String = "", val giftName: String = "", val icon: String = "", val count: Int = 1, val at: Long = 0,
-                   val imageUrl: String = "", val price: Int = 0, val fx: String = "")
+                   val imageUrl: String = "", val price: Int = 0, val fx: String = "", val videoUrl: String = "")
 
 @Composable
 private fun rememberLiveChat(liveId: String): List<LiveMsg> {
@@ -88,7 +88,7 @@ private fun rememberLiveChat(liveId: String): List<LiveMsg> {
                 fun str(k: String) = s.child(k).getValue(String::class.java).orEmpty()
                 msgs.add(LiveMsg(s.key ?: "", str("type").ifBlank { "chat" }, str("uid"), str("name"), str("avatar"), str("text"), str("giftId"), str("giftName"), str("icon"),
                     (s.child("count").value as? Number)?.toInt() ?: 1, (s.child("at").value as? Number)?.toLong() ?: 0L,
-                    str("imageUrl"), (s.child("price").value as? Number)?.toInt() ?: 0, str("fx")))
+                    str("imageUrl"), (s.child("price").value as? Number)?.toInt() ?: 0, str("fx"), str("videoUrl")))
                 if (msgs.size > 80) msgs.removeAt(0)
             }
             override fun onChildChanged(s: DataSnapshot, p: String?) {}

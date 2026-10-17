@@ -2513,6 +2513,7 @@ app.put('/admin/catalog/:ch/:id', catPerm, w(notBanned), w(async (q, r) => {
   const item = { name, price, category: String(b.category || cur.category || ch).slice(0, 30), enabled: b.enabled !== false, order,
     icon: String(b.icon ?? cur.icon ?? '').slice(0, 8), animationEffect: String(b.animationEffect ?? cur.animationEffect ?? 'POP').slice(0, 12), imagePath: cur.imagePath || '', imageUrl: cur.imageUrl || '', updatedAt: Date.now(), updatedBy: q.uid };
   if (cur.effectUrl) { item.effectUrl = cur.effectUrl; item.effectPath = cur.effectPath || ''; }
+  if (cur.videoUrl) { item.videoUrl = cur.videoUrl; item.videoPath = cur.videoPath || ''; }
   await ref.set(item); r.json({ id, ...item });
 }));
 app.put('/admin/catalog/:ch/:id/image', catPerm, express.raw({ type: 'image/*', limit: '600kb' }), w(async (q, r) => {
@@ -2548,8 +2549,33 @@ app.delete('/admin/catalog/:ch/:id/effect', catPerm, w(async (q, r) => {
   await admin.storage().bucket(STORAGE_BUCKET).file(`giftAssets/${ch}_${id}_fx.webp`).delete().catch(() => {});
   r.json({ ok: true });
 }));
+// Video effect (MP4 / WebM, max 10MB) for any channel: plays full screen when the gift is sent (chat, live, เปย์เปิดใจ).
+// Served from Storage with a download token so players can seek (range requests).
+const GIFT_VIDEO_MAX = 10 * 1024 * 1024;
+app.put('/admin/catalog/:ch/:id/video', catPerm, express.raw({ type: 'video/*', limit: '10300kb' }), w(async (q, r) => {
+  const { ch, id } = q.params; if (!CHANNELS.includes(ch) || !ITEM_ID.test(id)) return r.status(400).json({ error: 'bad channel/id' });
+  const ref = db.ref(`catalog/${ch}/${id}`), cur = (await ref.get()).val(); if (!cur) return r.status(404).json({ error: 'save item first' });
+  const buf = q.body; if (!Buffer.isBuffer(buf) || !buf.length) return r.status(400).json({ error: 'video body required' });
+  if (buf.length > GIFT_VIDEO_MAX) return r.status(413).json({ error: 'วิดีโอต้องไม่เกิน 10MB' });
+  const isMp4 = buf.slice(4, 8).toString() === 'ftyp', isWebm = buf[0] === 0x1a && buf[1] === 0x45 && buf[2] === 0xdf && buf[3] === 0xa3;
+  if (!isMp4 && !isWebm) return r.status(400).json({ error: 'รองรับเฉพาะวิดีโอ MP4 หรือ WebM' });
+  const bucket = admin.storage().bucket(STORAGE_BUCKET), path = `giftAssets/${ch}_${id}_vfx_${Date.now().toString(36)}.${isMp4 ? 'mp4' : 'webm'}`, tok = crypto.randomUUID();
+  await bucket.file(path).save(buf, { contentType: isMp4 ? 'video/mp4' : 'video/webm', resumable: false, metadata: { cacheControl: 'public, max-age=86400', metadata: { firebaseStorageDownloadTokens: tok } } });
+  const url = `https://firebasestorage.googleapis.com/v0/b/${STORAGE_BUCKET}/o/${encodeURIComponent(path)}?alt=media&token=${tok}`;
+  if (cur.videoPath && cur.videoPath !== path) await bucket.file(cur.videoPath).delete().catch(() => {});
+  await ref.update({ videoUrl: url, videoPath: path });
+  r.json({ videoUrl: url, bytes: buf.length });
+}));
+app.delete('/admin/catalog/:ch/:id/video', catPerm, w(async (q, r) => {
+  const { ch, id } = q.params; if (!CHANNELS.includes(ch) || !ITEM_ID.test(id)) return r.status(400).json({ error: 'bad channel/id' });
+  const ref = db.ref(`catalog/${ch}/${id}`), p = (await ref.child('videoPath').get()).val();
+  await ref.update({ videoUrl: null, videoPath: null });
+  if (typeof p === 'string' && p.startsWith('giftAssets/')) await admin.storage().bucket(STORAGE_BUCKET).file(p).delete().catch(() => {});
+  r.json({ ok: true });
+}));
 app.delete('/admin/catalog/:ch/:id', catPerm, w(async (q, r) => {
   const { ch, id } = q.params; if (!CHANNELS.includes(ch) || !ITEM_ID.test(id)) return r.status(400).json({ error: 'bad channel/id' });
+  { const p = (await db.ref(`catalog/${ch}/${id}/videoPath`).get()).val(); if (typeof p === 'string' && p.startsWith('giftAssets/')) await admin.storage().bucket(STORAGE_BUCKET).file(p).delete().catch(() => {}); }
   await db.ref(`catalog/${ch}/${id}`).remove();
   await admin.storage().bucket(STORAGE_BUCKET).file(`giftAssets/${ch}_${id}.webp`).delete().catch(() => {});
   await admin.storage().bucket(STORAGE_BUCKET).file(`giftAssets/${ch}_${id}_fx.webp`).delete().catch(() => {});
@@ -2603,7 +2629,7 @@ app.post('/chats/:chatId/gift', w(notBanned), w(async (q, r) => {
   const dia = num((await db.ref(`wallets/${q.uid}/diamonds`).get()).val()), pend = await pendingSum(q.uid);
   if (dia < item.price + pend) return r.status(402).json({ code: 'insufficient', error: `เพชรไม่พอ (มี 💎${dia}, รอรับอยู่ ${pend}, ต้องการ ${item.price})`, diamonds: dia, pending: pend, price: item.price });
   const t = Date.now(), txId = db.ref('giftTx').push().key;
-  const gift = { txId, giftId, name: item.name, price: item.price, imageUrl: item.imageUrl || '', icon: item.icon || '', status: 'pending' };
+  const gift = { txId, giftId, name: item.name, price: item.price, imageUrl: item.imageUrl || '', icon: item.icon || '', videoUrl: item.videoUrl || '', status: 'pending' };
   await db.ref().update({
     [`giftTx/${txId}`]: { from: q.uid, to, chatId, giftId, name: item.name, price: item.price, imageUrl: item.imageUrl || '', status: 'pending', createdAt: t },
     [`giftPending/${q.uid}/${txId}`]: item.price,
@@ -2688,7 +2714,7 @@ const poVoiceList = v => Object.entries(v || {}).filter(([, x]) => x && x.text).
 app.get('/payopen/voices', w(async (_q, r) => r.json({ voices: poVoiceList((await db.ref('appConfig/payOpenVoices').get()).val()) })));
 app.get('/payopen/catalog', w(async (q, r) => {
   const v = (await db.ref('catalog/payopen').get()).val() || {};
-  const items = Object.entries(v).filter(([, x]) => x && x.enabled !== false && num(x.price) > 0).map(([id, x]) => ({ id, name: x.name || id, price: num(x.price), imageUrl: x.imageUrl || '', effectUrl: x.effectUrl || '', icon: x.icon || '', fx: x.animationEffect || 'HEARTS', order: num(x.order) })).sort((a, b) => a.order - b.order);
+  const items = Object.entries(v).filter(([, x]) => x && x.enabled !== false && num(x.price) > 0).map(([id, x]) => ({ id, name: x.name || id, price: num(x.price), imageUrl: x.imageUrl || '', effectUrl: x.effectUrl || '', videoUrl: x.videoUrl || '', icon: x.icon || '', fx: x.animationEffect || 'HEARTS', order: num(x.order) })).sort((a, b) => a.order - b.order);
   const [dm, pend] = await Promise.all([db.ref(`wallets/${q.uid}/diamonds`).get(), pendingSum(q.uid)]);
   r.json({ items, diamonds: num(dm.val()) - pend });
 }));
@@ -2737,7 +2763,7 @@ async function poSweep() { // refund everything past its deadline (also runs laz
   for (const id of late) await poSettle(id, 'refund', 'timeout').catch(e => console.error('payopen settle', id, e.message));
 }
 setInterval(() => { poSweep().catch(e => console.error('payopen sweep', e.message)); }, 10000).unref?.();
-const poView = (id, p) => p ? { id, state: p.state === 'settling' ? 'pending' : p.state, from: p.from, to: p.to, giftId: p.giftId, giftName: p.giftName, imageUrl: p.imageUrl || '', effectUrl: p.effectUrl || '', fx: p.fx || '',
+const poView = (id, p) => p ? { id, state: p.state === 'settling' ? 'pending' : p.state, from: p.from, to: p.to, giftId: p.giftId, giftName: p.giftName, imageUrl: p.imageUrl || '', effectUrl: p.effectUrl || '', videoUrl: p.videoUrl || '', fx: p.fx || '',
   price: num(p.price), at: num(p.at), deadline: num(p.deadline), chatId: p.chatId || '', fromName: p.fromName || '', fromAvatar: p.fromAvatar || '', fromGender: p.fromGender || '',
   voiceGender: p.fromGender === 'male' ? 'female' : p.fromGender === 'female' ? 'male' : '', serverNow: Date.now() } : null;
 app.post('/payopen/send', w(notBanned), w(async (q, r) => {
@@ -2761,7 +2787,7 @@ app.post('/payopen/send', w(notBanned), w(async (q, r) => {
   const t = Date.now(), id = 'po' + t.toString(36) + crypto.randomBytes(4).toString('hex');
   try {
     const [me, them] = await Promise.all([poPeople(q.uid), poPeople(to)]);
-    const p = { from: q.uid, to, giftId, giftName: item.name || '', imageUrl: item.imageUrl || '', effectUrl: item.effectUrl || '', fx: item.animationEffect || 'HEARTS', icon: item.icon || '',
+    const p = { from: q.uid, to, giftId, giftName: item.name || '', imageUrl: item.imageUrl || '', effectUrl: item.effectUrl || '', videoUrl: item.videoUrl || '', fx: item.animationEffect || 'HEARTS', icon: item.icon || '',
       price, state: 'pending', at: t, deadline: t + PO_MS, fromName: me.name, fromAvatar: me.avatar, fromGender: me.gender, toName: them.name };
     await db.ref().update({ [`payOpens/${id}`]: p, [`payOpenInbox/${to}/${id}`]: { id, ...poView(id, p), state: 'pending' } });
   } catch (e) { // could not create the gift → give the diamonds straight back
@@ -2967,7 +2993,7 @@ app.post('/lives/:id/gift', w(notBanned), w(async (q, r) => {
   const u = (await db.ref(`users/${q.uid}`).get()).val() || {};
   await db.ref().update({
     [`liveGiftTx/${id}/${t}_${q.uid.slice(0, 8)}`]: { from: q.uid, to: l.hostUid, giftId, name: item.name, price, count, hostShare, adminShare, at: t },
-    [`liveChat/${id}/${t}_g${crypto.randomBytes(3).toString('hex')}`]: { type: 'gift', uid: q.uid, name: u.displayName || 'ผู้ใช้', avatar: u.avatar || '', giftId, giftName: item.name, icon: item.icon || '', imageUrl: item.imageUrl || '', price: item.price, fx: item.animationEffect || 'POP', count, at: t }
+    [`liveChat/${id}/${t}_g${crypto.randomBytes(3).toString('hex')}`]: { type: 'gift', uid: q.uid, name: u.displayName || 'ผู้ใช้', avatar: u.avatar || '', giftId, giftName: item.name, icon: item.icon || '', imageUrl: item.imageUrl || '', videoUrl: item.videoUrl || '', price: item.price, fx: item.animationEffect || 'POP', count, at: t }
   });
   r.json({ ok: true, price, diamonds: d.snapshot.val() });
 }));

@@ -28,13 +28,14 @@ data class RealProfile(
     val distance: String = ""
 )
 data class ChatSummary(val chatId: String, val otherUid: String, val lastMessage: String, val lastAt: Long)
-data class GiftMsg(val txId: String, val name: String, val price: Int, val imageUrl: String, val icon: String, val status: String)
+data class GiftMsg(val txId: String, val name: String, val price: Int, val imageUrl: String, val icon: String, val status: String, val videoUrl: String = "")
 data class ChatMessage(val id: String, val senderUid: String, val text: String?, val imagePath: String?, val at: Long, val gift: GiftMsg? = null)
 private fun parseMsg(s: DataSnapshot): ChatMessage {
     val g = s.child("gift").takeIf { it.exists() }?.let {
         GiftMsg(it.child("txId").getValue(String::class.java).orEmpty(), it.child("name").getValue(String::class.java).orEmpty(),
             (it.child("price").getValue(Long::class.java) ?: 0L).toInt(), it.child("imageUrl").getValue(String::class.java).orEmpty(),
-            it.child("icon").getValue(String::class.java).orEmpty(), it.child("status").getValue(String::class.java) ?: "pending")
+            it.child("icon").getValue(String::class.java).orEmpty(), it.child("status").getValue(String::class.java) ?: "pending",
+            it.child("videoUrl").getValue(String::class.java).orEmpty())
     }
     return ChatMessage(s.key.orEmpty(), s.child("senderUid").getValue(String::class.java).orEmpty(), s.child("text").getValue(String::class.java),
         s.child("imagePath").getValue(String::class.java), s.child("at").getValue(Long::class.java) ?: 0, g)

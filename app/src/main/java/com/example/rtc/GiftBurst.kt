@@ -64,8 +64,11 @@ fun GiftBurstLayer(msgs: List<LiveMsg>, modifier: Modifier = Modifier.fillMaxSiz
     val fx = cur.fx.ifBlank { item?.animationEffect ?: "" }
     val tier = when { fx == "BLAST" || fx == "ROYAL" || price >= 500 -> 2; fx == "FLOAT" || price >= 100 -> 1; else -> 0 }
     val image = cur.imageUrl.ifBlank { item?.imageUrl.orEmpty() }
+    val video = cur.videoUrl.ifBlank { item?.videoUrl.orEmpty() }
     key(cur.id) {
-        GiftBurst(cur, image, tier, modifier) { if (queue.firstOrNull()?.id == cur.id) queue.removeAt(0) }
+        val next: () -> Unit = { if (queue.firstOrNull()?.id == cur.id) queue.removeAt(0); Unit }
+        if (video.isNotBlank()) Box(modifier) { com.example.ui.components.GiftVideoFx(video, { next() }, dim = false) } // admin's video effect
+        else GiftBurst(cur, image, tier, modifier) { next() }
     }
 }
 

@@ -155,6 +155,13 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
     LaunchedEffect(otherUid) { if (otherUid.isNotBlank()) { val u = FirebaseAuth.getInstance().currentUser; if (u != null) blocked = com.example.network.BrainApi.call(u, "GET", "/blocks").json?.optJSONArray("blocked")?.let { a -> (0 until a.length()).any { a.optString(it) == otherUid } } == true } }
     if (reportU && otherUid.isNotBlank()) ReportDialog("user", otherUid, otherUid) { reportU = false }
     val messages by remember(chatId) { SocialRepo.messages(chatId) }.collectAsState(initial = emptyList())
+    // gift video effect: plays for gifts that arrive (or I send) while the chat is open; tapping a gift replays it
+    var giftVideo by remember(chatId) { mutableStateOf<String?>(null) }
+    val chatOpenedAt = remember(chatId) { System.currentTimeMillis() - 3_000 }
+    val playedGifts = remember(chatId) { HashSet<String>() }
+    LaunchedEffect(messages.size) {
+        messages.lastOrNull { it.gift != null && it.gift.videoUrl.isNotBlank() && it.at >= chatOpenedAt && playedGifts.add(it.id) }?.let { giftVideo = it.gift!!.videoUrl }
+    }
     val otherRead by remember(chatId, otherUid) { if (otherUid.isBlank()) kotlinx.coroutines.flow.flowOf(0L) else SocialRepo.otherReadAt(chatId, otherUid) }.collectAsState(initial = 0L)
     val token by produceState<String?>(null) { value = idToken() }
     var input by remember { mutableStateOf("") }
@@ -197,6 +204,7 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
         Surface(Modifier.fillMaxSize(), color = Slate950) {
             // a minimized call floats over the chat too (this dialog is its own window, above the app-level bubble)
             com.example.rtc.CallManager.active?.let { a -> if (com.example.rtc.CallManager.minimized) Box(Modifier.fillMaxSize().zIndex(10f)) { com.example.rtc.CallBubble(a) } }
+            giftVideo?.let { v -> Box(Modifier.fillMaxSize().zIndex(9f)) { key(v) { com.example.ui.components.GiftVideoFx(v, { giftVideo = null }) } } }
             // Insets: the input row was drawn behind the navigation bar (edge-to-edge dialog window) → pad for system bars + keyboard.
             Column(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding().imePadding()) {
                 val askCallPerm = com.example.rtc.rememberRtcPermission { status = tr("ต้องอนุญาตไมโครโฟน/กล้องก่อนโทร") }
@@ -273,7 +281,8 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                         if (!mine) { Box(Modifier.clip(CircleShape).clickable { showSender = true }) { Avatar(other?.avatar.orEmpty(), other?.displayName ?: "?", 28) }; Spacer(Modifier.width(6.dp)) }
                         Column(Modifier.weight(1f, fill = false), horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
                             val stickerId = if (m.imagePath == null && m.gift == null) com.example.social.ChatSticker.decode(m.text) else null
-                            if (m.gift != null) GiftBubble(m.gift, mine) { scope.launch { status = com.example.social.GiftRepo.accept(m.gift.txId).msg; csTick++ } }
+                            if (m.gift != null) Box(Modifier.clickable(enabled = m.gift.videoUrl.isNotBlank()) { giftVideo = m.gift.videoUrl }) {
+                                GiftBubble(m.gift, mine) { scope.launch { status = com.example.social.GiftRepo.accept(m.gift.txId).msg; csTick++ } } }
                             else if (stickerId != null) {
                                 // sticker message: the picture itself, no bubble (falls back to text if the admin removed it)
                                 val st = chatStickerMap[stickerId]
