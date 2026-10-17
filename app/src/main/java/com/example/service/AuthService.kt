@@ -134,6 +134,24 @@ class AuthService private constructor() {
         }
     }
 
+    /**
+     * Shown under a failed Google sign-in: the package and the SHA-1 this install is signed with, so it can be
+     * compared with the fingerprints registered in Firebase (Play-installed builds are signed by Google's key).
+     */
+    private fun signingHint(context: Context): String = runCatching {
+        val pm = context.packageManager
+        val sigs = if (android.os.Build.VERSION.SDK_INT >= 28) {
+            val info = pm.getPackageInfo(context.packageName, android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES).signingInfo
+            if (info == null) emptyArray() else if (info.hasMultipleSigners()) info.apkContentsSigners else info.signingCertificateHistory
+        } else {
+            @Suppress("DEPRECATION") pm.getPackageInfo(context.packageName, android.content.pm.PackageManager.GET_SIGNATURES).signatures ?: emptyArray()
+        }
+        val sha = sigs.orEmpty().joinToString(" / ") { sig ->
+            java.security.MessageDigest.getInstance("SHA-1").digest(sig.toByteArray()).joinToString(":") { "%02X".format(it) }
+        }
+        "\n(${context.packageName} · SHA-1 $sha)"
+    }.getOrDefault("")
+
     private fun getWebClientId(context: Context): String {
 
         val resourceId =
@@ -404,8 +422,8 @@ class AuthService private constructor() {
                     "การเข้าสู่ระบบถูกยกเลิก: $message"
                 }
 
-            _authError.value = error
-            onCancelled(error)
+            _authError.value = error + signingHint(activity)
+            onCancelled(error + signingHint(activity))
 
         } catch (
             e: GetCredentialCustomException
@@ -445,7 +463,7 @@ class AuthService private constructor() {
             }
 
             val error =
-                "Google Sign-In Error [${e.type}]: $message"
+                "Google Sign-In Error [${e.type}]: $message" + signingHint(activity)
 
             _authError.value = error
             onError(error)
@@ -478,14 +496,14 @@ class AuthService private constructor() {
                 )
                 return
             } catch (c: GetCredentialCancellationException) {
-                onCancelled("ยกเลิกการเข้าสู่ระบบ")
+                onCancelled("ยกเลิกการเข้าสู่ระบบ" + signingHint(activity))
                 return
             } catch (e2: Exception) {
                 Log.e(TAG, "Sign in with Google button flow failed", e2)
             }
 
             val error =
-                "ไม่พบบัญชี Google ที่สามารถใช้เข้าสู่ระบบได้"
+                "ไม่พบบัญชี Google ที่สามารถใช้เข้าสู่ระบบได้" + signingHint(activity)
 
             _authError.value = error
             onError(error)
@@ -501,7 +519,7 @@ class AuthService private constructor() {
             )
 
             val error =
-                "Google Sign-In Error [${e.type}]: ${e.message}"
+                "Google Sign-In Error [${e.type}]: ${e.message}" + signingHint(activity)
 
             _authError.value = error
             onError(error)

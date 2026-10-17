@@ -123,7 +123,7 @@ fun AuthScreen(
                     .border(1.dp, Brush.linearGradient(listOf(androidx.compose.ui.graphics.Color(0x8833C8FF), androidx.compose.ui.graphics.Color(0x88FF2FA8))), RoundedCornerShape(28.dp))
                     .padding(horizontal = 20.dp, vertical = 22.dp)
             ) {
-            Text("ยินดีต้อนรับ", color = White, fontWeight = FontWeight.Bold, fontSize = 22.sp, modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp), textAlign = TextAlign.Center)
+            Text("ยินดีต้อนรับ", color = PureWhite, fontWeight = FontWeight.Bold, fontSize = 22.sp, modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp), textAlign = TextAlign.Center)
             Text("เข้าสู่ระบบหรือสมัครสมาชิกฟรี", color = Slate400, fontSize = 13.sp, modifier = Modifier.fillMaxWidth().padding(bottom = 18.dp), textAlign = TextAlign.Center)
 
             // Error Banner
@@ -374,8 +374,8 @@ fun AuthScreen(
                                 shape = RoundedCornerShape(12.dp),
                                 singleLine = true,
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedTextColor = White,
-                                    unfocusedTextColor = White,
+                                    focusedTextColor = PureWhite,
+                                    unfocusedTextColor = PureWhite,
                                     focusedBorderColor = Pink500,
                                     unfocusedBorderColor = Slate800,
                                     focusedContainerColor = Slate900,
@@ -395,8 +395,8 @@ fun AuthScreen(
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = White,
-                                unfocusedTextColor = White,
+                                focusedTextColor = PureWhite,
+                                unfocusedTextColor = PureWhite,
                                 focusedBorderColor = Pink500,
                                 unfocusedBorderColor = Slate800,
                                 focusedContainerColor = Slate900,
@@ -427,8 +427,8 @@ fun AuthScreen(
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = White,
-                                unfocusedTextColor = White,
+                                focusedTextColor = PureWhite,
+                                unfocusedTextColor = PureWhite,
                                 focusedBorderColor = Pink500,
                                 unfocusedBorderColor = Slate800,
                                 focusedContainerColor = Slate900,
@@ -449,8 +449,8 @@ fun AuthScreen(
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedTextColor = White,
-                                    unfocusedTextColor = White,
+                                    focusedTextColor = PureWhite,
+                                    unfocusedTextColor = PureWhite,
                                     focusedBorderColor = Pink500,
                                     unfocusedBorderColor = Slate800,
                                     focusedContainerColor = Slate900,
@@ -540,7 +540,7 @@ fun AuthScreen(
                             enabled = !isLoading
                         ) {
                             if (isLoading) {
-                                CircularProgressIndicator(modifier = Modifier.size(20.dp), color = White, strokeWidth = 2.dp)
+                                CircularProgressIndicator(modifier = Modifier.size(20.dp), color = PureWhite, strokeWidth = 2.dp)
                             } else {
                                 Text(
                                     text = if (isSignUp) "สมัครสมาชิก" else "เข้าสู่ระบบ",
@@ -577,8 +577,8 @@ fun AuthScreen(
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedTextColor = White,
-                                    unfocusedTextColor = White,
+                                    focusedTextColor = PureWhite,
+                                    unfocusedTextColor = PureWhite,
                                     focusedBorderColor = Pink500,
                                     unfocusedBorderColor = Slate800,
                                     focusedContainerColor = Slate900,
@@ -625,7 +625,7 @@ fun AuthScreen(
                                 enabled = !isLoading
                             ) {
                                 if (isLoading) {
-                                    CircularProgressIndicator(modifier = Modifier.size(20.dp), color = White, strokeWidth = 2.dp)
+                                    CircularProgressIndicator(modifier = Modifier.size(20.dp), color = PureWhite, strokeWidth = 2.dp)
                                 } else {
                                     Text("ส่งรหัส OTP ทาง SMS", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                                 }
@@ -649,8 +649,8 @@ fun AuthScreen(
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedTextColor = White,
-                                    unfocusedTextColor = White,
+                                    focusedTextColor = PureWhite,
+                                    unfocusedTextColor = PureWhite,
                                     focusedBorderColor = Purple500,
                                     unfocusedBorderColor = Slate800,
                                     focusedContainerColor = Slate900,
@@ -691,7 +691,7 @@ fun AuthScreen(
                                 enabled = !isLoading
                             ) {
                                 if (isLoading) {
-                                    CircularProgressIndicator(modifier = Modifier.size(20.dp), color = White, strokeWidth = 2.dp)
+                                    CircularProgressIndicator(modifier = Modifier.size(20.dp), color = PureWhite, strokeWidth = 2.dp)
                                 } else {
                                     Text("ยืนยันรหัส OTP และเข้าสู่ระบบ", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                                 }
@@ -742,9 +742,9 @@ private fun AltMethodButton(icon: androidx.compose.ui.graphics.vector.ImageVecto
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
     ) {
-        Icon(icon, contentDescription = null, tint = White, modifier = Modifier.size(18.dp))
+        Icon(icon, contentDescription = null, tint = PureWhite, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(8.dp))
-        Text(label, color = White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        Text(label, color = PureWhite, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
