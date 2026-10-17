@@ -303,6 +303,47 @@ class AuthService private constructor() {
         }
     }
 
+    /**
+     * Google sign-in through Firebase's own web flow (Custom Tab on the firebaseapp.com auth page). It does not depend on
+     * the app's signing-key fingerprint, so it still works when the on-device Credential Manager flow is refused
+     * (e.g. a Play-signed install whose key Google Play Services does not accept yet). Same Google account → same user.
+     */
+    private suspend fun signInWithGoogleWeb(
+        activity: Activity,
+        auth: FirebaseAuth,
+        onSuccess: (FirebaseUser) -> Unit,
+        onError: (String) -> Unit,
+        onCancelled: (String) -> Unit
+    ) {
+        try {
+            val provider = com.google.firebase.auth.OAuthProvider.newBuilder("google.com")
+                .addCustomParameter("prompt", "select_account")
+                .build()
+            val result = (auth.pendingAuthResult ?: auth.startActivityForSignInWithProvider(activity, provider)).await()
+            val user = result.user ?: auth.currentUser
+            if (user == null) {
+                val error = "Firebase Login สำเร็จแต่ไม่พบ FirebaseUser"
+                _authError.value = error
+                onError(error)
+                return
+            }
+            Log.d(TAG, "Firebase Google (web) Login SUCCESS uid=${user.uid}")
+            _currentUser.value = user
+            _isInitialized.value = true
+            _authError.value = null
+            onSuccess(user)
+        } catch (e: FirebaseAuthException) {
+            if (e.errorCode == "ERROR_WEB_CONTEXT_CANCELED") { onCancelled("ยกเลิกการเข้าสู่ระบบ"); return }
+            val error = "เข้าสู่ระบบด้วย Google ไม่สำเร็จ [${e.errorCode}]: ${e.message}" + signingHint(activity)
+            _authError.value = error
+            onError(error)
+        } catch (e: Exception) {
+            val error = "เข้าสู่ระบบด้วย Google ไม่สำเร็จ: ${e.message}" + signingHint(activity)
+            _authError.value = error
+            onError(error)
+        }
+    }
+
     private suspend fun requestGoogleCredential(
         activity: Activity,
         clientId: String,
@@ -462,11 +503,8 @@ class AuthService private constructor() {
                 return
             }
 
-            val error =
-                "Google Sign-In Error [${e.type}]: $message" + signingHint(activity)
-
-            _authError.value = error
-            onError(error)
+            Log.w(TAG, "Credential custom error - trying the browser flow")
+            signInWithGoogleWeb(activity, auth, onSuccess, onError, onCancelled)
 
         } catch (
             e: NoCredentialException
@@ -496,17 +534,11 @@ class AuthService private constructor() {
                 )
                 return
             } catch (c: GetCredentialCancellationException) {
-                onCancelled("ยกเลิกการเข้าสู่ระบบ" + signingHint(activity))
-                return
+                Log.w(TAG, "Sign in with Google button flow cancelled/refused - trying the browser flow", c)
             } catch (e2: Exception) {
                 Log.e(TAG, "Sign in with Google button flow failed", e2)
             }
-
-            val error =
-                "ไม่พบบัญชี Google ที่สามารถใช้เข้าสู่ระบบได้" + signingHint(activity)
-
-            _authError.value = error
-            onError(error)
+            signInWithGoogleWeb(activity, auth, onSuccess, onError, onCancelled)
 
         } catch (
             e: GetCredentialException
@@ -518,11 +550,8 @@ class AuthService private constructor() {
                 e
             )
 
-            val error =
-                "Google Sign-In Error [${e.type}]: ${e.message}" + signingHint(activity)
-
-            _authError.value = error
-            onError(error)
+            Log.w(TAG, "Credential Manager error - trying the browser flow")
+            signInWithGoogleWeb(activity, auth, onSuccess, onError, onCancelled)
 
         } catch (
             e: Exception
