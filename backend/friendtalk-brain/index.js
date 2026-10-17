@@ -1922,9 +1922,11 @@ app.get('/discover/online', w(notBanned), w(async (q, r) => {
     const p = await summary(id); if (!p || !p.displayName || !passFilter(p, f)) return;
     const rv = radar[id], km = me && rv && now - num(rv.at) < LOC_MS && validLatLng(rv.lat, rv.lng) ? distKm(me.lat, me.lng, rv.lat, rv.lng) : null;
     if (f.km && me && (km == null || km > f.km)) return; // distance filter only when I shared my location
-    out.push({ ...p, distance: km == null ? '' : roundDist(km), online: true });
+    out.push({ u: { ...p, distance: km == null ? '' : roundDist(km), online: true }, km });
   }));
-  r.json({ users: shuffle(out).slice(0, 200), hasLocation: !!me });
+  // nearest first; people without a known distance follow in random order (exact km never leaves the server)
+  const sorted = shuffle(out).sort((a, b) => (a.km == null ? Infinity : a.km) - (b.km == null ? Infinity : b.km));
+  r.json({ users: sorted.slice(0, 200).map(x => x.u), hasLocation: !!me });
 }));
 // --- friends
 app.post('/friends/request', w(notBanned), w(async (q, r) => {

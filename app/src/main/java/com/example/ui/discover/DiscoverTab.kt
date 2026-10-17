@@ -320,7 +320,7 @@ private fun FindFriendsHome(onTile: (String) -> Unit, showCompanion: Boolean) {
                     Text(onlineMsg.ifBlank { if (com.example.social.DiscoverFilter.isSet) tr("ไม่มีคนออนไลน์ที่ตรงกับที่คุณต้องการ") else tr("ยังไม่มีใครออนไลน์ตอนนี้") }, color = FInkSoft, fontSize = 14.sp, textAlign = TextAlign.Center)
                     if (com.example.social.DiscoverFilter.isSet) TextButton(onClick = { wantDialog = true }) { Text(tr("ปรับ 'ต้องการ'"), color = FViolet) }
                 }
-                else -> androidx.compose.foundation.lazy.grid.LazyVerticalGrid(androidx.compose.foundation.lazy.grid.GridCells.Fixed(4),
+                else -> androidx.compose.foundation.lazy.grid.LazyVerticalGrid(androidx.compose.foundation.lazy.grid.GridCells.Fixed(3),
                     Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(start = 10.dp, end = 10.dp, top = 6.dp, bottom = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(on.size, key = { on[it].profile.uid }) { i -> OnlineCard(on[i]) { open = on[i].profile.uid } }
@@ -357,21 +357,22 @@ private fun FunctionCapsule(k: String, label: String, modifier: Modifier = Modif
     }
 }
 
-/** One online person: rounded-square photo with a green dot, then name and 'age · distance'. */
+/** One online person: big 3:4 photo (3 per row), green dot, name and 'age · distance' over a dark fade at the bottom. */
 @Composable
 private fun OnlineCard(n: NearbyUser, onClick: () -> Unit) {
     val p = n.profile
-    Column(Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick)) {
-        Box(Modifier.fillMaxWidth().aspectRatio(1f)) {
-            Box(Modifier.fillMaxSize().clip(RoundedCornerShape(14.dp)).background(Brush.linearGradient(listOf(Color(0xFFFF7AD0), Color(0xFF9B5CFF)))), contentAlignment = Alignment.Center) {
-                Text(p.displayName.take(1).ifBlank { "?" }, color = PureWhite, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                if (p.avatar.isNotBlank()) coil.compose.AsyncImage(model = p.avatar, contentDescription = p.displayName, contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.fillMaxSize())
-            }
-            Box(Modifier.align(Alignment.TopEnd).padding(5.dp).size(12.dp).clip(CircleShape).background(Color.White).padding(2.dp).clip(CircleShape).background(FOnline))
+    Box(Modifier.fillMaxWidth().aspectRatio(0.75f).clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick)
+        .background(Brush.linearGradient(listOf(Color(0xFFFF7AD0), Color(0xFF9B5CFF))))) {
+        Text(p.displayName.take(1).ifBlank { "?" }, color = PureWhite, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.Center))
+        if (p.avatar.isNotBlank()) coil.compose.AsyncImage(model = p.avatar, contentDescription = p.displayName, contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        Box(Modifier.align(Alignment.TopEnd).padding(7.dp).size(13.dp).clip(CircleShape).background(Color.White).padding(2.dp).clip(CircleShape).background(FOnline))
+        Column(Modifier.align(Alignment.BottomStart).fillMaxWidth()
+            .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC000000))))
+            .padding(start = 8.dp, end = 8.dp, top = 18.dp, bottom = 7.dp)) {
+            Text(p.displayName.ifBlank { tr("ผู้ใช้") }, color = PureWhite, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val sub = listOfNotNull(p.age?.let { "$it ${tr("ปี")}" }, n.distance.takeIf { it.isNotBlank() }?.let { com.example.ui.feed.thaiDistance(it) }).joinToString(" · ")
+            if (sub.isNotBlank()) Text(sub, color = PureWhite.copy(alpha = 0.85f), fontSize = 10.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Text(p.displayName.ifBlank { tr("ผู้ใช้") }, color = FInk, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp, start = 2.dp, end = 2.dp))
-        val sub = listOfNotNull(p.age?.let { "$it ${tr("ปี")}" }, n.distance.takeIf { it.isNotBlank() }?.let { com.example.ui.feed.thaiDistance(it) }).joinToString(" · ")
-        Text(sub.ifBlank { " " }, color = FInkSoft, fontSize = 10.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 2.dp, end = 2.dp))
     }
 }
 
