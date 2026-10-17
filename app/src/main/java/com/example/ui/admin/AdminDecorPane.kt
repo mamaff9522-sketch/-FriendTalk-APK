@@ -102,7 +102,7 @@ fun AdminDecorOptionsPane() {
         Text("🎨 ตัวเลือกตกแต่งห้อง VIP", color = White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
         Text("เพิ่มธีม กรอบ และเอฟเฟกต์ใหม่ได้เองโดยไม่ต้องอัปเดตแอป · สติกเกอร์เพิ่มได้ที่แท็บ 'ของขวัญ & สติกเกอร์' หมวดสติกเกอร์ห้อง", color = Slate400, fontSize = 11.sp)
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            listOf("themes" to "ธีม", "frames" to "กรอบ", "effects" to "เอฟเฟกต์").forEach { (k, l) ->
+            listOf("themes" to "🖼 พื้นหลัง (ธีม)", "frames" to "กรอบ", "effects" to "เอฟเฟกต์").forEach { (k, l) ->
                 FilterChip(selected = kind == k, onClick = { kind = k; colors = emptyList(); glyphs = ""; name = ""; newImg = null; newImgUri = null }, label = { Text(l) })
             }
         }
@@ -132,7 +132,7 @@ fun AdminDecorOptionsPane() {
 
         // add new
         HorizontalDivider(color = Slate800, modifier = Modifier.padding(vertical = 6.dp))
-        Text("เพิ่ม" + when (kind) { "themes" -> "ธีม"; "frames" -> "กรอบ"; else -> "เอฟเฟกต์" } + "ใหม่", color = White, fontWeight = FontWeight.Bold)
+        Text("เพิ่ม" + when (kind) { "themes" -> "พื้นหลัง"; "frames" -> "กรอบ"; else -> "เอฟเฟกต์" } + "ใหม่", color = White, fontWeight = FontWeight.Bold)
         OutlinedTextField(name, { name = it.take(30) }, label = { Text("ชื่อที่ผู้ใช้เห็น") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
             colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White))
         Text(when (kind) { "themes" -> "รูปพื้นหลังห้อง"; "frames" -> "รูปกรอบ (PNG โปร่งใสตรงกลาง)"; else -> "รูปเอฟเฟกต์ (GIF / WebP เคลื่อนไหวได้)" } + " · ไม่เกิน 2MB · ใส่รูปแล้วไม่ต้องเลือกสี/อีโมจิ",
