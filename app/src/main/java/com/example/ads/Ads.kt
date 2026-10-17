@@ -72,7 +72,9 @@ data class Limits(
     val interstitialEnabled: Boolean, val interstitialEverySwipes: Int, val ssvRequired: Boolean,
     /** canPost to reason */
     val posting: Pair<Boolean, String> = true to "",
-    val offers: List<AdOffer> = emptyList()
+    val offers: List<AdOffer> = emptyList(),
+    /** VIP bought with real-money diamonds → no ads. VIP from free/gifted diamonds or an admin grant still sees ads. */
+    val adFree: Boolean = false
 )
 
 /** Server limits (/limits) + Ad Room navigation state. All numbers come from the server. */
@@ -104,7 +106,8 @@ object AdRoom {
                 val rw = o.optJSONObject("reward") ?: JSONObject()
                 AdOffer(o.optString("id"), o.optString("title"), o.optString("adFormat", "rewarded"), o.optString("estDurationLabel"),
                     o.optString("description"), o.optInt("validityHours"), rw.optString("feature"), rw.optInt("amount"))
-            } } } ?: emptyList())
+            } } } ?: emptyList(),
+            a.optBoolean("adFree", j.optString("tier") == "vip" && !a.has("adFree"))) // older server: every VIP was ad-free
     }
     /** Returns null on success, else a Thai error message. */
     suspend fun claimReward(feature: String, offerId: String? = null): String? {
@@ -301,10 +304,11 @@ fun AdsPageContent(feature: String?, onClose: (() -> Unit)?, returnAfterReward: 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         val lim = l
         val vip = lim?.tier == "vip"
+        val adFree = lim?.adFree == true
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(tr("🎁 หน้าโฆษณา"), color = White, fontWeight = FontWeight.ExtraBold, fontSize = 24.sp)
-                Row { Text(tr("✦ สถานะ: "), color = Slate300, fontSize = 14.sp); Text(if (vip) tr("VIP ⭐ (ไม่มีโฆษณา)") else tr("ฟรี"), color = Emerald400, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
+                Row { Text(tr("✦ สถานะ: "), color = Slate300, fontSize = 14.sp); Text(if (adFree) tr("VIP ⭐ (ไม่มีโฆษณา)") else if (vip) tr("VIP ⭐") else tr("ฟรี"), color = Emerald400, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
                 if (onClose != null) TextButton(onClick = onClose, contentPadding = PaddingValues(0.dp)) { Text(tr("‹ กลับ"), color = Slate300) }
             }
             androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(com.example.R.drawable.art_gift), null, modifier = Modifier.width(170.dp).height(110.dp))
@@ -321,7 +325,7 @@ fun AdsPageContent(feature: String?, onClose: (() -> Unit)?, returnAfterReward: 
             return@Column
         }
         if (feature != null) Text("โควตาที่หมด: ${FEATURE_LABELS[feature] ?: feature}", color = Amber400, fontSize = 12.sp)
-        if (!vip && lim.showAds && lim.rewardEnabled) {
+        if (lim.showAds && lim.rewardEnabled) {
             Spacer(Modifier.height(10.dp))
             Surface(shape = RoundedCornerShape(16.dp), color = Slate900, border = androidx.compose.foundation.BorderStroke(1.dp, Slate700.copy(alpha = 0.6f)), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp)) {
@@ -383,7 +387,7 @@ fun AdsPageContent(feature: String?, onClose: (() -> Unit)?, returnAfterReward: 
                     }
                 }
             }
-        } else if (!vip) Text(tr("ตอนนี้ยังไม่เปิดให้ดูโฆษณารับโควตา"), color = Slate400, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+        } else if (!adFree) Text(tr("ตอนนี้ยังไม่เปิดให้ดูโฆษณารับโควตา"), color = Slate400, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
         if (msgFor == null && msg.isNotBlank()) Text(msg, color = Amber400, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
         Spacer(Modifier.height(12.dp))
         Text(tr("โควตาวันนี้"), color = White, fontWeight = FontWeight.Bold)

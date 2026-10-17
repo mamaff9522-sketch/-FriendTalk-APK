@@ -435,6 +435,7 @@ app.post('/shop/verify', w(notBanned), w(async (q, r) => {
   const lock = await pref.transaction(v => (v === null ? { status: 'crediting', uid: q.uid, at: Date.now() } : undefined));
   if (!lock.committed) return r.status(409).json({ error: 'already processing' });
   await db.ref(`wallets/${q.uid}/${cur}`).transaction(c => num(c) + amount);
+  if (cur === 'diamonds') await db.ref(`wallets/${q.uid}/paidDiamonds`).transaction(c => num(c) + amount); // bought with real money → can buy no-ads VIP
   await pref.update({ status: 'credited', currency: cur, amount, productId, orderId: g.j.orderId || '', creditedAt: Date.now() });
   const c = await playApi('POST', `applications/${encodeURIComponent(cfg.packageName)}/purchases/products/${encodeURIComponent(productId)}/tokens/${encodeURIComponent(token)}:consume`);
   await pref.update({ consumed: c.status === 200 || c.status === 204 });
@@ -800,6 +801,7 @@ app.post('/admin/coins/confirm', perm('coins_confirm'), w(notBanned), w(async (q
   const coins = Number(v.coins) || 0, diamonds = Number(v.diamonds) || 0;
   if (coins) await db.ref(`wallets/${uid}/coins`).transaction(c => (c || 0) + coins);
   if (diamonds) await db.ref(`wallets/${uid}/diamonds`).transaction(c => (c || 0) + diamonds);
+  if (diamonds) await db.ref(`wallets/${uid}/paidDiamonds`).transaction(c => num(c) + diamonds); // confirmed bank transfer = real money
   sendPush(uid, 'เติมเงินสำเร็จ ✅', [coins ? `🪙 ${coins} เหรียญ` : '', diamonds ? `💎 ${diamonds} เพชร` : ''].filter(Boolean).join(' และ ') + ' เข้ากระเป๋าแล้ว', { type: 'wallet' });
   r.json({ status: 'paid', credited: coins, creditedDiamonds: diamonds });
 }));
@@ -902,9 +904,13 @@ async function getLimits() {
   limitsCache = { at: Date.now(), v }; return v;
 }
 const dayKey = () => new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10).replace(/-/g, ''); // Bangkok day
+/** VIP = an active vip/{uid}. adFree (no ads) only while VIP was bought with diamonds paid for with real money (adFreeUntil);
+ *  VIP from free / gifted / earned diamonds or an admin grant still sees and can watch ads. Records from before this
+ *  split (no `paidSplit` flag) keep their no-ads VIP. */
 async function tierOf(uid) {
-  const v = (await db.ref(`vip/${uid}`).get()).val();
-  return v && v.until > Date.now() ? { tier: 'vip', vipUntil: v.until } : { tier: 'free', vipUntil: null };
+  const v = (await db.ref(`vip/${uid}`).get()).val(), t = Date.now();
+  if (!(v && v.until > t)) return { tier: 'free', vipUntil: null, adFree: false };
+  return { tier: 'vip', vipUntil: v.until, adFree: v.paidSplit === true ? num(v.adFreeUntil) > t : true };
 }
 const num = x => (Number.isInteger(x) ? x : 0);
 async function postingFor(uid, tier, L) {
@@ -923,8 +929,8 @@ async function activeGrants(uid) {
   return out;
 }
 async function quotaInfo(uid, L) {
-  const { tier, vipUntil } = await tierOf(uid);
-  const t = L.tiers?.[tier] || {}, day = dayKey();
+  const { tier, vipUntil, adFree } = await tierOf(uid);
+  const t = L.tiers?.[tier] || {}, day = dayKey(), adMax = num(L.tiers?.[adFree ? 'vip' : 'free']?.maxAdsPerDay);
   const [used, bonus] = await Promise.all([db.ref(`usage/${uid}/${day}`).get(), db.ref(`quotaBonus/${uid}/${day}`).get()]);
   const u = used.val() || {}, b = { ...(bonus.val() || {}) };
   for (const [f, a] of Object.entries(await activeGrants(uid))) b[f] = num(b[f]) + a;
@@ -937,7 +943,7 @@ async function quotaInfo(uid, L) {
   { const f = features.chatMessagesPerDay; if (f) { f.used = cc && cc.day === chatDay() ? num(cc.n) : 0; f.limit = f.base; f.bonus = 0; f.remaining = f.base === 0 ? null : Math.max(0, f.base - f.used); } }
   const posting = await postingFor(uid, tier, L), chat = await chatFor(uid, tier, L);
   const comments = { ...SEED_LIMITS.comments, ...(L.comments || {}) };
-  return { tier, vipUntil, day, features, posting, chat, comments, ads: { watched: num(u.ads), max: num(t.maxAdsPerDay), perAd: L.adBonus || {}, ...(L.ads || {}), showAds: tier !== 'vip' && L.ads?.adsEnabled === true,
+  return { tier, vipUntil, day, features, posting, chat, comments, ads: { watched: num(u.ads), max: adMax, perAd: L.adBonus || {}, ...(L.ads || {}), showAds: !adFree && L.ads?.adsEnabled === true, adFree,
     offers: (await getAdOffers()).filter(o => o.enabled !== false).sort((a, b) => (a.order || 0) - (b.order || 0)) } };
 }
 /** Atomically consume 1 unit of `feature`; returns null if OK, else the limit hit. 0 = unlimited. */
@@ -1021,7 +1027,9 @@ app.put('/admin/vip/:uid', perm('config_edit'), w(notBanned), w(async (q, r) => 
   const until = q.body?.until;
   if (until === null) { await db.ref(`vip/${uid}`).remove(); return r.json({ uid, vip: false }); }
   if (!Number.isInteger(until) || until < Date.now()) return r.status(400).json({ error: 'until must be a future ms timestamp or null' });
-  await db.ref(`vip/${uid}`).set({ until, by: q.uid, at: Date.now() });
+  const t = Date.now(); // admin-given VIP still shows ads; a no-ads time the user already paid for is kept
+  await db.ref(`vip/${uid}`).transaction(v => { const legacy = v && v.paidSplit !== true && v.until > t;
+    return { until, by: q.uid, at: t, paidSplit: true, adFreeUntil: legacy ? v.until : num(v?.adFreeUntil) }; });
   r.json({ uid, vip: true, until });
 }));
 // ===== VIP self-purchase with diamonds (appConfig/vipPlans, admin-editable) =====
@@ -1035,11 +1043,20 @@ app.post('/vip/buy', w(notBanned), w(async (q, r) => {
   const pend = await pendingSum(q.uid);
   const d = await db.ref(`wallets/${q.uid}/diamonds`).transaction(c => (c === null ? null : num(c) - pend >= price ? num(c) - price : undefined));
   if (!d.committed || d.snapshot.val() === null) return r.status(402).json({ code: 'insufficient', error: `เพชรไม่พอ (ต้องการ 💎${price})`, price });
-  const t = Date.now(); let until = 0;
-  await db.ref(`vip/${q.uid}`).transaction(v => { const base = v && v.until > t ? v.until : t; until = base + days * 864e5; return { ...(v || {}), until, by: 'self', at: t }; });
+  // paid with real-money diamonds? (paid balance is capped at the balance before this purchase, so diamonds spent elsewhere count as free ones first)
+  const before = num(d.snapshot.val()) + price; let paid = false;
+  await db.ref(`wallets/${q.uid}/paidDiamonds`).transaction(c => { const p = Math.min(num(c), before); paid = p >= price; return paid ? p - price : p; });
+  const t = Date.now(); let until = 0, adFreeUntil = 0;
+  await db.ref(`vip/${q.uid}`).transaction(v => {
+    const cur = v || {}, legacy = v && v.paidSplit !== true && v.until > t; // older no-ads VIP keeps its no-ads time
+    const base = cur.until > t ? cur.until : t; until = base + days * 864e5;
+    const af = legacy ? cur.until : num(cur.adFreeUntil);
+    adFreeUntil = paid ? (af > t ? af : t) + days * 864e5 : (af > t ? af : 0);
+    return { ...cur, until, adFreeUntil, paidSplit: true, by: 'self', at: t };
+  });
   await Promise.all([db.ref('wallets/_system/diamonds').transaction(c => num(c) + price),
-    db.ref(`vipPurchases/${q.uid}`).push({ planId: plan.id, days, price, at: t, until })]);
-  r.json({ ok: true, until, diamonds: d.snapshot.val() });
+    db.ref(`vipPurchases/${q.uid}`).push({ planId: plan.id, days, price, at: t, until, paid })]);
+  r.json({ ok: true, until, adFree: adFreeUntil > t, diamonds: d.snapshot.val() });
 }));
 app.put('/admin/vip-plans', perm('config_edit'), w(notBanned), w(async (q, r) => {
   const b = q.body || {}, plans = (Array.isArray(b.plans) ? b.plans : []).slice(0, 6).map((p, i) => ({ id: /^[a-z0-9_]{1,20}$/.test(p?.id) ? p.id : `p${i}`, days: parseInt(p?.days), price: parseInt(p?.price) }));
@@ -1100,8 +1117,8 @@ async function creditAd(uid, feature, txId, amount = null, validityHours = 0) {
   const L = await getLimits();
   if (!(L.ads?.adsEnabled && L.ads?.rewardEnabled)) return { status: 403, body: { error: 'ad rewards disabled' } };
   if (!FEATURES.includes(feature) && feature !== 'coins') return { status: 400, body: { error: 'bad feature' } };
-  const { tier } = await tierOf(uid);
-  const max = num(L.tiers?.[tier]?.maxAdsPerDay), per = amount !== null ? num(amount) : num(L.adBonus?.[feature]), day = dayKey();
+  const { adFree } = await tierOf(uid);
+  const max = num(L.tiers?.[adFree ? 'vip' : 'free']?.maxAdsPerDay), per = amount !== null ? num(amount) : num(L.adBonus?.[feature]), day = dayKey();
   if (txId) { const t = await db.ref(`adTx/${txId}`).transaction(c => c ? c : { uid, at: Date.now() }); if (t.snapshot.val()?.done) return { status: 200, body: { duplicate: true } }; }
   const lastRef = db.ref(`adLast/${uid}`), minGap = num(L.global?.adMinIntervalSec) * 1000;
   let tooSoon = false;
