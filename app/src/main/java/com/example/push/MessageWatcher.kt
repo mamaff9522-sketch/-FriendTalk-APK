@@ -103,7 +103,7 @@ object MessageWatcher {
         lastSound = now
         if (!ctx.getSharedPreferences("friendtalk", 0).getBoolean("msgSound", true)) return
         runCatching {
-            val r = RingtoneManager.getRingtone(ctx, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION))
+            val r = RingtoneManager.getRingtone(ctx, PushRepo.messageSound(ctx)) // FriendTalk 'Soft Pop
             if (Build.VERSION.SDK_INT >= 28) r.audioAttributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION_COMMUNICATION_INSTANT).build()
             r.play()
         }

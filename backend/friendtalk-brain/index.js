@@ -3301,7 +3301,8 @@ async function sendPush(uid, title, body, data = {}) {
       tokens: toks.map(([, v]) => v.token),
       notification: { title: String(title).slice(0, 80), body: String(body).slice(0, 180) },
       data: Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])),
-      android: { priority: 'high', notification: { channelId: 'ft_default', sound: 'default' } },
+      // chat messages → 'ft_msg_pop' channel with the app's Soft Pop sound (res/raw/ft_message); older apps without it fall back to the default channel
+      android: { priority: 'high', notification: data.kind === 'message' ? { channelId: 'ft_msg_pop', sound: 'ft_message' } : { channelId: 'ft_default', sound: 'default' } },
     });
     const dead = {};
     res.responses.forEach((x, i) => { const c = String(x.error?.code || ''); if (/registration-token-not-registered|invalid-registration-token|invalid-argument/.test(c)) dead[`pushTokens/${uid}/${toks[i][0]}`] = null; });

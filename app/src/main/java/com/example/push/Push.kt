@@ -31,6 +31,9 @@ import kotlin.coroutines.resume
  */
 object PushRepo {
     const val CHANNEL = "ft_default"
+    /** New chat messages: own channel with the FriendTalk 'Soft Pop' sound (res/raw/ft_message). Channel sounds can't change later → new id if the sound changes. */
+    const val MSG_CHANNEL = "ft_msg_pop"
+    fun messageSound(ctx: Context): android.net.Uri = android.net.Uri.parse("android.resource://${ctx.packageName}/${com.example.R.raw.ft_message}")
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     fun ensureChannel(ctx: Context) {
@@ -39,6 +42,12 @@ object PushRepo {
             if (nm.getNotificationChannel(CHANNEL) == null)
                 nm.createNotificationChannel(NotificationChannel(CHANNEL, "ข้อความและการแจ้งเตือน", NotificationManager.IMPORTANCE_HIGH).apply {
                     description = "แชทใหม่ คำขอเป็นเพื่อน แมตช์ ของขวัญ และการเติมเงิน"
+                })
+            if (nm.getNotificationChannel(MSG_CHANNEL) == null)
+                nm.createNotificationChannel(NotificationChannel(MSG_CHANNEL, "ข้อความใหม่", NotificationManager.IMPORTANCE_HIGH).apply {
+                    description = "เสียงแจ้งเตือนเมื่อมีข้อความเข้า"
+                    setSound(messageSound(ctx), android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION_COMMUNICATION_INSTANT)
+                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
                 })
         }
     }
@@ -77,7 +86,9 @@ object PushRepo {
         val open = Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         data.forEach { (k, v) -> open.putExtra(k, v) }
         val pi = PendingIntent.getActivity(ctx, (data["chatId"] ?: title).hashCode(), open, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val n = NotificationCompat.Builder(ctx, CHANNEL)
+        val msg = data["kind"] == "message"
+        val n = NotificationCompat.Builder(ctx, if (msg) MSG_CHANNEL else CHANNEL)
+            .apply { if (msg) setSound(messageSound(ctx)) } // Android 7 and older (no channels)
             .setSmallIcon(com.example.R.mipmap.ic_launcher)
             .setContentTitle(title).setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
