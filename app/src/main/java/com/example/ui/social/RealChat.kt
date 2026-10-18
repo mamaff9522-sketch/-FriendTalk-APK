@@ -206,7 +206,10 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
             com.example.rtc.CallManager.active?.let { a -> if (com.example.rtc.CallManager.minimized) Box(Modifier.fillMaxSize().zIndex(10f)) { com.example.rtc.CallBubble(a) } }
             giftVideo?.let { v -> Box(Modifier.fillMaxSize().zIndex(9f)) { key(v) { com.example.ui.components.GiftVideoFx(v, { giftVideo = null }) } } }
             // Insets: the input row was drawn behind the navigation bar (edge-to-edge dialog window) → pad for system bars + keyboard.
-            Column(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding().imePadding()) {
+            // keyboard open: some keyboards (e.g. Samsung with the tool row) report a shorter height than they draw,
+            // so lift the input row a little more to keep it fully above the keyboard
+            val imeOpen = androidx.compose.foundation.layout.WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
+            Column(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding().imePadding().padding(bottom = if (imeOpen) 44.dp else 0.dp)) {
                 val askCallPerm = com.example.rtc.rememberRtcPermission { status = tr("ต้องอนุญาตไมโครโฟน/กล้องก่อนโทร") }
                 fun callLocked(video: Boolean) = com.example.ui.components.AppGates.partLocked(if (video) "videoCall" else "voiceCall") && !com.example.ui.components.AppGates.isStaff
                 fun startCall(video: Boolean) {
