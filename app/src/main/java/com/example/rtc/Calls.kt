@@ -147,13 +147,13 @@ object LiveNav {
 @Composable
 fun RtcHost() {
     val uid = FirebaseAuth.getInstance().currentUser?.uid
-    LaunchedEffect(uid) { CallManager.listen(uid) }
+    LaunchedEffect(uid) { CallManager.listen(uid); com.example.ui.components.Tweaks.start() } // tweaks need a signed-in user (retry after sign-in)
     val inc = CallManager.incoming
     val act = CallManager.active
     // keep the screen on for the whole call (voice and video, full screen or minimized)
     val rootView = androidx.compose.ui.platform.LocalView.current
     DisposableEffect(act != null) {
-        if (act != null) rootView.keepScreenOn = true
+        if (act != null && com.example.ui.components.Tweaks.on("call.keepScreenOn")) rootView.keepScreenOn = true
         onDispose { rootView.keepScreenOn = false }
     }
     when {
@@ -209,7 +209,7 @@ private fun CallScreen(a: CallManager.Active) {
     val remote = Rtc.remoteUids.firstOrNull()
     LaunchedEffect(remote) { if (remote != null && CallManager.connectedAt == 0L) CallManager.connectedAt = System.currentTimeMillis() }
     // ringing timeout for the caller
-    LaunchedEffect(a.callId) { delay(45_000); if (CallManager.connectedAt == 0L && CallManager.active?.callId == a.callId) CallManager.hangup() }
+    LaunchedEffect(a.callId) { delay((com.example.ui.components.Tweaks.num("call.ringTimeoutSec") * 1000).toLong()); if (CallManager.connectedAt == 0L && CallManager.active?.callId == a.callId) CallManager.hangup() }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { delay(1000); now = System.currentTimeMillis() } }
     val since = CallManager.connectedAt
@@ -223,7 +223,7 @@ private fun CallScreen(a: CallManager.Active) {
     Dialog(onDismissRequest = { CallManager.minimized = true }, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false, dismissOnBackPress = true, dismissOnClickOutside = false)) {
         val ctx = LocalContext.current
         val dv = androidx.compose.ui.platform.LocalView.current
-        DisposableEffect(Unit) { dv.keepScreenOn = true; onDispose { } } // the call window itself also keeps the screen awake
+        DisposableEffect(Unit) { dv.keepScreenOn = com.example.ui.components.Tweaks.on("call.keepScreenOn"); onDispose { } } // the call window itself also keeps the screen awake
         Box(Modifier.fillMaxSize().background(CallBg)) {
             if (a.video && remote != null) key(remote) { AndroidView(factory = { Rtc.remoteView(it, remote) }, modifier = Modifier.fillMaxSize()) }
             Column(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding()) {
@@ -264,7 +264,7 @@ private fun CallScreen(a: CallManager.Active) {
 private fun SelfPreview(ctx: Context) {
     BoxWithConstraints(Modifier.fillMaxSize().systemBarsPadding().padding(start = 12.dp, end = 12.dp, top = 64.dp, bottom = 150.dp)) { // bottom keeps it off the call buttons
         val d = androidx.compose.ui.platform.LocalDensity.current
-        val w = 110.dp; val h = 160.dp
+        val w = com.example.ui.components.Tweaks.num("call.pipWidth").dp; val h = com.example.ui.components.Tweaks.num("call.pipHeight").dp
         val maxX = with(d) { (maxWidth - w).toPx() }.coerceAtLeast(0f); val maxY = with(d) { (maxHeight - h).toPx() }.coerceAtLeast(0f)
         val scope = rememberCoroutineScope()
         val x = remember { androidx.compose.animation.core.Animatable(if (CallManager.pipRight) maxX else 0f) }

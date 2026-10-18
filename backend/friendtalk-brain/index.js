@@ -115,6 +115,22 @@ app.use(w(async (q, r, n) => {
   const role = await loadRole(q.uid); if (role && ['admin', 'superadmin', 'moderator'].includes(role.role)) return n();
   r.status(423).json({ error: 'feature locked', code: 'feature_locked', part, message: f.message || 'ฟีเจอร์นี้ปิดใช้งานชั่วคราว' });
 }));
+// Admin 'ปรับละเอียด' (app reads appConfig/tweaks live): numbers, switches and short texts; '.' in keys stored as '~' (RTDB).
+app.put('/admin/tweaks', perm('config_edit'), w(notBanned), w(async (q, r) => {
+  const src = q.body?.values && typeof q.body.values === 'object' ? q.body.values : {}, out = {};
+  const ids = Object.keys(src); if (ids.length > 300) return r.status(400).json({ error: 'ไม่เกิน 300 ค่า' });
+  for (const k of ids) {
+    if (!/^[a-zA-Z0-9_.]{1,60}$/.test(k)) return r.status(400).json({ error: `ชื่อค่า '${k}' ไม่ถูกต้อง` });
+    const v = src[k];
+    if (typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= 1e6) out[k.replace(/\./g, '~')] = v;
+    else if (typeof v === 'boolean') out[k.replace(/\./g, '~')] = v;
+    else if (typeof v === 'string' && v.length <= 300) out[k.replace(/\./g, '~')] = v;
+    else if (v !== null) return r.status(400).json({ error: `ค่าของ '${k}' ไม่ถูกต้อง` });
+  }
+  await db.ref('appConfig/tweaks').set(out);
+  await db.ref('adminLog').push({ action: 'tweaks', by: q.uid, at: Date.now(), message: `${Object.keys(out).length} values` });
+  r.json({ ok: true, count: Object.keys(out).length });
+}));
 app.put('/admin/feature-locks', perm('app_lock'), w(notBanned), w(async (q, r) => {
   const parts = {}; for (const k of Object.keys(q.body?.parts || {})) if (PARTS.includes(k) && q.body.parts[k] === true) parts[k] = true;
   const v = { parts, message: String(q.body?.message || '').slice(0, 300), by: q.uid, at: Date.now() };

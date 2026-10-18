@@ -102,12 +102,12 @@ object MessageWatcher {
         if (now - lastSound < 1500) return // a burst of messages → one sound
         lastSound = now
         if (!ctx.getSharedPreferences("friendtalk", 0).getBoolean("msgSound", true)) return
-        runCatching {
+        if (com.example.ui.components.Tweaks.on("chat.sound")) runCatching {
             val r = RingtoneManager.getRingtone(ctx, PushRepo.messageSound(ctx)) // FriendTalk 'Soft Pop
             if (Build.VERSION.SDK_INT >= 28) r.audioAttributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION_COMMUNICATION_INSTANT).build()
             r.play()
         }
-        runCatching {
+        if (com.example.ui.components.Tweaks.on("chat.vibrate")) runCatching {
             @Suppress("DEPRECATION") val v = ctx.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
             if (Build.VERSION.SDK_INT >= 26) v?.vibrate(VibrationEffect.createOneShot(60, VibrationEffect.DEFAULT_AMPLITUDE)) else @Suppress("DEPRECATION") v?.vibrate(60)
         }

@@ -258,7 +258,7 @@ private fun FindFriendsHome(onTile: (String) -> Unit, showCompanion: Boolean) {
             if (r.code == 200) { online = r.users; hasLoc = r.hasLocation; onlineMsg = "" }
             else if (online.isNullOrEmpty()) { online = emptyList(); onlineMsg = if (r.code == 404) tr("เซิร์ฟเวอร์ยังไม่อัปเดต") else tr("โหลดไม่สำเร็จ กำลังลองใหม่…") + if (r.code > 0) " (${r.code})" else "" }
             // a failed load (e.g. the server waking up) is retried soon instead of waiting a minute
-            kotlinx.coroutines.delay(if (r.code == 200) 60_000 else 6_000)
+            kotlinx.coroutines.delay(if (r.code == 200) (com.example.ui.components.Tweaks.num("discover.refreshSec") * 1000).toLong() else 6_000)
         }
     }
 
@@ -293,10 +293,11 @@ private fun FindFriendsHome(onTile: (String) -> Unit, showCompanion: Boolean) {
         // 2) function capsules: all on one screen, 3 per row (no sideways scrolling)
         val tiles = TILES.filter { it.first != "companion" || showCompanion }
         Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            tiles.chunked(3).forEach { row ->
+            val perRow = com.example.ui.components.Tweaks.int("discover.capsuleColumns")
+            tiles.chunked(perRow).forEach { row ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     row.forEach { (k, label) -> FunctionCapsule(k, label, Modifier.weight(1f)) { onTile(k) } }
-                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                    repeat(perRow - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
         }
@@ -320,7 +321,7 @@ private fun FindFriendsHome(onTile: (String) -> Unit, showCompanion: Boolean) {
                     Text(onlineMsg.ifBlank { if (com.example.social.DiscoverFilter.isSet) tr("ไม่มีคนออนไลน์ที่ตรงกับที่คุณต้องการ") else tr("ยังไม่มีใครออนไลน์ตอนนี้") }, color = FInkSoft, fontSize = 14.sp, textAlign = TextAlign.Center)
                     if (com.example.social.DiscoverFilter.isSet) TextButton(onClick = { wantDialog = true }) { Text(tr("ปรับ 'ต้องการ'"), color = FViolet) }
                 }
-                else -> androidx.compose.foundation.lazy.grid.LazyVerticalGrid(androidx.compose.foundation.lazy.grid.GridCells.Fixed(3),
+                else -> androidx.compose.foundation.lazy.grid.LazyVerticalGrid(androidx.compose.foundation.lazy.grid.GridCells.Fixed(com.example.ui.components.Tweaks.int("discover.onlineColumns")),
                     Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(start = 10.dp, end = 10.dp, top = 6.dp, bottom = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(on.size, key = { on[it].profile.uid }) { i -> OnlineCard(on[i]) { open = on[i].profile.uid } }
@@ -341,7 +342,7 @@ private fun FunctionCapsule(k: String, label: String, modifier: Modifier = Modif
     val locked = com.example.ui.components.AppGates.partLocked(k) && !com.example.ui.components.AppGates.isStaff
     val soon = com.example.ui.components.AppGates.comingSoon["tile_$k"]?.enabled == true && !com.example.ui.components.AppGates.isSuper
     val grad = TILE_GRAD[k] ?: listOf(FPink, FViolet)
-    Row(modifier.height(38.dp).clip(RoundedCornerShape(19.dp))
+    Row(modifier.height(com.example.ui.components.Tweaks.num("discover.capsuleHeight").dp).clip(RoundedCornerShape(19.dp))
         .background(if (locked || soon) Brush.horizontalGradient(listOf(Color(0x66888899), Color(0x66888899))) else Brush.horizontalGradient(grad))
         .clickable {
             when {
@@ -361,7 +362,7 @@ private fun FunctionCapsule(k: String, label: String, modifier: Modifier = Modif
 @Composable
 private fun OnlineCard(n: NearbyUser, onClick: () -> Unit) {
     val p = n.profile
-    Box(Modifier.fillMaxWidth().aspectRatio(0.75f).clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick)
+    Box(Modifier.fillMaxWidth().aspectRatio(100f / com.example.ui.components.Tweaks.num("discover.onlineCardHeight")).clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick)
         .background(Brush.linearGradient(listOf(Color(0xFFFF7AD0), Color(0xFF9B5CFF))))) {
         Text(p.displayName.take(1).ifBlank { "?" }, color = PureWhite, fontSize = 34.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.Center))
         if (p.avatar.isNotBlank()) coil.compose.AsyncImage(model = p.avatar, contentDescription = p.displayName, contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.fillMaxSize())

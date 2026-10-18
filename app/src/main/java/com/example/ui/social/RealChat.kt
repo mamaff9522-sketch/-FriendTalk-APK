@@ -160,7 +160,7 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
     val chatOpenedAt = remember(chatId) { System.currentTimeMillis() - 3_000 }
     val playedGifts = remember(chatId) { HashSet<String>() }
     LaunchedEffect(messages.size) {
-        messages.lastOrNull { it.gift != null && it.gift.videoUrl.isNotBlank() && it.at >= chatOpenedAt && playedGifts.add(it.id) }?.let { giftVideo = it.gift!!.videoUrl }
+        if (com.example.ui.components.Tweaks.on("chat.giftVideo")) messages.lastOrNull { it.gift != null && it.gift.videoUrl.isNotBlank() && it.at >= chatOpenedAt && playedGifts.add(it.id) }?.let { giftVideo = it.gift!!.videoUrl }
     }
     val otherRead by remember(chatId, otherUid) { if (otherUid.isBlank()) kotlinx.coroutines.flow.flowOf(0L) else SocialRepo.otherReadAt(chatId, otherUid) }.collectAsState(initial = 0L)
     val token by produceState<String?>(null) { value = idToken() }
@@ -204,12 +204,12 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
         Surface(Modifier.fillMaxSize(), color = Slate950) {
             // a minimized call floats over the chat too (this dialog is its own window, above the app-level bubble)
             com.example.rtc.CallManager.active?.let { a -> if (com.example.rtc.CallManager.minimized) Box(Modifier.fillMaxSize().zIndex(10f)) { com.example.rtc.CallBubble(a) } }
-            giftVideo?.let { v -> Box(Modifier.fillMaxSize().zIndex(9f)) { key(v) { com.example.ui.components.GiftVideoFx(v, { giftVideo = null }) } } }
+            giftVideo?.let { v -> Box(Modifier.fillMaxSize().zIndex(9f)) { key(v) { com.example.ui.components.GiftVideoFx(v, { giftVideo = null }, dim = com.example.ui.components.Tweaks.on("gift.videoDim")) } } }
             // Insets: the input row was drawn behind the navigation bar (edge-to-edge dialog window) → pad for system bars + keyboard.
             // keyboard open: some keyboards (e.g. Samsung with the tool row) report a shorter height than they draw,
             // so lift the input row a little more to keep it fully above the keyboard
             val imeOpen = androidx.compose.foundation.layout.WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
-            Column(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding().imePadding().padding(bottom = if (imeOpen) 44.dp else 0.dp)) {
+            Column(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding().imePadding().padding(bottom = if (imeOpen) com.example.ui.components.Tweaks.num("chat.inputLift").dp else 0.dp)) {
                 val askCallPerm = com.example.rtc.rememberRtcPermission { status = tr("ต้องอนุญาตไมโครโฟน/กล้องก่อนโทร") }
                 fun callLocked(video: Boolean) = com.example.ui.components.AppGates.partLocked(if (video) "videoCall" else "voiceCall") && !com.example.ui.components.AppGates.isStaff
                 fun startCall(video: Boolean) {
@@ -302,7 +302,7 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                                         contentDescription = tr("รูปภาพ"), contentScale = ContentScale.Crop,
                                         modifier = Modifier.widthIn(max = 220.dp).heightIn(max = 280.dp).clip(RoundedCornerShape(14.dp))
                                     )
-                                } else Text(m.text.orEmpty(), color = if (mine) PureWhite else AppThemeMode.text, fontSize = 15.sp, modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp))
+                                } else Text(m.text.orEmpty(), color = if (mine) PureWhite else AppThemeMode.text, fontSize = com.example.ui.components.Tweaks.num("chat.textSize").sp, modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp))
                             }
                             Text(hhmm.format(Date(m.at)) + if (mine && m == messages.lastOrNull { it.senderUid == me } && otherRead >= m.at) " · " + tr("อ่านแล้ว") else "",
                                 color = AppThemeMode.muted, fontSize = 10.sp, modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp))

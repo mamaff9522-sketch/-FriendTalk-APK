@@ -437,8 +437,9 @@ fun LazyListScope.homeFeedItems(all: RealFeedState, tabFeed: HomeTabFeed, tab: S
                 color = HMuted, fontSize = 13.sp)
         }
     }
-    val rows = posts.chunked(2)
-    val adEvery = (com.example.ads.AdPlacements.inFeedEvery / 2).coerceAtLeast(1)
+    val perRow = com.example.ui.components.Tweaks.int("feed.columns")
+    val rows = posts.chunked(perRow)
+    val adEvery = (com.example.ads.AdPlacements.inFeedEvery / perRow).coerceAtLeast(1)
     val distances = nearby?.associate { it.profile.uid to thaiDistance(it.distance) } ?: emptyMap()
     itemsIndexed(rows, key = { _, r -> "home_row_" + r[0].id }) { idx, row ->
         if (idx > 0 && idx % adEvery == 0) com.example.ads.PlacementBanner("inFeed", Modifier.padding(vertical = 6.dp))
@@ -451,7 +452,7 @@ fun LazyListScope.homeFeedItems(all: RealFeedState, tabFeed: HomeTabFeed, tab: S
                     onDelete = { if (isAll) all.delete(p) else tabFeed.delete(p) },
                     onCommentCount = { n -> if (isAll) all.update(p.id) { it.copy(commentCount = n) } else tabFeed.update(p.id) { it.copy(commentCount = n) } })
             }
-            if (row.size == 1) Spacer(Modifier.weight(1f))
+            repeat(perRow - row.size) { Spacer(Modifier.weight(1f)) }
         }
         if (isAll && idx == rows.lastIndex) LaunchedEffect(row[0].id, all.posts.size) { all.loadMore() }
     }
@@ -516,7 +517,7 @@ fun HomePostCard(p: FeedPost, distance: String, modifier: Modifier, onLike: () -
             // same layout for every card: one 4:5 picture area (photo, video, or the text itself on a colour tile),
             // then a fixed 2-line caption + one info line, so cards line up and text sizes match.
             val mediaUrl = p.imageUrls.firstOrNull()
-            Box(Modifier.padding(horizontal = 6.dp).fillMaxWidth().aspectRatio(4f / 5f).clip(RoundedCornerShape(12.dp)).background(Color.Black), contentAlignment = Alignment.Center) {
+            Box(Modifier.padding(horizontal = 6.dp).fillMaxWidth().aspectRatio(100f / com.example.ui.components.Tweaks.num("feed.mediaHeight")).clip(RoundedCornerShape(12.dp)).background(Color.Black), contentAlignment = Alignment.Center) {
                 when {
                     p.videoUrl.isNotBlank() -> PostVideoThumb(p, Modifier.fillMaxSize())
                     mediaUrl != null -> {
@@ -532,7 +533,7 @@ fun HomePostCard(p: FeedPost, distance: String, modifier: Modifier, onLike: () -
                 }
             }
             val hasMedia = p.videoUrl.isNotBlank() || mediaUrl != null
-            Text(if (hasMedia) p.text else "", color = HText, fontSize = 12.5.sp, lineHeight = 17.sp, minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            Text(if (hasMedia) p.text else "", color = HText, fontSize = 12.5.sp, lineHeight = 17.sp, minLines = com.example.ui.components.Tweaks.int("feed.captionLines"), maxLines = com.example.ui.components.Tweaks.int("feed.captionLines"), overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp))
             val info = when {
                 p.placeLabel.isNotBlank() -> "📍 " + p.placeLabel

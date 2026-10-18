@@ -22,7 +22,7 @@ import kotlinx.coroutines.delay
  * because callers only use this when a video exists). Hard stop after [maxMs].
  */
 @Composable
-fun GiftVideoFx(url: String, onDone: () -> Unit, dim: Boolean = true, maxMs: Long = 15_000) {
+fun GiftVideoFx(url: String, onDone: () -> Unit, dim: Boolean = true, maxMs: Long = (Tweaks.num("gift.videoMaxSec") * 1000).toLong()) {
     var aspect by remember(url) { mutableFloatStateOf(0f) }
     var done by remember(url) { mutableStateOf(false) }
     val finish = rememberUpdatedState { if (!done) { done = true; onDone() } }

@@ -130,6 +130,7 @@ fun AdminConsole(onDismiss: () -> Unit, onOpenUiBuilder: () -> Unit, onOpenApkDo
                                 Button(onClick = onOpenUiBuilder, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Purple600)) { Text("เปิด UI Builder") }
                             }
                             "showcase" -> com.example.ui.feed.AdminShowcasePane()
+                            "tweaks" -> AdminTweaksPane()
                             "comingsoon" -> Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp)) { ComingSoonList(p) }
                             "bots" -> com.example.ui.ai.AdminBotsTab()
                             "system" -> SystemPane()
@@ -422,7 +423,7 @@ private fun adminSections(p: Perms): List<AdminSection> {
         AdminSection("gifts", "🎁", "ของขวัญ & ตกแต่ง", "ของขวัญ สติกเกอร์ และธีม/กรอบ/เอฟเฟกต์ห้อง VIP", Color(0xFFFF2FA8),
             subs(("gifts" to "ของขวัญ & สติกเกอร์") to content, ("decor" to "ตกแต่งห้อง VIP") to cfg, ("randomcard" to "การ์ดสุ่ม VIP") to cfg, ("payvoices" to "จัดการเสียงเปย์เปิดใจ") to content)),
         AdminSection("look", "🎨", "หน้าตาแอป", "UI Builder รูปตัวอย่าง AI และป้าย 'เร็ว ๆ นี้'", Color(0xFF6D5BFF),
-            subs(("uibuilder" to "UI Builder") to cfg, ("showcase" to "รูปตัวอย่าง AI") to cfg, ("comingsoon" to "ป้าย 'เร็ว ๆ นี้'") to cfg)),
+            subs(("uibuilder" to "UI Builder") to cfg, ("tweaks" to "🔧 ปรับละเอียด") to cfg, ("showcase" to "รูปตัวอย่าง AI") to cfg, ("comingsoon" to "ป้าย 'เร็ว ๆ นี้'") to cfg)),
         AdminSection("bots", "🤖", "บอท AI", "ตัวละคร AI สำหรับคุยและเติมคนใกล้คุณ", Color(0xFF00B8D9), subs(("bots" to "บอท AI") to cfg)),
         AdminSection("system", "⚙️", "ระบบ", "ล็อกแอปทั้งหมด หรือปิดบางฟีเจอร์ชั่วคราว", Color(0xFF94A3B8), subs(("system" to "ล็อกแอป & ฟีเจอร์") to p.has("app_lock")))
     ).filter { it.subs.isNotEmpty() }

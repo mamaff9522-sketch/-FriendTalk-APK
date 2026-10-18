@@ -55,7 +55,7 @@ fun RandomMatchView(users: List<User>, onStartChatWithUser: (User) -> Unit) {
         scope.launch {
             val t0 = System.currentTimeMillis()
             val r = com.example.ui.random.RandomCardRepo.next(skipped)
-            val wait = 1200 - (System.currentTimeMillis() - t0) // let the dice roll a little
+            val wait = com.example.ui.components.Tweaks.int("random.rollMs") - (System.currentTimeMillis() - t0) // let the dice roll a little
             if (wait > 0) kotlinx.coroutines.delay(wait)
             searching = false
             if (r is com.example.ui.random.RandomCardRepo.Next.Nobody) status = r.msg else result = r
@@ -92,7 +92,7 @@ fun RandomMatchView(users: List<User>, onStartChatWithUser: (User) -> Unit) {
             is com.example.ui.random.RandomCardRepo.Next.Person -> {
                 Spacer(Modifier.height(6.dp))
                 BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    val w = minOf(maxWidth * 0.92f, maxHeight * 0.75f) // card is 3:4
+                    val w = minOf(maxWidth * (com.example.ui.components.Tweaks.num("random.cardWidth") / 100f), maxHeight * 0.75f) // card is 3:4
                     com.example.ui.random.RandomCardView(r.card ?: com.example.ui.random.RandomCard(intro = r.profile.bio), r.profile.displayName, r.profile.age, r.profile.avatar,
                         Modifier.width(w))
                 }
@@ -141,10 +141,10 @@ private fun Dice(rolling: Boolean, onTap: () -> Unit) {
     var face by remember { mutableStateOf(5) }
     LaunchedEffect(rolling) { while (rolling) { face = (1..6).random(); kotlinx.coroutines.delay(110) } }
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(Modifier.size(230.dp).clip(CircleShape)
+        Box(Modifier.size((com.example.ui.components.Tweaks.num("random.diceSize") * 1.75f).dp).clip(CircleShape)
             .background(androidx.compose.ui.graphics.Brush.radialGradient(listOf(androidx.compose.ui.graphics.Color(0x66FF2FA8), androidx.compose.ui.graphics.Color(0x229B3DFF), androidx.compose.ui.graphics.Color.Transparent)))
             .clickable(enabled = !rolling, onClick = onTap), contentAlignment = Alignment.Center) {
-            Box(Modifier.size(132.dp).graphicsLayer {
+            Box(Modifier.size(com.example.ui.components.Tweaks.num("random.diceSize").dp).graphicsLayer {
                 cameraDistance = 12f * density
                 if (rolling) { rotationZ = spin; rotationX = spin * 2f; rotationY = spin } else { translationY = bob; rotationZ = -8f }
             }.clip(androidx.compose.foundation.shape.RoundedCornerShape(28.dp))

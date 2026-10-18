@@ -67,6 +67,7 @@ class MainActivity : ComponentActivity() {
             Log.w("MainActivity", "Firebase initialization on startup: ${e.message}")
         }
         com.example.push.PushRepo.ensureChannel(this)
+        com.example.ui.components.Tweaks.start() // admin 'ปรับละเอียด' values, live
         lifecycle.addObserver(androidx.lifecycle.LifecycleEventObserver { _, e ->
             when (e) {
                 androidx.lifecycle.Lifecycle.Event.ON_START -> com.example.push.MessageWatcher.foreground = true
