@@ -39,7 +39,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
-/** 1:1 voice/video calls: ringing via RTDB callInbox/{uid}, call state via calls/{id}, media via Agora. */
+/** 1:1 voice/video calls: ringing via RTDB callInbox/{uid}, call state via calls/{id}, media via Three Junks. */
 object CallManager {
     data class Incoming(val callId: String, val fromUid: String, val fromName: String, val video: Boolean, val chatId: String)
     data class Active(val callId: String, val peerUid: String, val name: String, val video: Boolean, val outgoing: Boolean)
@@ -104,9 +104,7 @@ object CallManager {
         val s = RtcApi.session(r.json)
         connectedAt = 0L; note = ""
         active = Active(s.id, peerUid, name, video, outgoing = true)
-        val ok = if (ThreeJunksCalls.enabled) ThreeJunksCalls.start(ctx, peerUid, video, outgoing = true)
-            else Rtc.join(ctx, s, live = false, publisher = true, video = video)
-        if (!ok) { hangup(); return Rtc.error ?: "เชื่อมต่อไม่สำเร็จ" }
+        if (!ThreeJunksCalls.start(ctx, peerUid, video, outgoing = true)) { hangup(); return Rtc.error ?: "เชื่อมต่อไม่สำเร็จ" }
         watch(s.id)
         return null
     }
@@ -115,8 +113,7 @@ object CallManager {
         val inc = incoming ?: return null
         incoming = null
         // Three Junks: connect before telling the caller we accepted, so its call finds us online
-        val tj = accept && ThreeJunksCalls.enabled
-        if (tj && !ThreeJunksCalls.start(ctx, inc.fromUid, inc.video, outgoing = false)) {
+        if (accept && !ThreeJunksCalls.start(ctx, inc.fromUid, inc.video, outgoing = false)) {
             RtcApi.post("/calls/${inc.callId}/answer", JSONObject().put("accept", false))
             return Rtc.error ?: "เชื่อมต่อไม่สำเร็จ"
         }
@@ -127,7 +124,6 @@ object CallManager {
         val s = RtcApi.session(r.json)
         connectedAt = System.currentTimeMillis(); note = ""
         active = Active(s.id, inc.fromUid, inc.fromName, inc.video, outgoing = false)
-        if (!tj && !Rtc.join(ctx, s, live = false, publisher = true, video = inc.video)) { hangup(); return Rtc.error ?: "เชื่อมต่อไม่สำเร็จ" }
         watch(s.id)
         return null
     }

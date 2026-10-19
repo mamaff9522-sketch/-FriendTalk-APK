@@ -327,7 +327,6 @@ fun LiveHostScreen(onClose: () -> Unit) {
     var viewers by remember { mutableIntStateOf(0) }
     var startedAt by remember { mutableLongStateOf(0L) }
     var confirmEnd by remember { mutableStateOf(false) }
-    var beautySheet by remember { mutableStateOf(false) }
     val askPerm = rememberRtcPermission { err = "ต้องอนุญาตกล้องและไมโครโฟนก่อนไลฟ์" }
     fun stop() { val id = liveId; liveId = null; Rtc.leave(); if (id != null) RtcScope.launch { RtcApi.post("/lives/$id/end") } }
     fun end() { stop(); onClose() }
@@ -350,7 +349,7 @@ fun LiveHostScreen(onClose: () -> Unit) {
                 LaunchedEffect(Unit) { while (true) { delay(1000); now = System.currentTimeMillis() } }
                 val msgs = rememberLiveChat(id)
                 Box(Modifier.fillMaxSize().background(Color.Black)) {
-                    if (Rtc.camOn) AndroidView(factory = { Rtc.localView(it, overlay = false) }, modifier = Modifier.fillMaxSize())
+                    if (Rtc.camOn) AndroidView(factory = { Rtc.localView(it, overlay = false) }, modifier = Modifier.fillMaxSize(), onRelease = { Rtc.releaseView(it) })
                     else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("ปิดกล้องอยู่", color = Color.White.copy(alpha = 0.7f)) }
                     Box(Modifier.fillMaxWidth().height(150.dp).background(Brush.verticalGradient(listOf(Color(0x99000000), Color.Transparent))))
                     Box(Modifier.fillMaxWidth().fillMaxHeight(0.45f).align(Alignment.BottomCenter).background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xB3000000)))))
@@ -370,7 +369,6 @@ fun LiveHostScreen(onClose: () -> Unit) {
                         Spacer(Modifier.weight(1f))
                         GiftBanner(msgs, Modifier.padding(start = 12.dp, bottom = 8.dp))
                         CommentsPanel(id, msgs, Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
-                            SmallRound(Icons.Filled.AutoAwesome, "แต่งหน้า", active = Beauty.on) { beautySheet = true }
                             SmallRound(if (Rtc.micOn) Icons.Filled.Mic else Icons.Filled.MicOff, "ไมค์", active = !Rtc.micOn) { Rtc.toggleMic() }
                             SmallRound(Icons.Filled.Cameraswitch, "สลับกล้อง") { Rtc.switchCamera() }
                             SmallRound(Icons.Filled.Share, "แชร์") { shareLive(ctx, myName, title) }
@@ -378,7 +376,6 @@ fun LiveHostScreen(onClose: () -> Unit) {
                     }
                     GiftBurstLayer(msgs) // big gift effect in the middle of the screen
                 }
-                if (beautySheet) BeautySheet { beautySheet = false }
                 if (confirmEnd) androidx.compose.material3.AlertDialog(onDismissRequest = { confirmEnd = false },
                     confirmButton = { androidx.compose.material3.TextButton(onClick = { confirmEnd = false; end() }) { Text("จบไลฟ์") } },
                     dismissButton = { androidx.compose.material3.TextButton(onClick = { confirmEnd = false }) { Text("ไลฟ์ต่อ") } },
@@ -421,7 +418,8 @@ fun LiveHostScreen(onClose: () -> Unit) {
                                     val r = RtcApi.post("/lives", JSONObject().put("title", title.trim()).put("category", cat))
                                     if (r?.code == 200 && r.json != null) {
                                         val s = RtcApi.session(r.json)
-                                        if (Rtc.join(ctx, s, live = true, publisher = true, video = true)) { liveId = s.id; startedAt = System.currentTimeMillis() }
+                                        val me = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid.orEmpty()
+                                        if (Rtc.joinLive(ctx, s.id, me, publisher = true, title = title.trim())) { liveId = s.id; startedAt = System.currentTimeMillis() }
                                         else { err = Rtc.error ?: "เริ่มไลฟ์ไม่สำเร็จ"; RtcApi.post("/lives/${s.id}/end") }
                                     } else err = RtcApi.error(r)
                                     busy = false
@@ -442,7 +440,7 @@ fun LiveHostScreen(onClose: () -> Unit) {
 fun LiveViewerScreen(liveId: String, onClose: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    var session by remember { mutableStateOf<RtcSession?>(null) }
+    var joinedMedia by remember { mutableStateOf(false) }
     var err by remember { mutableStateOf("") }
     val info = rememberDbValue("lives/$liveId")
     val status = info?.child("status")?.getValue(String::class.java)
@@ -452,20 +450,20 @@ fun LiveViewerScreen(liveId: String, onClose: () -> Unit) {
     val viewers = (info?.child("viewers")?.value as? Number)?.toInt() ?: 0
     val hostUid = info?.child("hostUid")?.getValue(String::class.java).orEmpty()
     var giftSheet by remember { mutableStateOf(false) }
-    LaunchedEffect(liveId) {
+    // brain counts the viewer (and may refuse: banned, live ended); the stream itself comes from Three Junks
+    LaunchedEffect(liveId, hostUid) {
+        if (hostUid.isBlank() || joinedMedia) return@LaunchedEffect
+        joinedMedia = true
         val r = RtcApi.post("/lives/$liveId/join")
-        if (r?.code == 200 && r.json != null) {
-            val s = RtcApi.session(r.json)
-            if (Rtc.join(ctx, s, live = true, publisher = false, video = true)) session = s else err = Rtc.error ?: "เข้าดูไลฟ์ไม่สำเร็จ"
-        } else err = RtcApi.error(r)
+        if (r?.code == 200) { if (!Rtc.joinLive(ctx, liveId, hostUid, publisher = false)) err = Rtc.error ?: "เข้าดูไลฟ์ไม่สำเร็จ" }
+        else err = RtcApi.error(r)
     }
     DisposableEffect(liveId) { onDispose { Rtc.leave(); RtcScope.launch { RtcApi.post("/lives/$liveId/leave") } } }
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         val msgs = rememberLiveChat(liveId)
         Box(Modifier.fillMaxSize().background(Color(0xFF0B0824))) {
-            val s = session
-            val hostOn = s != null && s.peerUid in Rtc.remoteUids
-            if (hostOn) key(s!!.peerUid) { AndroidView(factory = { Rtc.remoteView(it, s.peerUid) }, modifier = Modifier.fillMaxSize()) }
+            val hostOn = Rtc.TJ_REMOTE in Rtc.remoteUids
+            if (hostOn) key(Rtc.TJ_REMOTE) { AndroidView(factory = { Rtc.remoteView(it, Rtc.TJ_REMOTE) }, modifier = Modifier.fillMaxSize(), onRelease = { Rtc.releaseView(it) }) }
             else {
                 if (avatar.isNotBlank()) AsyncImage(model = avatar, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(), alpha = 0.35f)
                 Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {

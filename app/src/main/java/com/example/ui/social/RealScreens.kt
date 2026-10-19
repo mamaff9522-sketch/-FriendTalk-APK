@@ -30,7 +30,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.ui.theme.*
 
-/** Live tab: real on-air rooms (Agora via friendtalk-brain); labelled AI samples only while nobody is live. */
+/** Live tab: real on-air rooms (friendtalk-brain; media via Three Junks); labelled AI samples only while nobody is live. */
 @Composable
 fun RealLiveScreen() {
     var info by remember { mutableStateOf(false) }

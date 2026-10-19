@@ -21,25 +21,29 @@ import org.webrtc.SurfaceViewRenderer
 import java.util.concurrent.TimeUnit
 
 /**
- * 1:1 call media through Three Junks (our own servers) instead of Agora, when the admin switch `call.threeJunks` is on.
+ * 1:1 call media through Three Junks (our own servers; Agora is no longer used).
  *
- * Ringing, accept/decline, missed calls and the call screens stay exactly as before (friendtalk-brain + RTDB);
- * only the voice/video stream changes. Flow:
+ * Ringing, accept/decline, missed calls and the call screens stay as before (friendtalk-brain + RTDB); only the
+ * voice/video stream goes through Three Junks. Flow:
  *  - callee: on accept, connects to Three Junks and waits for the caller's Three Junks call, which it accepts by itself;
  *  - caller: when RTDB says `accepted`, places the Three Junks call to the callee's Firebase uid (retries for a few
  *    seconds while the callee is still connecting).
  * Sign-in: the Firebase ID token is exchanged at `POST /api/v1/auth/idp-exchange` (project `call.threeJunksProject`,
  * whose identity provider must be set to this Firebase project in Three Junks Super Admin → Projects).
- * Live streaming always stays on Agora.
  */
 object ThreeJunksCalls {
     private val main = Handler(Looper.getMainLooper())
     private val http = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS).build()
 
-    /** Read the switch when a call starts (both sides read the same remote value). */
-    val enabled: Boolean get() = com.example.ui.components.Tweaks.on("call.threeJunks")
-    private val baseUrl get() = com.example.ui.components.Tweaks.text("call.threeJunksUrl").trim().trimEnd('/')
-    private val projectId get() = com.example.ui.components.Tweaks.text("call.threeJunksProject").trim()
+    /** Three Junks server and project (admin '🔧 ปรับละเอียด'; shared with live streaming). */
+    internal val baseUrl get() = com.example.ui.components.Tweaks.text("call.threeJunksUrl").trim().trimEnd('/')
+    internal val projectId get() = com.example.ui.components.Tweaks.text("call.threeJunksProject").trim()
+
+    /** The signed-in user's Firebase ID token (blocking: background thread only). */
+    internal fun firebaseIdToken(): String {
+        val user = FirebaseAuth.getInstance().currentUser ?: throw IllegalStateException("not signed in")
+        return Tasks.await(user.getIdToken(false), 15, TimeUnit.SECONDS).token ?: throw IllegalStateException("no Firebase token")
+    }
 
     /** True while the current call's media goes through Three Junks. */
     var active = false; private set
@@ -132,8 +136,7 @@ object ThreeJunksCalls {
 
     /** Firebase ID token -> Three Junks session (background thread, asked again on every reconnect). */
     private fun token(): String {
-        val user = FirebaseAuth.getInstance().currentUser ?: throw IllegalStateException("not signed in")
-        val idToken = Tasks.await(user.getIdToken(false), 15, TimeUnit.SECONDS).token ?: throw IllegalStateException("no Firebase token")
+        val idToken = firebaseIdToken()
         val body = JSONObject().put("projectId", projectId).put("idToken", idToken).toString()
         val req = Request.Builder().url("$baseUrl/api/v1/auth/idp-exchange")
             .post(body.toRequestBody("application/json".toMediaType())).build()

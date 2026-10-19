@@ -111,13 +111,11 @@ googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.E
 
 dependencies {
   implementation("com.android.billingclient:billing-ktx:8.0.0")
-  // Voice/video calls + live streaming (Agora RTC, basic build without optional extensions).
-  implementation("io.agora.rtc:full-rtc-basic:4.6.4")
-  // Face beauty / colour / low-light filters for the camera (Agora clear-vision extension).
-  implementation("io.agora.rtc:clear-vision:4.6.4")
-  // Three Junks (own servers) for 1:1 calls when the admin switch is on: Google's WebRTC prebuilt (Apache-2.0 / BSD).
-  // The SDK sources are vendored in app/src/main/java/com/threejunks/sdk.
+  // Voice/video calls and live streaming through Three Junks (our own servers; Agora removed).
+  // SDK sources vendored in app/src/main/java/com/threejunks/sdk. Calls: Google's WebRTC prebuilt (Apache-2.0 / BSD).
   implementation("io.getstream:stream-webrtc-android:1.3.8")
+  // Live: LiveKit Android SDK (Apache-2.0); its WebRTC is renamed, so it coexists with the calls' WebRTC.
+  implementation("io.livekit:livekit-android:2.29.0")
   implementation(platform(libs.androidx.compose.bom))
   implementation(platform(libs.firebase.bom))
 implementation("com.google.firebase:firebase-auth")

@@ -3,9 +3,6 @@ package com.example.rtc
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
-import android.os.Handler
-import android.os.Looper
-import android.view.SurfaceView
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.*
@@ -14,18 +11,12 @@ import androidx.core.content.ContextCompat
 import com.example.network.BrainApi
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.*
-import io.agora.rtc2.ChannelMediaOptions
-import io.agora.rtc2.Constants
-import io.agora.rtc2.IRtcEngineEventHandler
-import io.agora.rtc2.RtcEngine
-import io.agora.rtc2.RtcEngineConfig
-import io.agora.rtc2.video.VideoCanvas
 import org.json.JSONObject
 
 /** App-lifetime scope for "fire and forget" calls that must survive a screen closing (end live, leave live, hang up). */
 val RtcScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main)
 
-/** One joined Agora channel (a call or a live room). Token/appId always come from friendtalk-brain. */
+/** A call or live as friendtalk-brain returns it (its Agora fields are no longer used: media goes through Three Junks). */
 data class RtcSession(val id: String, val appId: String, val channel: String, val uid: Int, val peerUid: Int, val token: String, val video: Boolean)
 
 object RtcApi {
@@ -40,98 +31,67 @@ object RtcApi {
     val db: FirebaseDatabase get() = FirebaseDatabase.getInstance(DB_URL)
 }
 
-/** The single Agora engine. Callbacks arrive on an SDK thread and are posted to the main thread as Compose state. */
+/**
+ * Voice/video state for the call and live screens. Media goes through Three Junks (our own servers): 1:1 calls via
+ * [ThreeJunksCalls], live streaming via [ThreeJunksLiveMedia]. Values are Compose state, updated on the main thread.
+ */
 object Rtc {
-    var engine: RtcEngine? = null; private set
     val remoteUids: SnapshotStateList<Int> = mutableStateListOf()
     var joined by mutableStateOf(false); private set
     var error by mutableStateOf<String?>(null)
     var micOn by mutableStateOf(true); private set
     var camOn by mutableStateOf(true); private set
     var speakerOn by mutableStateOf(true); private set
-    private val main = Handler(Looper.getMainLooper())
-    private val handler = object : IRtcEngineEventHandler() {
-        override fun onJoinChannelSuccess(channel: String?, uid: Int, elapsed: Int) { main.post { joined = true } }
-        override fun onUserJoined(uid: Int, elapsed: Int) { main.post { if (uid !in remoteUids) remoteUids.add(uid) } }
-        override fun onUserOffline(uid: Int, reason: Int) { main.post { remoteUids.remove(uid) } }
-        override fun onError(err: Int) { main.post { error = "การเชื่อมต่อมีปัญหา (รหัส $err)" } }
-    }
 
-    /** live=false → 1:1 call; live=true → broadcaster (publisher) or audience. */
-    fun join(ctx: Context, s: RtcSession, live: Boolean, publisher: Boolean, video: Boolean): Boolean {
+    /** Live: host (publisher) goes live in FriendTalk live [liveId]; a viewer watches the room of [hostUid]. */
+    suspend fun joinLive(ctx: Context, liveId: String, hostUid: String, publisher: Boolean, title: String = ""): Boolean {
         leave()
-        error = null
-        val e = runCatching {
-            RtcEngine.create(RtcEngineConfig().apply {
-                mContext = ctx.applicationContext; mAppId = s.appId; mEventHandler = handler
-                mChannelProfile = if (live) Constants.CHANNEL_PROFILE_LIVE_BROADCASTING else Constants.CHANNEL_PROFILE_COMMUNICATION
-            })
-        }.getOrElse { error = "เปิดระบบเสียง/วิดีโอไม่ได้: ${it.message}"; return false }
-        engine = e
-        if (video) e.enableVideo()
-        val o = ChannelMediaOptions().apply {
-            channelProfile = if (live) Constants.CHANNEL_PROFILE_LIVE_BROADCASTING else Constants.CHANNEL_PROFILE_COMMUNICATION
-            clientRoleType = if (publisher) Constants.CLIENT_ROLE_BROADCASTER else Constants.CLIENT_ROLE_AUDIENCE
-            publishMicrophoneTrack = publisher
-            publishCameraTrack = publisher && video
-            autoSubscribeAudio = true
-            autoSubscribeVideo = video
-            if (!publisher) audienceLatencyLevel = Constants.AUDIENCE_LATENCY_LEVEL_LOW_LATENCY
-        }
-        if (publisher && video) { e.startPreview(); Beauty.load(ctx); Beauty.apply(e) } // face beauty on my camera
-        micOn = true; camOn = video; speakerOn = video || live
-        e.setDefaultAudioRoutetoSpeakerphone(speakerOn)
-        val rc = e.joinChannel(s.token, s.channel, s.uid, o)
-        if (rc != 0) { error = "เข้าห้องไม่สำเร็จ (รหัส $rc)"; leave(); return false }
-        return true
+        error = null; remoteUids.clear(); joined = false
+        micOn = true; camOn = publisher; speakerOn = true
+        return ThreeJunksLiveMedia.start(ctx, liveId, hostUid, publisher, title)
     }
 
     fun leave() {
-        if (ThreeJunksCalls.active) { ThreeJunksCalls.release(); remoteUids.clear(); joined = false }
-        val e = engine ?: return
-        engine = null
-        runCatching { e.stopPreview(); e.leaveChannel() }
-        runCatching { RtcEngine.destroy() }
+        if (ThreeJunksCalls.active) ThreeJunksCalls.release()
+        if (ThreeJunksLiveMedia.active) ThreeJunksLiveMedia.stop()
         remoteUids.clear(); joined = false
     }
 
     fun toggleMic() {
-        if (ThreeJunksCalls.active) { micOn = !micOn; ThreeJunksCalls.setMic(micOn); return }
-        val e = engine ?: return; micOn = !micOn; e.muteLocalAudioStream(!micOn)
+        micOn = !micOn
+        if (ThreeJunksCalls.active) ThreeJunksCalls.setMic(micOn) else ThreeJunksLiveMedia.setMic(micOn)
     }
     fun toggleCam() {
-        if (ThreeJunksCalls.active) { camOn = !camOn; ThreeJunksCalls.setCamera(camOn); return }
-        val e = engine ?: return; camOn = !camOn; e.muteLocalVideoStream(!camOn); e.enableLocalVideo(camOn)
+        camOn = !camOn
+        if (ThreeJunksCalls.active) ThreeJunksCalls.setCamera(camOn) else ThreeJunksLiveMedia.setCamera(camOn)
     }
     fun toggleSpeaker() {
-        if (ThreeJunksCalls.active) { speakerOn = !speakerOn; ThreeJunksCalls.setSpeaker(speakerOn); return }
-        val e = engine ?: return; speakerOn = !speakerOn; e.setEnableSpeakerphone(speakerOn)
+        speakerOn = !speakerOn
+        if (ThreeJunksCalls.active) ThreeJunksCalls.setSpeaker(speakerOn)
     }
-    fun switchCamera() { if (ThreeJunksCalls.active) ThreeJunksCalls.switchCamera() else engine?.switchCamera() }
+    fun switchCamera() { if (ThreeJunksCalls.active) ThreeJunksCalls.switchCamera() else ThreeJunksLiveMedia.switchCamera() }
 
-    /** A 1:1 call's media started on Three Junks instead of Agora (see ThreeJunksCalls). */
+    /** A 1:1 call's media started (see ThreeJunksCalls). */
     internal fun tjStarted(video: Boolean) {
         error = null; remoteUids.clear(); joined = false
         micOn = true; camOn = video; speakerOn = video
     }
-    /** Three Junks media flowing (true) or not (false); the call screen shows the remote video for "uid" 1. */
+    /** Media from the other side flowing (true) or not (false); the screens show the remote video for "uid" 1. */
     internal fun tjRemote(on: Boolean) {
         joined = on
         if (on) { if (TJ_REMOTE !in remoteUids) remoteUids.add(TJ_REMOTE) } else remoteUids.clear()
     }
-    private const val TJ_REMOTE = 1
+    const val TJ_REMOTE = 1
 
     /** Free a video view created by [localView] / [remoteView] when it leaves the screen. */
-    fun releaseView(view: android.view.View) { ThreeJunksCalls.releaseView(view) }
+    fun releaseView(view: android.view.View) { ThreeJunksCalls.releaseView(view); ThreeJunksLiveMedia.releaseView(view) }
 
-    // TextureView (not SurfaceView) so rounded corners / overlays from Compose apply to the video too.
     @Suppress("UNUSED_PARAMETER")
-    fun localView(ctx: Context, overlay: Boolean): android.view.View = if (ThreeJunksCalls.active) ThreeJunksCalls.localView(ctx) else android.view.TextureView(ctx).also {
-        engine?.setupLocalVideo(VideoCanvas(it, VideoCanvas.RENDER_MODE_HIDDEN, 0))
-    }
-    fun remoteView(ctx: Context, uid: Int): android.view.View = if (ThreeJunksCalls.active) ThreeJunksCalls.remoteView(ctx) else android.view.TextureView(ctx).also {
-        engine?.setupRemoteVideo(VideoCanvas(it, VideoCanvas.RENDER_MODE_HIDDEN, uid))
-    }
+    fun localView(ctx: Context, overlay: Boolean): android.view.View =
+        if (ThreeJunksLiveMedia.active) ThreeJunksLiveMedia.localView(ctx) else ThreeJunksCalls.localView(ctx)
+    @Suppress("UNUSED_PARAMETER")
+    fun remoteView(ctx: Context, uid: Int): android.view.View =
+        if (ThreeJunksLiveMedia.active) ThreeJunksLiveMedia.remoteView(ctx) else ThreeJunksCalls.remoteView(ctx)
 }
 
 /** Asks for mic (+camera for video) and runs [then] only when granted. */
