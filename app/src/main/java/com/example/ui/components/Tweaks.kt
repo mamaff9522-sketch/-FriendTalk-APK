@@ -43,6 +43,9 @@ object Tweaks {
         Def("call.pipWidth", "📞 โทร & วิดีโอคอล", "รูปเล็กของเราตอนวิดีโอคอล: กว้าง", "num", 110f, 70f, 200f, "dp"),
         Def("call.pipHeight", "📞 โทร & วิดีโอคอล", "รูปเล็กของเราตอนวิดีโอคอล: สูง", "num", 160f, 90f, 300f, "dp"),
         Def("call.ringTimeoutSec", "📞 โทร & วิดีโอคอล", "โทรออกไม่มีคนรับ วางสายเองหลัง", "num", 45f, 15f, 120f, "วินาที"),
+        Def("call.threeJunks", "📞 โทร & วิดีโอคอล", "โทร 1:1 ผ่าน Three Junks (เซิร์ฟเวอร์ของเรา) แทน Agora", "bool", false),
+        Def("call.threeJunksUrl", "📞 โทร & วิดีโอคอล", "ที่อยู่เซิร์ฟเวอร์ Three Junks", "text", "https://threejunk.duckdns.org"),
+        Def("call.threeJunksProject", "📞 โทร & วิดีโอคอล", "รหัสโปรเจกต์ใน Three Junks", "text", "friendtalk"),
         // ของขวัญ
         Def("gift.videoMaxSec", "🎁 ของขวัญ", "วิดีโอเอฟเฟกต์เล่นนานสุด", "num", 15f, 3f, 60f, "วินาที"),
         Def("gift.videoDim", "🎁 ของขวัญ", "ทำพื้นหลังมืดตอนเล่นวิดีโอเอฟเฟกต์ (แชท)", "bool", true),

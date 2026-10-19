@@ -84,7 +84,7 @@ object CallManager {
         val l = object : ValueEventListener {
             override fun onDataChange(s: DataSnapshot) {
                 when (s.getValue(String::class.java)) {
-                    "accepted" -> if (connectedAt == 0L) connectedAt = System.currentTimeMillis()
+                    "accepted" -> { if (connectedAt == 0L) connectedAt = System.currentTimeMillis(); ThreeJunksCalls.peerAccepted() }
                     "declined" -> finish("ปลายสายไม่รับสาย")
                     "missed" -> finish(if (active?.outgoing == true) "ไม่มีผู้รับสาย" else "")
                     "ended" -> finish("วางสายแล้ว")
@@ -104,7 +104,9 @@ object CallManager {
         val s = RtcApi.session(r.json)
         connectedAt = 0L; note = ""
         active = Active(s.id, peerUid, name, video, outgoing = true)
-        if (!Rtc.join(ctx, s, live = false, publisher = true, video = video)) { hangup(); return Rtc.error ?: "เชื่อมต่อไม่สำเร็จ" }
+        val ok = if (ThreeJunksCalls.enabled) ThreeJunksCalls.start(ctx, peerUid, video, outgoing = true)
+            else Rtc.join(ctx, s, live = false, publisher = true, video = video)
+        if (!ok) { hangup(); return Rtc.error ?: "เชื่อมต่อไม่สำเร็จ" }
         watch(s.id)
         return null
     }
@@ -112,14 +114,20 @@ object CallManager {
     suspend fun answer(ctx: Context, accept: Boolean): String? {
         val inc = incoming ?: return null
         incoming = null
+        // Three Junks: connect before telling the caller we accepted, so its call finds us online
+        val tj = accept && ThreeJunksCalls.enabled
+        if (tj && !ThreeJunksCalls.start(ctx, inc.fromUid, inc.video, outgoing = false)) {
+            RtcApi.post("/calls/${inc.callId}/answer", JSONObject().put("accept", false))
+            return Rtc.error ?: "เชื่อมต่อไม่สำเร็จ"
+        }
         val r = RtcApi.post("/calls/${inc.callId}/answer", JSONObject().put("accept", accept))
         if (!accept) return null
-        if (r?.code == 409) return "สายนี้จบไปแล้ว"
-        if (r?.code != 200 || r.json == null) return RtcApi.error(r)
+        if (r?.code == 409) { Rtc.leave(); return "สายนี้จบไปแล้ว" }
+        if (r?.code != 200 || r.json == null) { Rtc.leave(); return RtcApi.error(r) }
         val s = RtcApi.session(r.json)
         connectedAt = System.currentTimeMillis(); note = ""
         active = Active(s.id, inc.fromUid, inc.fromName, inc.video, outgoing = false)
-        if (!Rtc.join(ctx, s, live = false, publisher = true, video = inc.video)) { hangup(); return Rtc.error ?: "เชื่อมต่อไม่สำเร็จ" }
+        if (!tj && !Rtc.join(ctx, s, live = false, publisher = true, video = inc.video)) { hangup(); return Rtc.error ?: "เชื่อมต่อไม่สำเร็จ" }
         watch(s.id)
         return null
     }
@@ -127,6 +135,13 @@ object CallManager {
     fun hangup() {
         val a = active ?: return
         finish("")
+        RtcScope.launch { RtcApi.post("/calls/${a.callId}/end") }
+    }
+
+    /** The call's media ended on its own (Three Junks: other side gone / network lost): end the FriendTalk call too. */
+    fun hangupFromMedia(msg: String) {
+        val a = active ?: return
+        finish(msg)
         RtcScope.launch { RtcApi.post("/calls/${a.callId}/end") }
     }
 
@@ -225,7 +240,7 @@ private fun CallScreen(a: CallManager.Active) {
         val dv = androidx.compose.ui.platform.LocalView.current
         DisposableEffect(Unit) { dv.keepScreenOn = com.example.ui.components.Tweaks.on("call.keepScreenOn"); onDispose { } } // the call window itself also keeps the screen awake
         Box(Modifier.fillMaxSize().background(CallBg)) {
-            if (a.video && remote != null) key(remote) { AndroidView(factory = { Rtc.remoteView(it, remote) }, modifier = Modifier.fillMaxSize()) }
+            if (a.video && remote != null) key(remote) { AndroidView(factory = { Rtc.remoteView(it, remote) }, modifier = Modifier.fillMaxSize(), onRelease = { Rtc.releaseView(it) }) }
             Column(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding()) {
                 if (!a.video || remote == null) {
                     Column(Modifier.fillMaxWidth().padding(top = 80.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -283,7 +298,7 @@ private fun SelfPreview(ctx: Context) {
                 }
             }
             .clip(RoundedCornerShape(16.dp)).border(2.dp, Color(0x88FFFFFF), RoundedCornerShape(16.dp))) {
-            AndroidView(factory = { Rtc.localView(ctx, overlay = true) }, modifier = Modifier.fillMaxSize())
+            AndroidView(factory = { Rtc.localView(ctx, overlay = true) }, modifier = Modifier.fillMaxSize(), onRelease = { Rtc.releaseView(it) })
         }
     }
 }

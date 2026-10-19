@@ -87,6 +87,7 @@ object Rtc {
     }
 
     fun leave() {
+        if (ThreeJunksCalls.active) { ThreeJunksCalls.release(); remoteUids.clear(); joined = false }
         val e = engine ?: return
         engine = null
         runCatching { e.stopPreview(); e.leaveChannel() }
@@ -94,17 +95,41 @@ object Rtc {
         remoteUids.clear(); joined = false
     }
 
-    fun toggleMic() { val e = engine ?: return; micOn = !micOn; e.muteLocalAudioStream(!micOn) }
-    fun toggleCam() { val e = engine ?: return; camOn = !camOn; e.muteLocalVideoStream(!camOn); e.enableLocalVideo(camOn) }
-    fun toggleSpeaker() { val e = engine ?: return; speakerOn = !speakerOn; e.setEnableSpeakerphone(speakerOn) }
-    fun switchCamera() { engine?.switchCamera() }
+    fun toggleMic() {
+        if (ThreeJunksCalls.active) { micOn = !micOn; ThreeJunksCalls.setMic(micOn); return }
+        val e = engine ?: return; micOn = !micOn; e.muteLocalAudioStream(!micOn)
+    }
+    fun toggleCam() {
+        if (ThreeJunksCalls.active) { camOn = !camOn; ThreeJunksCalls.setCamera(camOn); return }
+        val e = engine ?: return; camOn = !camOn; e.muteLocalVideoStream(!camOn); e.enableLocalVideo(camOn)
+    }
+    fun toggleSpeaker() {
+        if (ThreeJunksCalls.active) { speakerOn = !speakerOn; ThreeJunksCalls.setSpeaker(speakerOn); return }
+        val e = engine ?: return; speakerOn = !speakerOn; e.setEnableSpeakerphone(speakerOn)
+    }
+    fun switchCamera() { if (ThreeJunksCalls.active) ThreeJunksCalls.switchCamera() else engine?.switchCamera() }
+
+    /** A 1:1 call's media started on Three Junks instead of Agora (see ThreeJunksCalls). */
+    internal fun tjStarted(video: Boolean) {
+        error = null; remoteUids.clear(); joined = false
+        micOn = true; camOn = video; speakerOn = video
+    }
+    /** Three Junks media flowing (true) or not (false); the call screen shows the remote video for "uid" 1. */
+    internal fun tjRemote(on: Boolean) {
+        joined = on
+        if (on) { if (TJ_REMOTE !in remoteUids) remoteUids.add(TJ_REMOTE) } else remoteUids.clear()
+    }
+    private const val TJ_REMOTE = 1
+
+    /** Free a video view created by [localView] / [remoteView] when it leaves the screen. */
+    fun releaseView(view: android.view.View) { ThreeJunksCalls.releaseView(view) }
 
     // TextureView (not SurfaceView) so rounded corners / overlays from Compose apply to the video too.
     @Suppress("UNUSED_PARAMETER")
-    fun localView(ctx: Context, overlay: Boolean): android.view.TextureView = android.view.TextureView(ctx).also {
+    fun localView(ctx: Context, overlay: Boolean): android.view.View = if (ThreeJunksCalls.active) ThreeJunksCalls.localView(ctx) else android.view.TextureView(ctx).also {
         engine?.setupLocalVideo(VideoCanvas(it, VideoCanvas.RENDER_MODE_HIDDEN, 0))
     }
-    fun remoteView(ctx: Context, uid: Int): android.view.TextureView = android.view.TextureView(ctx).also {
+    fun remoteView(ctx: Context, uid: Int): android.view.View = if (ThreeJunksCalls.active) ThreeJunksCalls.remoteView(ctx) else android.view.TextureView(ctx).also {
         engine?.setupRemoteVideo(VideoCanvas(it, VideoCanvas.RENDER_MODE_HIDDEN, uid))
     }
 }

@@ -115,6 +115,9 @@ dependencies {
   implementation("io.agora.rtc:full-rtc-basic:4.6.4")
   // Face beauty / colour / low-light filters for the camera (Agora clear-vision extension).
   implementation("io.agora.rtc:clear-vision:4.6.4")
+  // Three Junks (own servers) for 1:1 calls when the admin switch is on: Google's WebRTC prebuilt (Apache-2.0 / BSD).
+  // The SDK sources are vendored in app/src/main/java/com/threejunks/sdk.
+  implementation("io.getstream:stream-webrtc-android:1.3.8")
   implementation(platform(libs.androidx.compose.bom))
   implementation(platform(libs.firebase.bom))
 implementation("com.google.firebase:firebase-auth")
