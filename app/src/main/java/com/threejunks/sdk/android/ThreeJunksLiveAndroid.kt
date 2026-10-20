@@ -3,12 +3,15 @@ package com.threejunks.sdk.android
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import com.threejunks.sdk.LibraryFilter
 import com.threejunks.sdk.LiveChannel
 import com.threejunks.sdk.LiveChannelListener
 import com.threejunks.sdk.LiveException
 import com.threejunks.sdk.LiveJoin
 import com.threejunks.sdk.LiveSessionProvider
 import com.threejunks.sdk.ThreeJunksLive
+import com.threejunks.sdk.android.filter.LiveStudioFilterProcessor
+import com.threejunks.sdk.android.filter.StudioFilterControl
 import io.livekit.android.LiveKit
 import io.livekit.android.RoomOptions
 import io.livekit.android.events.DisconnectReason
@@ -79,6 +82,7 @@ class ThreeJunksLiveAndroid(
     private var remoteView: SurfaceViewRenderer? = null
     private var remoteTrack: VideoTrack? = null
     private var localTrack: LocalVideoTrack? = null
+    private var filterProcessor: LiveStudioFilterProcessor? = null
     private var front = true
     private var micOn = true
     private var camOn = true
@@ -110,6 +114,19 @@ class ThreeJunksLiveAndroid(
     /** Viewer: watch [roomId] (subscribe only, no camera / microphone needed). */
     fun watch(roomId: String, done: (Result<LiveJoin>) -> Unit = {}) = join(roomId, done) { api.watch(roomId) }
 
+    /** The live camera's filter (shared by every room of this object). */
+    val filter = StudioFilterControl()
+
+    /**
+     * Filter on my live camera: the content of `filter.json` exported by 3Jump Filter Studio (null = off). Rendered on
+     * this phone's GPU with the Studio's engine before the video is sent, so viewers see it. Can change at any time.
+     * Throws IllegalArgumentException for an invalid filter.json.
+     */
+    fun setFilter(filterJson: String?) = filter.set(filterJson)
+
+    /** Apply a filter from the project's 3Jump filter library (null = off). */
+    fun setLibraryFilter(f: LibraryFilter?) = setFilter(f?.filterJson)
+
     /** Realtime channel of the room (chat, hearts, viewer count, co-host requests, gifts); callbacks on the main thread. */
     fun channel(roomId: String, l: LiveChannelListener): LiveChannel = api.channel(roomId, l, mainExecutor)
 
@@ -118,7 +135,13 @@ class ThreeJunksLiveAndroid(
     fun setCameraEnabled(on: Boolean) {
         camOn = on
         val r = room ?: return
-        scope.launch { runCatching { r.localParticipant.setCameraEnabled(on) }; if (on) bindLocalTrack(r) }
+        scope.launch {
+            runCatching {
+                if (on && r.localParticipant.getTrackPublication(Track.Source.CAMERA) == null) publishCamera(r)
+                else r.localParticipant.setCameraEnabled(on)
+            }
+            if (on) bindLocalTrack(r)
+        }
     }
 
     /** Front <-> back camera without re-publishing (viewers keep the stream). */
@@ -172,12 +195,28 @@ class ThreeJunksLiveAndroid(
         r.connect(j.sfuUrl, j.sfuToken)
         if (j.role != "viewer") {
             r.localParticipant.setMicrophoneEnabled(micOn)
-            r.localParticipant.setCameraEnabled(camOn)
+            if (camOn) publishCamera(r)
             bindLocalTrack(r)
         }
         // tracks that were already published before we subscribed
         for (p in r.remoteParticipants.values) for ((_, t) in p.videoTrackPublications) (t as? VideoTrack)?.let { showRemote(it) }
         listener.onConnection("connected")
+    }
+
+    /**
+     * Camera with the 3Jump filter processor in front of the encoder (LiveKit's own camera track has none). Published
+     * as the CAMERA source, so setCameraEnabled(false/true) afterwards mutes / resumes this same track.
+     */
+    private suspend fun publishCamera(r: Room) {
+        val fx = LiveStudioFilterProcessor(app, filter)
+        val options = r.localParticipant.videoTrackCaptureDefaults.copy(position = if (front) CameraPosition.FRONT else CameraPosition.BACK)
+        val t = r.localParticipant.createVideoTrack(name = "camera", options = options, videoProcessor = fx)
+        filterProcessor = fx
+        t.startCapture()
+        if (!r.localParticipant.publishVideoTrack(t)) {
+            t.stopCapture(); fx.release(); filterProcessor = null; t.dispose()
+            throw IllegalStateException("camera could not be published")
+        }
     }
 
     private fun bindLocalTrack(r: Room) {
@@ -243,6 +282,8 @@ class ThreeJunksLiveAndroid(
         localView?.let { localTrack?.removeRenderer(it) }
         remoteView?.let { remoteTrack?.removeRenderer(it) }
         localTrack = null; remoteTrack = null
+        // free the filter's GL objects on the camera thread while LiveKit's EGL context is still alive
+        filterProcessor?.let { fx -> filterProcessor = null; runCatching { fx.release() } }
         val r = room ?: return
         room = null
         runCatching { r.disconnect() }

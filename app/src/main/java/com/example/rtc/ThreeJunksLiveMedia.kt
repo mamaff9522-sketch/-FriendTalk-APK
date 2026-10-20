@@ -29,6 +29,7 @@ object ThreeJunksLiveMedia {
     private var roomId: String? = null
     private var host = false
     private val views = mutableSetOf<SurfaceViewRenderer>()
+    private val applyFilter: (com.threejunks.sdk.LibraryFilter?) -> Unit = { f -> sdk?.setLibraryFilter(f) }
 
     private val listener = object : LiveMediaListener {
         override fun onConnection(state: String) {
@@ -58,6 +59,7 @@ object ThreeJunksLiveMedia {
             roomId = room.id
             val r = suspendCancellableCoroutine { cont -> if (publisher) s.broadcast(room.id) { cont.resume(it) } else s.watch(room.id) { cont.resume(it) } }
             r.exceptionOrNull()?.let { e -> Rtc.error = "เชื่อมต่อไลฟ์ไม่สำเร็จ: ${e.message}"; stop(); return false }
+            if (publisher) TjFilters.attach(applyFilter) // viewers see the host's filtered video
             true
         } catch (e: LiveException) {
             Rtc.error = if (e.status == 403) "บัญชีนี้ยังไลฟ์ผ่านระบบใหม่ไม่ได้ (${e.message})" else "เชื่อมต่อไลฟ์ไม่สำเร็จ (${e.status})"
@@ -82,6 +84,7 @@ object ThreeJunksLiveMedia {
     /** Leave (viewer) or end the Three Junks room (host). The FriendTalk live itself is ended through brain. */
     fun stop() {
         val s = sdk ?: return
+        TjFilters.detach(applyFilter)
         sdk = null; active = false
         val id = roomId; roomId = null
         if (host && id != null) s.endLive(id) { s.release() } else s.release()

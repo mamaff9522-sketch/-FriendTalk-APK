@@ -61,24 +61,22 @@ class StudioFilterControl {
 }
 
 /**
- * Applies a 3Jump Filter Studio filter to the call camera, between the camera and WebRTC, on the device GPU.
+ * Renders a 3Jump Filter Studio filter on a camera texture, on the device GPU. Used by the call camera
+ * ([StudioFilterProcessor], org.webrtc) and the live camera ([LiveStudioFilterProcessor], LiveKit's livekit.org.webrtc):
+ * only the frame types differ, so this class works on plain texture ids.
  *
  * Runs on the camera's SurfaceTextureHelper thread (its EGL context is current; shared with the encoder and views).
  * Per frame: the camera texture is drawn upright into an RGBA texture (row 0 = image top, the layout the Studio
  * engine expects); a small copy goes to the Studio's [FaceTracker] (MediaPipe, own thread, never waited for); then
- * the Studio's own [FilterRenderer] renders the filter with the latest landmarks into a new texture frame (rotation 0).
+ * the Studio's own [FilterRenderer] renders the filter with the latest landmarks into a new RGB texture (rotation 0).
  * Same shaders and masks as the Studio, so a filter looks the same in the call as in the Studio's camera test.
- * No filter / non-texture frame / any GL error: the camera frame passes through unchanged. Nothing is recorded.
+ * Any GL error: [failed] turns true and the adapters pass camera frames through unchanged. Nothing is recorded.
  */
-internal class StudioFilterProcessor(
-    context: Context,
-    private val handler: Handler,
-    private val control: StudioFilterControl,
-) : VideoProcessor {
+internal class StudioFilterEngine(context: Context) {
     private val app = context.applicationContext
-    @Volatile private var sink: VideoSink? = null
     private var gl: Gl? = null
-    private var failed = false
+    /** A GL error happened: the filter stays off for this camera session. */
+    var failed = false; private set
 
     // face tracking on its own thread (MediaPipe GPU delegate: create/use/close on one thread)
     private var trackerThread: HandlerThread? = null
@@ -88,33 +86,30 @@ internal class StudioFilterProcessor(
     @Volatile private var points: FloatArray? = null
     @Volatile private var pointsAt = 0L
 
-    override fun setSink(sink: VideoSink?) { this.sink = sink }
-    override fun onCapturerStarted(success: Boolean) {}
-    override fun onCapturerStopped() {}
+    /** A filtered frame: an RGB 2D texture, upright (rotation 0). Call [release] when the encoder/views are done with it. */
+    class Output(val textureId: Int, val width: Int, val height: Int, val release: () -> Unit)
 
-    override fun onFrameCaptured(frame: VideoFrame) {
-        val out = sink ?: return
-        val cfg = control.config
-        val buffer = frame.buffer
-        if (cfg == null || failed || buffer !is VideoFrame.TextureBuffer || buffer.type != VideoFrame.TextureBuffer.Type.OES) {
-            if (cfg == null && points != null) points = null
-            out.onFrame(frame); return
-        }
+    /**
+     * Filter one camera frame: [oesTexture] (external OES) with its [transform] matrix, buffer size [bufW] x [bufH] and
+     * frame [rotation]. Null when no output texture is free (drop the frame) or after a GL error ([failed]).
+     */
+    fun render(oesTexture: Int, transform: Matrix, bufW: Int, bufH: Int, rotation: Int, cfg: FilterConfig): Output? {
+        if (failed) return null
         ensureTracker()
-        val filtered = try {
-            (gl ?: Gl().also { gl = it }).render(frame, buffer, cfg)
+        return try {
+            (gl ?: Gl().also { gl = it }).render(oesTexture, transform, bufW, bufH, rotation, cfg)
         } catch (e: Throwable) {
             Log.w(TAG, "filter disabled after GL error", e)
             failed = true
             releaseGl()
             null
         }
-        if (filtered == null) { if (failed) out.onFrame(frame); return } // null without failure = dropped (no free texture)
-        out.onFrame(filtered)
-        filtered.release()
     }
 
-    /** Free GL objects and stop face tracking. Must run on [handler]'s thread while its EGL context is alive. */
+    /** No filter selected: forget the last face so a new filter does not start from stale landmarks. */
+    fun idle() { if (points != null) points = null }
+
+    /** Free GL objects and stop face tracking. Must run on the camera GL thread while its EGL context is alive. */
     fun release() {
         releaseGl()
         val th = trackerThread ?: return
@@ -158,7 +153,6 @@ internal class StudioFilterProcessor(
         private val oes = GlShader(VS, FS_OES)
         private val copy = GlShader(VS, FS_COPY)
         private val renderer = FilterRenderer().also { it.mirror = false; it.onSurfaceCreated(null, null) }
-        private val yuv = YuvConverter()
         private val base = GlTextureFrameBuffer(GLES20.GL_RGBA)
         private val small = GlTextureFrameBuffer(GLES20.GL_RGBA)
         private val ring = Array(RING) { GlTextureFrameBuffer(GLES20.GL_RGBA) }
@@ -172,10 +166,10 @@ internal class StudioFilterProcessor(
         private var nextBitmap = 0
         private var pixels: ByteBuffer? = null
 
-        fun render(frame: VideoFrame, buffer: VideoFrame.TextureBuffer, cfg: FilterConfig): VideoFrame? {
-            val rot = ((frame.rotation % 360) + 360) % 360
-            val w = if (rot == 90 || rot == 270) buffer.height else buffer.width
-            val h = if (rot == 90 || rot == 270) buffer.width else buffer.height
+        fun render(oesTexture: Int, transform: Matrix, bufW: Int, bufH: Int, rotation: Int, cfg: FilterConfig): Output? {
+            val rot = ((rotation % 360) + 360) % 360
+            val w = if (rot == 90 || rot == 270) bufH else bufW
+            val h = if (rot == 90 || rot == 270) bufW else bufH
             val slot = (0 until RING).map { (next + it) % RING }.firstOrNull { ringBusy[it].compareAndSet(false, true) } ?: return null
             next = (slot + 1) % RING
             try {
@@ -184,8 +178,8 @@ internal class StudioFilterProcessor(
 
                 // 1) camera (OES, sensor orientation) -> upright RGBA, row 0 = image top (bitmap layout)
                 cameraTexCoords(rot)
-                drawQuad(oes, base.frameBufferId, w, h, GLES11Ext.GL_TEXTURE_EXTERNAL_OES, buffer.textureId, tcCamera,
-                    RendererCommon.convertMatrixFromAndroidGraphicsMatrix(buffer.transformMatrix))
+                drawQuad(oes, base.frameBufferId, w, h, GLES11Ext.GL_TEXTURE_EXTERNAL_OES, oesTexture, tcCamera,
+                    RendererCommon.convertMatrixFromAndroidGraphicsMatrix(transform))
 
                 // 2) a small copy for the face tracker when it is free
                 if (!inFlight.get()) detect(w, h)
@@ -205,10 +199,7 @@ internal class StudioFilterProcessor(
                 ringBusy[slot].set(false)
                 throw e
             }
-            val tex = TextureBufferImpl(w, h, VideoFrame.TextureBuffer.Type.RGB, ring[slot].textureId, Matrix(), handler, yuv) {
-                ringBusy[slot].set(false)
-            }
-            return VideoFrame(tex, 0, frame.timestampNs)
+            return Output(ring[slot].textureId, w, h) { ringBusy[slot].set(false) }
         }
 
         /**
@@ -268,7 +259,7 @@ internal class StudioFilterProcessor(
         }
 
         fun release() {
-            oes.release(); copy.release(); yuv.release()
+            oes.release(); copy.release()
             base.release(); small.release(); ring.forEach { it.release() }
             // the Studio renderer's program/textures belong to this context and go with it; bitmaps may still be in
             // the tracker's hands, so they are left to the garbage collector
@@ -276,7 +267,7 @@ internal class StudioFilterProcessor(
     }
 
     companion object {
-        private const val TAG = "ThreeJunksFilter"
+        internal const val TAG = "ThreeJunksFilter"
         private const val RING = 4
         private const val DETECT_WIDTH = 256
         private const val FACE_STALE_MS = 500L
@@ -307,4 +298,41 @@ internal class StudioFilterProcessor(
             void main() { gl_FragColor = texture2D(uTex, vTc); }
         """
     }
+}
+
+/**
+ * The call camera's filter (org.webrtc): between the camera and WebRTC, on the camera's SurfaceTextureHelper thread
+ * ([handler]). No filter / non-texture frame / GL error: the camera frame passes through unchanged.
+ */
+internal class StudioFilterProcessor(
+    context: Context,
+    private val handler: Handler,
+    private val control: StudioFilterControl,
+) : VideoProcessor {
+    private val engine = StudioFilterEngine(context)
+    private val yuv = YuvConverter()
+    @Volatile private var sink: VideoSink? = null
+
+    override fun setSink(sink: VideoSink?) { this.sink = sink }
+    override fun onCapturerStarted(success: Boolean) {}
+    override fun onCapturerStopped() {}
+
+    override fun onFrameCaptured(frame: VideoFrame) {
+        val out = sink ?: return
+        val cfg = control.config
+        val buffer = frame.buffer
+        if (cfg == null || engine.failed || buffer !is VideoFrame.TextureBuffer || buffer.type != VideoFrame.TextureBuffer.Type.OES) {
+            if (cfg == null) engine.idle()
+            out.onFrame(frame); return
+        }
+        val f = engine.render(buffer.textureId, buffer.transformMatrix, buffer.width, buffer.height, frame.rotation, cfg)
+        if (f == null) { if (engine.failed) out.onFrame(frame); return } // null without failure = dropped (no free texture)
+        val tex = TextureBufferImpl(f.width, f.height, VideoFrame.TextureBuffer.Type.RGB, f.textureId, Matrix(), handler, yuv) { f.release() }
+        val filtered = VideoFrame(tex, 0, frame.timestampNs)
+        out.onFrame(filtered)
+        filtered.release()
+    }
+
+    /** Free GL objects and stop face tracking. Must run on [handler]'s thread while its EGL context is alive. */
+    fun release() { engine.release(); yuv.release() }
 }

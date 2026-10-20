@@ -4,9 +4,6 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.view.View
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.auth.FirebaseAuth
 import com.threejunks.sdk.Call
@@ -60,27 +57,7 @@ object ThreeJunksCalls {
     private var inviteDeadline = 0L
     private var attempt = 0
 
-    /** 3Jump filters of the project (uploaded in Three Junks Super Admin → คลังฟิลเตอร์ 3Jump); empty = no filter button. */
-    var filters by mutableStateOf<List<LibraryFilter>>(emptyList()); private set
-    /** The filter on my camera (kept for the next call while it is still in the library). */
-    var filterId by mutableStateOf<String?>(null); private set
-
-    /** Apply a library filter to my camera (null = off). Main thread. */
-    fun selectFilter(f: LibraryFilter?) {
-        val s = sdk ?: return
-        runCatching { s.setLibraryFilter(f) }.onSuccess { filterId = f?.id }.onFailure { s.setFilter(null); filterId = null }
-    }
-
-    private fun loadFilters() {
-        val s = sdk ?: return
-        s.loadFilters { r ->
-            if (sdk !== s) return@loadFilters
-            val list = r.getOrNull() ?: return@loadFilters
-            filters = list
-            // re-apply the remembered (or updated) filter; drop it when it left the library
-            selectFilter(list.firstOrNull { it.id == filterId })
-        }
-    }
+    private val applyFilter: (LibraryFilter?) -> Unit = { f -> sdk?.setLibraryFilter(f) }
 
     /** Start Three Junks media for a FriendTalk call (main thread). */
     fun start(ctx: Context, peerUid: String, video: Boolean, outgoing: Boolean): Boolean {
@@ -88,7 +65,7 @@ object ThreeJunksCalls {
         if (baseUrl.isBlank() || projectId.isBlank()) { Rtc.error = "ยังไม่ได้ตั้งค่าเซิร์ฟเวอร์ Three Junks"; return false }
         this.peerUid = peerUid; this.video = video; this.outgoing = outgoing
         connected = false; inviteWanted = false; attempt = 0
-        val s = runCatching { ThreeJunksAndroid(ctx.applicationContext, baseUrl, { token() }, listener) }
+        val s = runCatching { ThreeJunksAndroid(ctx.applicationContext, baseUrl, { sessionToken() }, listener) }
             .getOrElse { Rtc.error = "เปิดระบบเสียง/วิดีโอไม่ได้: ${it.message}"; return false }
         sdk = s; active = true
         Rtc.tjStarted(video)
@@ -121,7 +98,7 @@ object ThreeJunksCalls {
     private val listener = object : ThreeJunksListener {
         override fun onConnected(config: ServerConfig) {
             connected = true
-            if (config.filters) loadFilters() else { filters = emptyList(); sdk?.setFilter(null) }
+            TjFilters.attach(applyFilter)
             if (outgoing && inviteWanted && sdk?.client?.currentCall == null) invite()
         }
 
@@ -149,7 +126,7 @@ object ThreeJunksCalls {
             CallManager.hangupFromMedia(msg)
         }
 
-        override fun onFiltersUpdated() = loadFilters()
+        override fun onFiltersUpdated() = TjFilters.refresh()
 
         override fun onError(code: String, message: String) {
             if (code == "not_registered" && retryInvite()) return
@@ -164,7 +141,7 @@ object ThreeJunksCalls {
     }
 
     /** Firebase ID token -> Three Junks session (background thread, asked again on every reconnect). */
-    private fun token(): String {
+    internal fun sessionToken(): String {
         val idToken = firebaseIdToken()
         val body = JSONObject().put("projectId", projectId).put("idToken", idToken).toString()
         val req = Request.Builder().url("$baseUrl/api/v1/auth/idp-exchange")
@@ -202,6 +179,7 @@ object ThreeJunksCalls {
     fun release() {
         main.removeCallbacksAndMessages(null)
         val s = sdk ?: return
+        TjFilters.detach(applyFilter)
         sdk = null; active = false; inviteWanted = false; connected = false
         runCatching { s.client.hangup() }
         runCatching { s.release() }

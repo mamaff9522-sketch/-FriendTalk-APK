@@ -327,6 +327,7 @@ fun LiveHostScreen(onClose: () -> Unit) {
     var viewers by remember { mutableIntStateOf(0) }
     var startedAt by remember { mutableLongStateOf(0L) }
     var confirmEnd by remember { mutableStateOf(false) }
+    var showFilters by remember { mutableStateOf(false) }
     val askPerm = rememberRtcPermission { err = "ต้องอนุญาตกล้องและไมโครโฟนก่อนไลฟ์" }
     fun stop() { val id = liveId; liveId = null; Rtc.leave(); if (id != null) RtcScope.launch { RtcApi.post("/lives/$id/end") } }
     fun end() { stop(); onClose() }
@@ -368,9 +369,11 @@ fun LiveHostScreen(onClose: () -> Unit) {
                         if (err.isNotBlank() || Rtc.error != null) Text(Rtc.error ?: err, color = Color(0xFFFFC94D), fontSize = 12.sp, modifier = Modifier.padding(horizontal = 14.dp))
                         Spacer(Modifier.weight(1f))
                         GiftBanner(msgs, Modifier.padding(start = 12.dp, bottom = 8.dp))
+                        if (showFilters && Rtc.camOn && TjFilters.list.isNotEmpty()) FilterStrip()
                         CommentsPanel(id, msgs, Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
                             SmallRound(if (Rtc.micOn) Icons.Filled.Mic else Icons.Filled.MicOff, "ไมค์", active = !Rtc.micOn) { Rtc.toggleMic() }
                             SmallRound(Icons.Filled.Cameraswitch, "สลับกล้อง") { Rtc.switchCamera() }
+                            if (Rtc.camOn && TjFilters.list.isNotEmpty()) SmallRound(Icons.Filled.AutoAwesome, "ฟิลเตอร์", active = TjFilters.selectedId != null) { showFilters = !showFilters }
                             SmallRound(Icons.Filled.Share, "แชร์") { shareLive(ctx, myName, title) }
                         }
                     }

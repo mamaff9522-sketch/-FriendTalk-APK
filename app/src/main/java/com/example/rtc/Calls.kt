@@ -257,7 +257,7 @@ private fun CallScreen(a: CallManager.Active) {
                     }
                 }
                 Spacer(Modifier.weight(1f))
-                if (showFilters && a.video && ThreeJunksCalls.filters.isNotEmpty()) FilterStrip()
+                if (showFilters && a.video && TjFilters.list.isNotEmpty()) FilterStrip()
                 Text("กดปุ่มย้อนกลับเพื่อย่อหน้าจอ แล้วใช้หน้าอื่นได้", color = Color.White.copy(alpha = 0.6f), fontSize = 11.sp,
                     modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 10.dp))
                 Row(Modifier.fillMaxWidth().padding(bottom = 36.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
@@ -265,7 +265,7 @@ private fun CallScreen(a: CallManager.Active) {
                     if (a.video) RoundAction(if (Rtc.camOn) Icons.Filled.Videocam else Icons.Filled.VideocamOff, "กล้อง", if (Rtc.camOn) Color(0x33FFFFFF) else Color.White, 56.dp, dark = !Rtc.camOn) { Rtc.toggleCam() }
                     else RoundAction(Icons.Filled.VolumeUp, "ลำโพง", if (Rtc.speakerOn) Color.White else Color(0x33FFFFFF), 56.dp, dark = Rtc.speakerOn) { Rtc.toggleSpeaker() }
                     if (a.video) RoundAction(Icons.Filled.Cameraswitch, "สลับกล้อง", Color(0x33FFFFFF), 56.dp) { Rtc.switchCamera() }
-                    if (a.video && Rtc.camOn && ThreeJunksCalls.filters.isNotEmpty()) RoundAction(Icons.Filled.AutoAwesome, "ฟิลเตอร์", if (ThreeJunksCalls.filterId != null) Color.White else Color(0x33FFFFFF), 56.dp, dark = ThreeJunksCalls.filterId != null) { showFilters = !showFilters }
+                    if (a.video && Rtc.camOn && TjFilters.list.isNotEmpty()) RoundAction(Icons.Filled.AutoAwesome, "ฟิลเตอร์", if (TjFilters.selectedId != null) Color.White else Color(0x33FFFFFF), 56.dp, dark = TjFilters.selectedId != null) { showFilters = !showFilters }
                     RoundAction(Icons.Filled.CallEnd, "วางสาย", Color(0xFFFF3B5C), 64.dp) { CallManager.hangup() }
                 }
             }
@@ -274,13 +274,13 @@ private fun CallScreen(a: CallManager.Active) {
     }
 }
 
-/** 3Jump filters (made in 3Jump Filter Studio, chosen in Three Junks admin): tap one to apply, "ไม่ใช้" = off. */
+/** 3Jump filters (made in 3Jump Filter Studio, chosen in Three Junks admin), calls and lives: tap one to apply, "ไม่ใช้" = off. */
 @Composable
-private fun FilterStrip() {
-    val sel = ThreeJunksCalls.filterId
+internal fun FilterStrip() {
+    val sel = TjFilters.selectedId
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterChip("ไม่ใช้", sel == null) { ThreeJunksCalls.selectFilter(null) }
-        ThreeJunksCalls.filters.forEach { f -> FilterChip(f.name, sel == f.id) { ThreeJunksCalls.selectFilter(f) } }
+        FilterChip("ไม่ใช้", sel == null) { TjFilters.select(null) }
+        TjFilters.list.forEach { f -> FilterChip(f.name, sel == f.id) { TjFilters.select(f) } }
     }
 }
 

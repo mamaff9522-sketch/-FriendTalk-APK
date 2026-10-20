@@ -125,30 +125,14 @@ class ThreeJunksClient(
     }
 
     /** Test hook: drop the socket as a network loss would (no close handshake). */
-    @Volatile private var filtersCache: Pair<String, List<LibraryFilter>>? = null
+    private val filterLibrary = FilterLibrary(baseUrl, tokenProvider, http)
 
     /**
      * The project's 3Jump filter library (`GET /api/v1/filters`, ETag-cached). Blocking network call: run it on a
      * background thread. Returns an empty list when filters are disabled for the project (HTTP 403).
      * [ThreeJunksListener.onFiltersUpdated] tells you when to call it again.
      */
-    fun fetchFilters(): List<LibraryFilter> {
-        // the socket's token may have expired since it connected: retry once with a fresh one
-        for (tok in sequenceOf({ token }, { tokenProvider.token() }).mapNotNull { it() }) {
-            val rb = Request.Builder().url("$base/api/v1/filters").header("Authorization", "Bearer $tok")
-            filtersCache?.let { rb.header("If-None-Match", it.first) }
-            http.newCall(rb.build()).execute().use { r ->
-                if (r.code == 401) return@use
-                if (r.code == 304) filtersCache?.let { return it.second }
-                if (r.code == 403) return emptyList()
-                if (!r.isSuccessful) throw java.io.IOException("filters: HTTP ${r.code}")
-                val list = parseFilters(JSONObject(r.body!!.string()))
-                r.header("ETag")?.let { filtersCache = it to list }
-                return list
-            }
-        }
-        throw java.io.IOException("filters: session token refused")
-    }
+    fun fetchFilters(): List<LibraryFilter> = filterLibrary.fetch(token)
 
     internal fun debugDropConnection() = post { ws?.cancel() }
 
@@ -504,13 +488,6 @@ class ThreeJunksClient(
             val o = JSONObject().put("type", type)
             for ((k, v) in kv) o.put(k, v ?: JSONObject.NULL)
             return o
-        }
-        internal fun parseFilters(o: JSONObject): List<LibraryFilter> {
-            val a = o.optJSONArray("filters") ?: return emptyList()
-            return (0 until a.length()).map { i ->
-                val f = a.getJSONObject(i)
-                LibraryFilter(f.getString("id"), f.optString("name"), f.optLong("updatedAt"), f.getJSONObject("filter").toString())
-            }
         }
         internal fun sdpJson(s: SessionDescription) = JSONObject().put("type", s.type).put("sdp", s.sdp)
         internal fun sdp(o: JSONObject) = SessionDescription(o.getString("type"), o.getString("sdp"))
