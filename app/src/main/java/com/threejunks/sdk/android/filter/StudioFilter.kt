@@ -66,51 +66,98 @@ class StudioFilterControl {
  * only the frame types differ, so this class works on plain texture ids.
  *
  * Runs on the camera's SurfaceTextureHelper thread (its EGL context is current; shared with the encoder and views).
- * Per frame: the camera texture is drawn upright into an RGBA texture (row 0 = image top, the layout the Studio
- * engine expects); a small copy goes to the Studio's [FaceTracker] (MediaPipe, own thread, never waited for); then
- * the Studio's own [FilterRenderer] renders the filter with the latest landmarks into a new RGB texture (rotation 0).
- * Same shaders and masks as the Studio, so a filter looks the same in the call as in the Studio's camera test.
- * Any GL error: [failed] turns true and the adapters pass camera frames through unchanged. Nothing is recorded.
+ * Same as the Studio's camera: every frame is filtered with the landmarks found IN THAT FRAME, so thin, face-placed
+ * effects (eyeliner, lashes) stay on the face while it moves. Per frame: the camera texture is drawn upright into an
+ * RGBA texture (row 0 = image top, the layout the Studio engine expects). When the Studio's [FaceTracker] (MediaPipe,
+ * own thread) is free, the frame is held, a 480-wide copy is sent to it, and when its landmarks come back the held
+ * frame is rendered by the Studio's own [FilterRenderer] and emitted; frames arriving meanwhile are dropped (the
+ * Studio's drop-when-busy), so the video runs at the tracker's rate. Tracker still loading, unavailable or stuck:
+ * frames are rendered at once with the last landmarks (or none). Any GL error: [failed] turns true and the adapters
+ * pass camera frames through unchanged. Nothing is recorded.
  */
 internal class StudioFilterEngine(context: Context) {
     private val app = context.applicationContext
     private var gl: Gl? = null
     /** A GL error happened: the filter stays off for this camera session. */
     var failed = false; private set
+    private var released = false
 
     // face tracking on its own thread (MediaPipe GPU delegate: create/use/close on one thread)
     private var trackerThread: HandlerThread? = null
     private var trackerHandler: Handler? = null
     private var tracker: FaceTracker? = null
-    private val inFlight = AtomicBoolean(false)
+    @Volatile private var trackerReady = false
     @Volatile private var points: FloatArray? = null
-    @Volatile private var pointsAt = 0L
+
+    // the frame waiting for its landmarks (GL thread only)
+    private var glHandler: Handler? = null
+    private var emitter: ((Output) -> Unit)? = null
+    private var sentGen = 0
+    private var inFlight = false
+    private var sentAt = 0L
+    private var held: Held? = null
+
+    private class Held(val gen: Int, val w: Int, val h: Int, val timestampNs: Long, val cfg: FilterConfig)
 
     /** A filtered frame: an RGB 2D texture, upright (rotation 0). Call [release] when the encoder/views are done with it. */
-    class Output(val textureId: Int, val width: Int, val height: Int, val release: () -> Unit)
+    class Output(val textureId: Int, val width: Int, val height: Int, val timestampNs: Long, val release: () -> Unit)
 
     /**
-     * Filter one camera frame: [oesTexture] (external OES) with its [transform] matrix, buffer size [bufW] x [bufH] and
-     * frame [rotation]. Null when no output texture is free (drop the frame) or after a GL error ([failed]).
+     * Filter one camera frame: [oesTexture] (external OES) with its [transform] matrix, buffer size [bufW] x [bufH],
+     * frame [rotation] and [timestampNs]. Filtered frames go to [emit] on this GL thread ([handler]): at once or when
+     * the frame's landmarks arrive; frames may be dropped. False = not handled (GL error): pass the camera frame on.
      */
-    fun render(oesTexture: Int, transform: Matrix, bufW: Int, bufH: Int, rotation: Int, cfg: FilterConfig): Output? {
-        if (failed) return null
+    fun process(
+        oesTexture: Int, transform: Matrix, bufW: Int, bufH: Int, rotation: Int, timestampNs: Long, cfg: FilterConfig,
+        handler: Handler, emit: (Output) -> Unit,
+    ): Boolean {
+        if (failed || released) return false
+        glHandler = handler; emitter = emit
         ensureTracker()
-        return try {
-            (gl ?: Gl().also { gl = it }).render(oesTexture, transform, bufW, bufH, rotation, cfg)
+        try {
+            val g = gl ?: Gl().also { gl = it }
+            val (w, h) = g.upright(oesTexture, transform, bufW, bufH, rotation)
+            val now = SystemClock.uptimeMillis()
+            if (inFlight) {
+                if (now - sentAt < STUCK_MS) return true // the held frame is shown when its landmarks arrive
+                cancelHeld() // tracker stuck: carry on without waiting
+            }
+            if (!trackerReady) { g.renderBase(w, h, timestampNs, cfg, points)?.let(emit); return true }
+            val gen = ++sentGen
+            g.hold()
+            held = Held(gen, w, h, timestampNs, cfg)
+            inFlight = true; sentAt = now
+            if (!offer(g.detectBitmap(w, h), gen)) { inFlight = false; held = null; g.renderHeld(w, h, timestampNs, cfg, points)?.let(emit) }
+            return true
         } catch (e: Throwable) {
-            Log.w(TAG, "filter disabled after GL error", e)
-            failed = true
-            releaseGl()
-            null
+            fail(e); return false
         }
     }
 
-    /** No filter selected: forget the last face so a new filter does not start from stale landmarks. */
-    fun idle() { if (points != null) points = null }
+    /** No filter (or no texture frame): drop the frame waiting for landmarks so frames stay in order. */
+    fun idle() { cancelHeld(); if (points != null) points = null }
+
+    private fun cancelHeld() { held = null; inFlight = false; sentGen++ }
+
+    /** GL thread: the landmarks of frame [gen] (null = no face / tracker error). */
+    private fun onLandmarks(gen: Int, pts: FloatArray?) {
+        val f = held
+        if (released || failed || f == null || f.gen != gen || gen != sentGen) return
+        held = null; inFlight = false
+        try {
+            gl?.renderHeld(f.w, f.h, f.timestampNs, f.cfg, pts)?.let { out -> emitter?.invoke(out) ?: out.release() }
+        } catch (e: Throwable) { fail(e) }
+    }
+
+    private fun fail(e: Throwable) {
+        Log.w(TAG, "filter disabled after GL error", e)
+        failed = true; held = null; inFlight = false
+        releaseGl()
+    }
 
     /** Free GL objects and stop face tracking. Must run on the camera GL thread while its EGL context is alive. */
     fun release() {
+        released = true; held = null; emitter = null
         releaseGl()
         val th = trackerThread ?: return
         trackerHandler?.post { runCatching { tracker?.close() }; tracker = null }
@@ -118,6 +165,8 @@ internal class StudioFilterEngine(context: Context) {
     }
 
     private fun releaseGl() { gl?.release(); gl = null }
+
+    @Volatile private var pendingGen = 0
 
     private fun ensureTracker() {
         if (trackerThread != null) return
@@ -128,23 +177,30 @@ internal class StudioFilterEngine(context: Context) {
             tracker = try {
                 FaceTracker(app, object : FaceTracker.Listener {
                     override fun onFace(frame: FaceFrame) {
-                        points = frame.points; pointsAt = SystemClock.uptimeMillis(); inFlight.set(false)
+                        points = frame.points
+                        val gen = pendingGen
+                        glHandler?.post { onLandmarks(gen, frame.points) }
                     }
-                    override fun onTrackerError(message: String) { Log.w(TAG, "face tracker: $message"); inFlight.set(false) }
+                    override fun onTrackerError(message: String) {
+                        Log.w(TAG, "face tracker: $message")
+                        val gen = pendingGen
+                        glHandler?.post { onLandmarks(gen, points) }
+                    }
                     override fun onDelegateChanged(delegate: TrackerDelegate, reason: String?) { Log.i(TAG, "face tracker on $delegate ${reason ?: ""}") }
                 })
             } catch (t: Throwable) { Log.w(TAG, "face tracker unavailable", t); null }
+            trackerReady = tracker != null
         }
     }
 
-    /** Called on the GL thread with a top-first upright bitmap; the tracker owns it until its result arrives. */
-    private fun offer(bitmap: Bitmap): Boolean {
+    /** GL thread: send the held frame's top-first upright bitmap to the tracker (it owns it until its result). */
+    private fun offer(bitmap: Bitmap, gen: Int): Boolean {
         val h = trackerHandler ?: return false
-        if (!inFlight.compareAndSet(false, true)) return false
         h.post {
             val t = tracker
+            pendingGen = gen
             val ok = t != null && runCatching { t.detect(bitmap, 0, SystemClock.uptimeMillis()) }.getOrDefault(false)
-            if (!ok) inFlight.set(false)
+            if (!ok) glHandler?.post { onLandmarks(gen, points) }
         }
         return true
     }
@@ -153,7 +209,8 @@ internal class StudioFilterEngine(context: Context) {
         private val oes = GlShader(VS, FS_OES)
         private val copy = GlShader(VS, FS_COPY)
         private val renderer = FilterRenderer().also { it.mirror = false; it.onSurfaceCreated(null, null) }
-        private val base = GlTextureFrameBuffer(GLES20.GL_RGBA)
+        private var base = GlTextureFrameBuffer(GLES20.GL_RGBA)
+        private var heldBuf = GlTextureFrameBuffer(GLES20.GL_RGBA)
         private val small = GlTextureFrameBuffer(GLES20.GL_RGBA)
         private val ring = Array(RING) { GlTextureFrameBuffer(GLES20.GL_RGBA) }
         private val ringBusy = Array(RING) { AtomicBoolean(false) }
@@ -166,31 +223,35 @@ internal class StudioFilterEngine(context: Context) {
         private var nextBitmap = 0
         private var pixels: ByteBuffer? = null
 
-        fun render(oesTexture: Int, transform: Matrix, bufW: Int, bufH: Int, rotation: Int, cfg: FilterConfig): Output? {
+        /** Camera (OES, sensor orientation) -> upright RGBA in [base], row 0 = image top (bitmap layout). Returns w, h. */
+        fun upright(oesTexture: Int, transform: Matrix, bufW: Int, bufH: Int, rotation: Int): Pair<Int, Int> {
             val rot = ((rotation % 360) + 360) % 360
             val w = if (rot == 90 || rot == 270) bufH else bufW
             val h = if (rot == 90 || rot == 270) bufW else bufH
+            base.setSize(w, h)
+            cameraTexCoords(rot)
+            drawQuad(oes, base.frameBufferId, w, h, GLES11Ext.GL_TEXTURE_EXTERNAL_OES, oesTexture, tcCamera,
+                RendererCommon.convertMatrixFromAndroidGraphicsMatrix(transform))
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
+            return w to h
+        }
+
+        /** Keep the current upright frame (it waits for its landmarks); the next frame draws into the other buffer. */
+        fun hold() { val t = heldBuf; heldBuf = base; base = t }
+
+        fun renderBase(w: Int, h: Int, ts: Long, cfg: FilterConfig, pts: FloatArray?) = render(base, w, h, ts, cfg, pts)
+        fun renderHeld(w: Int, h: Int, ts: Long, cfg: FilterConfig, pts: FloatArray?) = render(heldBuf, w, h, ts, cfg, pts)
+
+        /** The Studio's own renderer: filter.json -> same shaders + masks as in the Studio. Null = no free output texture. */
+        private fun render(src: GlTextureFrameBuffer, w: Int, h: Int, ts: Long, cfg: FilterConfig, pts: FloatArray?): Output? {
             val slot = (0 until RING).map { (next + it) % RING }.firstOrNull { ringBusy[it].compareAndSet(false, true) } ?: return null
             next = (slot + 1) % RING
             try {
-                base.setSize(w, h)
                 ring[slot].setSize(w, h)
-
-                // 1) camera (OES, sensor orientation) -> upright RGBA, row 0 = image top (bitmap layout)
-                cameraTexCoords(rot)
-                drawQuad(oes, base.frameBufferId, w, h, GLES11Ext.GL_TEXTURE_EXTERNAL_OES, oesTexture, tcCamera,
-                    RendererCommon.convertMatrixFromAndroidGraphicsMatrix(transform))
-
-                // 2) a small copy for the face tracker when it is free
-                if (!inFlight.get()) detect(w, h)
-                val pts = points?.takeIf { SystemClock.uptimeMillis() - pointsAt < FACE_STALE_MS }
-
-                // 3) the Studio's own renderer: filter.json -> same shaders + masks as in the Studio
                 GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, ring[slot].frameBufferId)
                 renderer.config = cfg
-                renderer.drawExternal(base.textureId, w, h, pts)
+                renderer.drawExternal(src.textureId, w, h, pts)
                 renderer.lastError?.let { throw IllegalStateException(it) }
-
                 GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
                 GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
                 GLES20.glFinish() // the encoder and the views read this texture from other (shared) contexts
@@ -199,7 +260,7 @@ internal class StudioFilterEngine(context: Context) {
                 ringBusy[slot].set(false)
                 throw e
             }
-            return Output(ring[slot].textureId, w, h) { ringBusy[slot].set(false) }
+            return Output(ring[slot].textureId, w, h, ts) { ringBusy[slot].set(false) }
         }
 
         /**
@@ -224,13 +285,14 @@ internal class StudioFilterEngine(context: Context) {
             tcCamera.clear(); tcCamera.put(tc); tcCamera.position(0)
         }
 
-        private fun detect(w: Int, h: Int) {
+        /** A [DETECT_WIDTH]-wide top-first copy of the held frame for the face tracker. */
+        fun detectBitmap(w: Int, h: Int): Bitmap {
             val dw = DETECT_WIDTH
             val dh = maxOf(1, Math.round(DETECT_WIDTH.toFloat() * h / w))
             small.setSize(dw, dh)
             // base is top-first; drawn with identity coordinates the small copy is top-first too, so the rows read
             // back by glReadPixels (row 0 first) are already in Bitmap order
-            drawQuad(copy, small.frameBufferId, dw, dh, GLES20.GL_TEXTURE_2D, base.textureId, tcIdentity, identity)
+            drawQuad(copy, small.frameBufferId, dw, dh, GLES20.GL_TEXTURE_2D, heldBuf.textureId, tcIdentity, identity)
             val i = nextBitmap; nextBitmap = (nextBitmap + 1) % bitmaps.size
             val bmp = bitmaps[i]?.takeIf { it.width == dw && it.height == dh }
                 ?: Bitmap.createBitmap(dw, dh, Bitmap.Config.ARGB_8888).also { bitmaps[i] = it }
@@ -240,7 +302,8 @@ internal class StudioFilterEngine(context: Context) {
             GLES20.glReadPixels(0, 0, dw, dh, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, px)
             px.position(0)
             bmp.copyPixelsFromBuffer(px) // ARGB_8888 is stored as RGBA bytes
-            offer(bmp)
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
+            return bmp
         }
 
         private fun drawQuad(s: GlShader, fbo: Int, w: Int, h: Int, target: Int, tex: Int, tc: FloatBuffer, texMatrix: FloatArray) {
@@ -260,7 +323,7 @@ internal class StudioFilterEngine(context: Context) {
 
         fun release() {
             oes.release(); copy.release()
-            base.release(); small.release(); ring.forEach { it.release() }
+            base.release(); heldBuf.release(); small.release(); ring.forEach { it.release() }
             // the Studio renderer's program/textures belong to this context and go with it; bitmaps may still be in
             // the tracker's hands, so they are left to the garbage collector
         }
@@ -269,8 +332,8 @@ internal class StudioFilterEngine(context: Context) {
     companion object {
         internal const val TAG = "ThreeJunksFilter"
         private const val RING = 4
-        private const val DETECT_WIDTH = 256
-        private const val FACE_STALE_MS = 500L
+        private const val DETECT_WIDTH = 480 // the Studio's camera analysis frames are 480 x 640
+        private const val STUCK_MS = 400L
 
         private const val VS = """
             attribute vec2 aPos;
@@ -322,13 +385,17 @@ internal class StudioFilterProcessor(
         val cfg = control.config
         val buffer = frame.buffer
         if (cfg == null || engine.failed || buffer !is VideoFrame.TextureBuffer || buffer.type != VideoFrame.TextureBuffer.Type.OES) {
-            if (cfg == null) engine.idle()
+            engine.idle()
             out.onFrame(frame); return
         }
-        val f = engine.render(buffer.textureId, buffer.transformMatrix, buffer.width, buffer.height, frame.rotation, cfg)
-        if (f == null) { if (engine.failed) out.onFrame(frame); return } // null without failure = dropped (no free texture)
+        if (!engine.process(buffer.textureId, buffer.transformMatrix, buffer.width, buffer.height, frame.rotation, frame.timestampNs, cfg, handler, ::emit))
+            out.onFrame(frame)
+    }
+
+    private fun emit(f: StudioFilterEngine.Output) {
+        val out = sink ?: run { f.release(); return }
         val tex = TextureBufferImpl(f.width, f.height, VideoFrame.TextureBuffer.Type.RGB, f.textureId, Matrix(), handler, yuv) { f.release() }
-        val filtered = VideoFrame(tex, 0, frame.timestampNs)
+        val filtered = VideoFrame(tex, 0, f.timestampNs)
         out.onFrame(filtered)
         filtered.release()
     }

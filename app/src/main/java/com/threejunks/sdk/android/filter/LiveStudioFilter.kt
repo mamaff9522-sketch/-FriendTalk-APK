@@ -35,15 +35,20 @@ internal class LiveStudioFilterProcessor(
         val cfg = control.config
         val buffer = frame.buffer
         if (cfg == null || released || engine.failed || buffer !is VideoFrame.TextureBuffer || buffer.type != VideoFrame.TextureBuffer.Type.OES) {
-            if (cfg == null) engine.idle()
+            engine.idle()
             out.onFrame(frame); return
         }
         val h = glHandler ?: Handler(Looper.myLooper() ?: run { out.onFrame(frame); return }).also { glHandler = it }
-        val f = engine.render(buffer.textureId, buffer.transformMatrix, buffer.width, buffer.height, frame.rotation, cfg)
-        if (f == null) { if (engine.failed) out.onFrame(frame); return } // null without failure = dropped (no free texture)
+        if (!engine.process(buffer.textureId, buffer.transformMatrix, buffer.width, buffer.height, frame.rotation, frame.timestampNs, cfg, h, ::emit))
+            out.onFrame(frame)
+    }
+
+    private fun emit(f: StudioFilterEngine.Output) {
+        val out = sink; val h = glHandler
+        if (out == null || h == null || released) { f.release(); return }
         val conv = yuv ?: YuvConverter().also { yuv = it }
         val tex = TextureBufferImpl(f.width, f.height, VideoFrame.TextureBuffer.Type.RGB, f.textureId, Matrix(), h, conv) { f.release() }
-        val filtered = VideoFrame(tex, 0, frame.timestampNs)
+        val filtered = VideoFrame(tex, 0, f.timestampNs)
         out.onFrame(filtered)
         filtered.release()
     }
