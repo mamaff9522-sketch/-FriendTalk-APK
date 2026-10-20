@@ -199,7 +199,8 @@ fun AppLockScreen(appName: String) {
 val FEATURE_PARTS = linkedMapOf(
     "home" to "หน้าแรก / ฟีด", "posting" to "โพสต์ใหม่", "discover" to "หาเพื่อน (ค้นหา)", "random" to "สุ่มหาเพื่อน", "shake" to "เขย่าหาเพื่อน",
     "radar" to "เรดาร์", "swipe" to "ปัดหาเพื่อน", "similar" to "คนที่ชอบคล้ายกัน", "requests" to "คำขอเป็นเพื่อน", "companion" to "เพื่อนคุย",
-    "live" to "ไลฟ์สด", "video" to "วิดีโอ", "chat" to "แชท", "ai" to "บอท AI", "ads" to "โฆษณา", "gifts" to "ของขวัญ", "decor" to "ตกแต่งห้อง VIP")
+    "live" to "ไลฟ์สด", "video" to "วิดีโอ", "chat" to "แชท", "ai" to "บอท AI", "ads" to "โฆษณา", "gifts" to "ของขวัญ", "decor" to "ตกแต่งห้อง VIP",
+    "voiceCall" to "โทรเสียง", "videoCall" to "วิดีโอคอล")
 
 /** Feature lock: content stays visible but greyed with a 🔒 badge; any tap shows a 'locked' notice. Staff use it normally (small badge). */
 @Composable

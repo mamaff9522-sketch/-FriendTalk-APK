@@ -134,6 +134,24 @@ class AuthService private constructor() {
         }
     }
 
+    /**
+     * Shown under a failed Google sign-in: the package and the SHA-1 this install is signed with, so it can be
+     * compared with the fingerprints registered in Firebase (Play-installed builds are signed by Google's key).
+     */
+    private fun signingHint(context: Context): String = runCatching {
+        val pm = context.packageManager
+        val sigs = if (android.os.Build.VERSION.SDK_INT >= 28) {
+            val info = pm.getPackageInfo(context.packageName, android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES).signingInfo
+            if (info == null) emptyArray() else if (info.hasMultipleSigners()) info.apkContentsSigners else info.signingCertificateHistory
+        } else {
+            @Suppress("DEPRECATION") pm.getPackageInfo(context.packageName, android.content.pm.PackageManager.GET_SIGNATURES).signatures ?: emptyArray()
+        }
+        val sha = sigs.orEmpty().joinToString(" / ") { sig ->
+            java.security.MessageDigest.getInstance("SHA-1").digest(sig.toByteArray()).joinToString(":") { "%02X".format(it) }
+        }
+        "\n(${context.packageName} · SHA-1 $sha)"
+    }.getOrDefault("")
+
     private fun getWebClientId(context: Context): String {
 
         val resourceId =
@@ -285,6 +303,47 @@ class AuthService private constructor() {
         }
     }
 
+    /**
+     * Google sign-in through Firebase's own web flow (Custom Tab on the firebaseapp.com auth page). It does not depend on
+     * the app's signing-key fingerprint, so it still works when the on-device Credential Manager flow is refused
+     * (e.g. a Play-signed install whose key Google Play Services does not accept yet). Same Google account → same user.
+     */
+    private suspend fun signInWithGoogleWeb(
+        activity: Activity,
+        auth: FirebaseAuth,
+        onSuccess: (FirebaseUser) -> Unit,
+        onError: (String) -> Unit,
+        onCancelled: (String) -> Unit
+    ) {
+        try {
+            val provider = com.google.firebase.auth.OAuthProvider.newBuilder("google.com")
+                .addCustomParameter("prompt", "select_account")
+                .build()
+            val result = (auth.pendingAuthResult ?: auth.startActivityForSignInWithProvider(activity, provider)).await()
+            val user = result.user ?: auth.currentUser
+            if (user == null) {
+                val error = "Firebase Login สำเร็จแต่ไม่พบ FirebaseUser"
+                _authError.value = error
+                onError(error)
+                return
+            }
+            Log.d(TAG, "Firebase Google (web) Login SUCCESS uid=${user.uid}")
+            _currentUser.value = user
+            _isInitialized.value = true
+            _authError.value = null
+            onSuccess(user)
+        } catch (e: FirebaseAuthException) {
+            if (e.errorCode == "ERROR_WEB_CONTEXT_CANCELED") { onCancelled("ยกเลิกการเข้าสู่ระบบ"); return }
+            val error = "เข้าสู่ระบบด้วย Google ไม่สำเร็จ [${e.errorCode}]: ${e.message}" + signingHint(activity)
+            _authError.value = error
+            onError(error)
+        } catch (e: Exception) {
+            val error = "เข้าสู่ระบบด้วย Google ไม่สำเร็จ: ${e.message}" + signingHint(activity)
+            _authError.value = error
+            onError(error)
+        }
+    }
+
     private suspend fun requestGoogleCredential(
         activity: Activity,
         clientId: String,
@@ -404,8 +463,8 @@ class AuthService private constructor() {
                     "การเข้าสู่ระบบถูกยกเลิก: $message"
                 }
 
-            _authError.value = error
-            onCancelled(error)
+            _authError.value = error + signingHint(activity)
+            onCancelled(error + signingHint(activity))
 
         } catch (
             e: GetCredentialCustomException
@@ -444,11 +503,8 @@ class AuthService private constructor() {
                 return
             }
 
-            val error =
-                "Google Sign-In Error [${e.type}]: $message"
-
-            _authError.value = error
-            onError(error)
+            Log.w(TAG, "Credential custom error - trying the browser flow")
+            signInWithGoogleWeb(activity, auth, onSuccess, onError, onCancelled)
 
         } catch (
             e: NoCredentialException
@@ -478,17 +534,11 @@ class AuthService private constructor() {
                 )
                 return
             } catch (c: GetCredentialCancellationException) {
-                onCancelled("ยกเลิกการเข้าสู่ระบบ")
-                return
+                Log.w(TAG, "Sign in with Google button flow cancelled/refused - trying the browser flow", c)
             } catch (e2: Exception) {
                 Log.e(TAG, "Sign in with Google button flow failed", e2)
             }
-
-            val error =
-                "ไม่พบบัญชี Google ที่สามารถใช้เข้าสู่ระบบได้"
-
-            _authError.value = error
-            onError(error)
+            signInWithGoogleWeb(activity, auth, onSuccess, onError, onCancelled)
 
         } catch (
             e: GetCredentialException
@@ -500,11 +550,8 @@ class AuthService private constructor() {
                 e
             )
 
-            val error =
-                "Google Sign-In Error [${e.type}]: ${e.message}"
-
-            _authError.value = error
-            onError(error)
+            Log.w(TAG, "Credential Manager error - trying the browser flow")
+            signInWithGoogleWeb(activity, auth, onSuccess, onError, onCancelled)
 
         } catch (
             e: Exception
@@ -790,7 +837,8 @@ class AuthService private constructor() {
             .addOnFailureListener { e ->
                 val err = when (e) {
                     is FirebaseAuthInvalidUserException -> "ไม่พบบัญชีผู้ใช้นี้ในระบบ กรุณาสมัครสมาชิกใหม่"
-                    is FirebaseAuthInvalidCredentialsException -> "อีเมลหรือรหัสผ่านไม่ถูกต้อง"
+                    // the Firebase code tells "wrong password" apart from e.g. reCAPTCHA / app-verification problems
+                    is FirebaseAuthInvalidCredentialsException -> "อีเมลหรือรหัสผ่านไม่ถูกต้อง (${e.errorCode})"
                     else -> "เข้าสู่ระบบด้วยอีเมลไม่สำเร็จ: ${e.localizedMessage}"
                 }
                 _authError.value = err

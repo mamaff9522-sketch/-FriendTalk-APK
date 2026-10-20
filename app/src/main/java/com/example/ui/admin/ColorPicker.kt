@@ -1,5 +1,7 @@
 package com.example.ui.admin
 
+import com.example.ui.components.dialogNavPadding
+
 import android.content.Context
 import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -82,7 +84,7 @@ fun ColorPickerDialog(title: String, initialHex: String, previewContent: (@Compo
             BitmapFactory.decodeStream(s, null, o)?.let { dropper = it.asImageBitmap() }
         }
     }
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(shape = RoundedCornerShape(20.dp), color = Slate900, modifier = Modifier.fillMaxWidth(0.94f)) {
             Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -152,8 +154,8 @@ private fun SwatchRow(hexes: List<String>, onPick: (String) -> Unit) {
 private fun PreviewCapture(content: @Composable () -> Unit, onCaptured: (ImageBitmap) -> Unit, onDismiss: () -> Unit) {
     val layer = androidx.compose.ui.graphics.rememberGraphicsLayer()
     val scope = rememberCoroutineScope()
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Column(Modifier.fillMaxSize().background(Color.Black)) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        Column(Modifier.fillMaxSize().background(Color.Black).systemBarsPadding().dialogNavPadding()) {
             Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("กด 'จับภาพ' แล้วแตะจุดที่ต้องการดูดสี", color = PureWhite, modifier = Modifier.weight(1f))
                 Button(onClick = { scope.launch { onCaptured(layer.toImageBitmap()) } }) { Text("จับภาพ") }
@@ -178,8 +180,8 @@ private fun EyedropperDialog(bmp: ImageBitmap, onPick: (Color) -> Unit, onDismis
         val x = ((o.x - ox) / sc).toInt(); val y = ((o.y - oy) / sc).toInt()
         if (x in 0 until pixels.width && y in 0 until pixels.height) picked = Color(pixels.getPixel(x, y))
     }
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Column(Modifier.fillMaxSize().background(Color.Black)) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        Column(Modifier.fillMaxSize().background(Color.Black).systemBarsPadding().dialogNavPadding()) {
             Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(36.dp).clip(CircleShape).background(picked ?: Color.Transparent).border(2.dp, PureWhite, CircleShape))
                 Text(picked?.toHex() ?: "แตะหรือลากบนรูป", color = PureWhite, modifier = Modifier.padding(start = 10.dp).weight(1f))

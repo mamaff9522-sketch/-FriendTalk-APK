@@ -1,5 +1,7 @@
 package com.example.ui.admin
 
+import com.example.ui.components.dialogNavPadding
+
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -38,15 +40,23 @@ fun AdminUiBuilderDialog(
     var draftConfig by remember { mutableStateOf(currentConfig.copy()) }
     var showDraftPreview by remember { mutableStateOf(false) }
     if (showDraftPreview) DraftPreviewDialog(draftConfig.theme) { showDraftPreview = false }
-    var selectedBuilderTab by remember { mutableStateOf("visual_dnd") } // visual_dnd (default), feed, theme, remote, preview, history
+    var selectedBuilderTab by remember { mutableStateOf("quick") } // quick (default), visual_dnd, feed, theme, remote, history
+    var confirmReset by remember { mutableStateOf(false) }
+    var showPages by remember { mutableStateOf(false) }
+    if (showPages) PageBuilderDialog { showPages = false }
+    if (confirmReset) AlertDialog(onDismissRequest = { confirmReset = false }, title = { Text("คืนค่าหน้าตาเริ่มต้น?") },
+        text = { Text("สี พื้นหลัง และการจัดฟีดจะกลับเป็นค่าเริ่มต้น (ยังไม่มีผลจนกว่าจะกดเผยแพร่)") },
+        confirmButton = { TextButton(onClick = { confirmReset = false; onRestoreDefault() }) { Text("คืนค่า", color = Pink400) } },
+        dismissButton = { TextButton(onClick = { confirmReset = false }) { Text("ยกเลิก") } })
     var releaseNotes by remember { mutableStateOf("ปรับแต่งหน้า Feed และระบบ UI") }
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
         Surface(
             modifier = Modifier
+                .systemBarsPadding().dialogNavPadding()
                 .fillMaxWidth(0.95f)
                 .fillMaxHeight(0.95f),
             shape = RoundedCornerShape(24.dp),
@@ -66,13 +76,13 @@ fun AdminUiBuilderDialog(
                 ) {
                     Column {
                         Text(
-                            text = "Admin UI Builder 🎨",
+                            text = "แต่งหน้าตาแอป 🎨",
                             fontWeight = FontWeight.Bold,
                             fontSize = 18.sp,
                             color = White
                         )
                         Text(
-                            text = "Active Version: ${currentConfig.configVersion}",
+                            text = "ใช้อยู่: ${currentConfig.configVersion} · แก้แล้วกด 'เผยแพร่' ผู้ใช้เห็นทันที ไม่ต้องอัปเดตแอป",
                             fontSize = 11.sp,
                             color = Pink400
                         )
@@ -90,11 +100,12 @@ fun AdminUiBuilderDialog(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     listOf(
-                        "visual_dnd" to "ลากวาง UI 🎨",
-                        "feed" to "จัด Feed 📰",
-                        "theme" to "ธีม & สี 🌈",
-                        "remote" to "Config ⚙️",
-                        "history" to "ประวัติ ⏳"
+                        "quick" to "⭐ แต่งง่าย",
+                        "visual_dnd" to "🏠 จัดหน้าแรก",
+                        "feed" to "📰 ฟีด",
+                        "theme" to "🌈 สีละเอียด",
+                        "remote" to "⚙️ ขั้นสูง",
+                        "history" to "⏳ ย้อนกลับ"
                     ).forEach { (key, label) ->
                         val isSel = selectedBuilderTab == key
                         Surface(
@@ -117,11 +128,20 @@ fun AdminUiBuilderDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Text(when (selectedBuilderTab) {
+                    "quick" -> "ทำตามทีละขั้น: เลือกชุดสี → ใส่รูปพื้นหลัง → ตั้งชื่อแอป → กดเผยแพร่"
+                    "visual_dnd" -> "ลากย้าย / ซ่อน / แสดง ส่วนต่าง ๆ ของหน้าแรก (หน้านี้มีปุ่มบันทึกของตัวเอง)"
+                    "feed" -> "เลือกว่าฟีดหน้าแรกแสดงอะไรบ้าง และเรียงแบบไหน"
+                    "theme" -> "ปรับสีทีละจุด และรูปพื้นหลังแยกแต่ละหน้า"
+                    "remote" -> "ตั้งค่าขั้นสูง เช่น เปิด/ปิดเมนู โหมดปิดปรับปรุง"
+                    else -> "เวอร์ชันที่เคยเผยแพร่ แตะเพื่อย้อนกลับ"
+                }, color = Slate400, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 // Content area
                 Box(modifier = Modifier.weight(1f)) {
                     when (selectedBuilderTab) {
+                        "quick" -> QuickStyle(draftConfig, onUpdate = { draftConfig = it }, onOpenPages = { showPages = true }, onOpenHome = { selectedBuilderTab = "visual_dnd" })
                         "visual_dnd" -> com.example.ui.layout.HomeLayoutEditor()
                         "feed" -> FeedLayoutBuilder(
                             feedConfig = draftConfig.feed,
@@ -148,10 +168,7 @@ fun AdminUiBuilderDialog(
                     }
                 }
 
-                var showPages by remember { mutableStateOf(false) }
-                if (showPages) PageBuilderDialog { showPages = false }
-                Button(onClick = { showPages = true }, modifier = Modifier.fillMaxWidth()) { Text("📄 แก้ทุกหน้า: เลือกหน้า · ส่วน · ข้อความ · เผยแพร่/ย้อนกลับ") }
-                if (selectedBuilderTab != "visual_dnd") {
+                if (selectedBuilderTab != "visual_dnd" && selectedBuilderTab != "history") {
                 Spacer(modifier = Modifier.height(12.dp))
                 Divider(color = Slate800)
                 Spacer(modifier = Modifier.height(8.dp))
@@ -166,10 +183,10 @@ fun AdminUiBuilderDialog(
                         Text("👁 ดูตัวอย่าง", fontSize = 11.sp, color = White)
                     }
                     OutlinedButton(
-                        onClick = onRestoreDefault,
+                        onClick = { confirmReset = true },
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text("รีเซ็ตเริ่มต้น", fontSize = 11.sp, color = Slate300)
+                        Text("↩ คืนค่า", fontSize = 11.sp, color = Slate300)
                     }
 
                     Button(
@@ -183,7 +200,7 @@ fun AdminUiBuilderDialog(
                     ) {
                         Icon(Icons.Default.Publish, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("เผยแพร่ UI เวอร์ชันใหม่", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("✅ เผยแพร่ให้ทุกคน", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     }
                 }
                 }
@@ -756,3 +773,65 @@ private val UI_PALETTES = listOf(
     UiPalette("Sunset", "#F97316", "#EC4899", "#F59E0B", "#FFF8F1", "#FFFFFF", "#FFEBD9", "#3A2213", "#7A5A45"),
     UiPalette("Midnight Gold (มืด)", "#F59E0B", "#D97706", "#FCD34D", "#0C0A09", "#1C1917", "#292524", "#FAFAF9", "#D6D3D1")
 )
+
+
+/** ⭐ แต่งง่าย: the everyday jobs in 4 numbered steps — colour set, background picture, app name, live preview. */
+@Composable
+private fun QuickStyle(cfg: AppUiConfig, onUpdate: (AppUiConfig) -> Unit, onOpenPages: () -> Unit, onOpenHome: () -> Unit) {
+    val t = cfg.theme
+    @Composable fun Step(n: Int, title: String, content: @Composable ColumnScope.() -> Unit) {
+        Surface(shape = RoundedCornerShape(16.dp), color = Slate900, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(26.dp).clip(RoundedCornerShape(13.dp)).background(Pink500), contentAlignment = Alignment.Center) { Text("$n", color = PureWhite, fontWeight = FontWeight.Bold, fontSize = 13.sp) }
+                    Spacer(Modifier.width(8.dp)); Text(title, color = White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                }
+                content()
+            }
+        }
+    }
+    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            Step(1, "เลือกชุดสี (แตะ 1 ครั้ง)") {
+                UI_PALETTES.chunked(3).forEach { row ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        row.forEach { pal ->
+                            val sel = t.primaryColorHex.equals(pal.primary, true) && t.backgroundColorHex.equals(pal.background, true)
+                            Surface(onClick = { onUpdate(cfg.copy(theme = t.copy(primaryColorHex = pal.primary, secondaryColorHex = pal.secondary, accentColorHex = pal.accent,
+                                backgroundColorHex = pal.background, surfaceColorHex = pal.surface, cardColorHex = pal.card, textPrimaryHex = pal.text, textSecondaryHex = pal.text2))) },
+                                shape = RoundedCornerShape(12.dp), color = parseHexColor(pal.background, Slate950),
+                                border = androidx.compose.foundation.BorderStroke(if (sel) 3.dp else 1.dp, if (sel) Pink500 else Slate700), modifier = Modifier.weight(1f)) {
+                                Column(Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) { listOf(pal.primary, pal.secondary, pal.accent).forEach { Box(Modifier.size(14.dp).clip(RoundedCornerShape(7.dp)).background(parseHexColor(it, Pink500))) } }
+                                    Text((if (sel) "✓ " else "") + pal.name, fontSize = 11.sp, color = parseHexColor(pal.text, White), maxLines = 1, modifier = Modifier.padding(top = 4.dp))
+                                }
+                            }
+                        }
+                        repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+            }
+        }
+        item { Step(2, "รูปพื้นหลัง (ไม่ใส่ก็ได้)") { BackgroundEditor(t) { onUpdate(cfg.copy(theme = it)) } } }
+        item {
+            Step(3, "ชื่อแอปและคำโปรย") {
+                OutlinedTextField(cfg.appName, { onUpdate(cfg.copy(appName = it.take(30))) }, label = { Text("ชื่อแอป") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White))
+                OutlinedTextField(cfg.appSubtitle, { onUpdate(cfg.copy(appSubtitle = it.take(60))) }, label = { Text("คำโปรยใต้ชื่อ") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White))
+            }
+        }
+        item {
+            Step(4, "ดูตัวอย่าง แล้วกด ✅ เผยแพร่ด้านล่าง") {
+                Box(Modifier.fillMaxWidth().height(320.dp).clip(RoundedCornerShape(14.dp)).border(1.dp, Slate700, RoundedCornerShape(14.dp))) { DraftHomePreview(t, compact = true) }
+            }
+        }
+        item {
+            Text("อยากทำมากกว่านี้", color = Slate400, fontSize = 12.sp)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onOpenHome, modifier = Modifier.weight(1f)) { Text("🏠 จัดหน้าแรก", fontSize = 12.sp, color = White) }
+                OutlinedButton(onClick = onOpenPages, modifier = Modifier.weight(1f)) { Text("📄 แก้ข้อความทุกหน้า", fontSize = 12.sp, color = White) }
+            }
+        }
+    }
+}

@@ -54,6 +54,12 @@ object NearbyRepo {
         val r = BrainApi.call(u, "POST", "/friends/request", JSONObject().put("toUid", toUid))
         return if (r.code == 200) r.json?.optString("status") else null
     }
+    /** friends / requested (I asked) / incoming (they asked me) / none / self; null = unknown (offline, old server). */
+    suspend fun friendStatus(otherUid: String): String? {
+        val u = user() ?: return null
+        val r = BrainApi.call(u, "GET", "/friends/status/$otherUid")
+        return if (r.code == 200) r.json?.optString("status")?.ifBlank { null } else null
+    }
     suspend fun respond(fromUid: String, accept: Boolean): String? {
         val u = user() ?: return null
         val r = BrainApi.call(u, "POST", "/friends/respond", JSONObject().put("fromUid", fromUid).put("accept", accept))
@@ -85,7 +91,16 @@ object NearbyRepo {
         return arr(BrainApi.call(u, "GET", "/friends").json?.optJSONArray("friends")).map { parseProfile(it) }
     }
 
-    data class ShakeState(val status: String, val user: RealProfile?)
+    /** Everyone online now (presence, not hidden), random order, filtered by [DiscoverFilter] on the server. */
+    data class OnlineList(val users: List<NearbyUser>, val hasLocation: Boolean, val code: Int)
+    suspend fun onlineUsers(): OnlineList {
+        val u = user() ?: return OnlineList(emptyList(), false, 0)
+        val r = BrainApi.call(u, "GET", "/discover/online")
+        return OnlineList(arr(r.json?.optJSONArray("users")).map { NearbyUser(parseProfile(it), it.optString("distance")) }, r.json?.optBoolean("hasLocation") == true, r.code)
+    }
+
+    /** status: waiting / matched / timeout. A match now opens an anonymous room ([room]); [user] is only set by old servers. */
+    data class ShakeState(val status: String, val user: RealProfile?, val room: String = "")
     suspend fun shake(lat: Double?, lng: Double?, radiusKm: Double): ShakeState? {
         val u = user() ?: return null
         val b = JSONObject().put("radiusKm", if (radiusKm < 1) 0.5 else radiusKm.toInt())
@@ -93,11 +108,46 @@ object NearbyRepo {
         val r = BrainApi.call(u, "POST", "/shake", b)
         val j = r.json ?: return null
         if (r.code != 200) return null
-        return ShakeState(j.optString("status"), j.optJSONObject("user")?.let { parseProfile(it) })
+        return ShakeState(j.optString("status"), j.optJSONObject("user")?.let { parseProfile(it) }, j.optString("room"))
     }
     suspend fun shakeResult(): ShakeState? {
         val u = user() ?: return null
         val j = BrainApi.call(u, "GET", "/shake/result").json ?: return null
-        return ShakeState(j.optString("status"), j.optJSONObject("user")?.let { parseProfile(it) })
+        return ShakeState(j.optString("status"), j.optJSONObject("user")?.let { parseProfile(it) }, j.optString("room"))
     }
+
+    // ---- anonymous shake room (server-timed 60 s) ----
+    data class AnonMsg(val mine: Boolean, val text: String, val at: Long)
+    data class AnonState(val state: String, val elapsedMs: Long, val heartAfterMs: Long, val durationMs: Long, val myAlias: String, val otherAlias: String,
+                         val myHeart: Boolean, val messages: List<AnonMsg>, val chatId: String = "", val me: RealProfile? = null, val other: RealProfile? = null)
+    private fun anonState(j: JSONObject) = AnonState(j.optString("state"), j.optLong("elapsedMs"), j.optLong("heartAfterMs", 20_000), j.optLong("durationMs", 60_000),
+        j.optString("myAlias"), j.optString("otherAlias"), j.optBoolean("myHeart"),
+        arr(j.optJSONArray("messages")).map { AnonMsg(it.optBoolean("mine"), it.optString("text"), it.optLong("at")) },
+        j.optString("chatId"), j.optJSONObject("me")?.let { parseProfile(it) }, j.optJSONObject("other")?.let { parseProfile(it) })
+    suspend fun anonGet(room: String, after: Long = 0): AnonState? {
+        val u = user() ?: return null
+        val r = BrainApi.call(u, "GET", "/anon/$room?after=$after")
+        return if (r.code == 200) r.json?.let { anonState(it) } else null
+    }
+    suspend fun anonSend(room: String, text: String): Boolean =
+        user()?.let { BrainApi.call(it, "POST", "/anon/$room/msg", JSONObject().put("text", text)).code == 200 } ?: false
+    suspend fun anonHeart(room: String): AnonState? {
+        val u = user() ?: return null
+        val r = BrainApi.call(u, "POST", "/anon/$room/heart")
+        return if (r.code == 200) r.json?.let { anonState(it) } else null
+    }
+    suspend fun anonLeave(room: String) { user()?.let { BrainApi.call(it, "POST", "/anon/$room/leave") } }
+
+    // ---- bell: one list of all notifications ----
+    data class Notif(val type: String, val uid: String, val name: String, val avatar: String, val at: Long, val unseen: Boolean,
+                     val postId: String = "", val snippet: String = "", val chatId: String = "", val id: String = "")
+    data class NotifList(val items: List<Notif>, val unseen: Int, val code: Int)
+    suspend fun notifications(): NotifList {
+        val u = user() ?: return NotifList(emptyList(), 0, 0)
+        val r = BrainApi.call(u, "GET", "/notifications")
+        return NotifList(arr(r.json?.optJSONArray("items")).map { Notif(it.optString("type"), it.optString("uid"), it.optString("name"), it.optString("avatar"),
+            it.optLong("at"), it.optBoolean("unseen"), it.optString("postId"), it.optString("snippet"), it.optString("chatId"), it.optString("id")) },
+            r.json?.optInt("unseen") ?: 0, r.code)
+    }
+    suspend fun markNotificationsSeen() { user()?.let { BrainApi.call(it, "POST", "/notifications/seen") } }
 }

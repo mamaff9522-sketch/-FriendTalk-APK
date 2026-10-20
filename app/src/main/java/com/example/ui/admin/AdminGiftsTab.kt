@@ -56,15 +56,18 @@ fun AdminGiftsTab() {
             GiftRepo.CHANNELS.forEach { (k, l) -> FilterChip(selected = view == "items" && ch == k, onClick = { view = "items"; ch = k; page = 0 }, label = { Text(l) }) }
             FilterChip(selected = view == "config", onClick = { view = "config" }, label = { Text("⚙ ตั้งค่า") })
             FilterChip(selected = view == "tx", onClick = { view = "tx" }, label = { Text("📒 ประวัติ") })
+            FilterChip(selected = view == "voices", onClick = { view = "voices" }, label = { Text("🔊 จัดการเสียงเปย์เปิดใจ") })
         }
         if (msg.isNotBlank()) Text(msg, color = Amber400, fontSize = 12.sp)
         when (view) {
             "config" -> GiftConfigSection()
             "tx" -> GiftLedgerSection()
+            "voices" -> AdminPayVoicesPane()
             else -> {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("ทั้งหมด $total รายการ", color = Slate300, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                    Button(onClick = { edit = CatalogItem("item_" + System.currentTimeMillis().toString(36), "", if (ch == "stickers") 0 else 10, "", "", ch, true, -1) },
+                    Button(onClick = { edit = CatalogItem("item_" + System.currentTimeMillis().toString(36), "", if (ch == "stickers" || ch == "chatStickers") 0 else 10, "", "", ch, true, -1,
+                        if (ch == "payopen") com.example.ui.payopen.PAY_FX.random().first else "POP") },
                         colors = ButtonDefaults.buttonColors(containerColor = Pink500)) { Text("+ เพิ่ม") }
                 }
                 items.forEachIndexed { i, it ->
@@ -73,7 +76,7 @@ fun AdminGiftsTab() {
                             Box(Modifier.size(44.dp)) { com.example.ui.social.StickerImage(it) }
                             Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
                                 Text(it.name, color = White, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
-                                Text((if (ch == "chat") "💎 " else "🪙 ") + "${it.price} · ${it.category}" + if (!it.enabled) " · ปิดอยู่" else "", color = if (it.enabled) Slate400 else Amber400, fontSize = 11.sp)
+                                Text((if (ch == "chat" || ch == "payopen") "💎 " else "🪙 ") + "${it.price} · ${it.category}" + (if (ch == "payopen") " · ${it.animationEffect}" + (if (it.effectUrl.isNotBlank()) " · มีเอฟเฟกต์" else "") else "") + if (!it.enabled) " · ปิดอยู่" else "", color = if (it.enabled) Slate400 else Amber400, fontSize = 11.sp)
                             }
                             TextButton(enabled = page * size + i > 0, onClick = { scope.launch { move(ch, page, size, items, i, -1); tick++ } }) { Text("↑") }
                             TextButton(enabled = page * size + i < total - 1, onClick = { scope.launch { move(ch, page, size, items, i, 1); tick++ } }) { Text("↓") }
@@ -117,6 +120,35 @@ private fun CatalogItemEditor(ch: String, init: CatalogItem, onClose: (Boolean) 
     var busy by remember { mutableStateOf(false) }
     var err by remember { mutableStateOf("") }
     var confirmDel by remember { mutableStateOf(false) }
+    var fx by remember { mutableStateOf(init.animationEffect) }
+    var fxBytes by remember { mutableStateOf<Pair<ByteArray, String>?>(null) }
+    var fxPreview by remember { mutableStateOf<android.net.Uri?>(null) }
+    var dropFx by remember { mutableStateOf(false) }
+    val fxPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val mime = ctx.contentResolver.getType(uri) ?: "image/gif"
+        val b = runCatching { ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull()
+        when {
+            b == null -> err = "อ่านไฟล์ไม่ได้"
+            b.size > 2 * 1024 * 1024 -> err = "ไฟล์เอฟเฟกต์ต้องไม่เกิน 2MB (ตอนนี้ ${b.size / 1024}KB)"
+            else -> { fxBytes = b to mime; fxPreview = uri; dropFx = false; err = "" }
+        }
+    }
+    // video effect (any channel): MP4 / WebM up to 10MB, plays full screen when the gift is sent
+    var vidBytes by remember { mutableStateOf<Pair<ByteArray, String>?>(null) }
+    var vidPreview by remember { mutableStateOf<String?>(null) }
+    var dropVid by remember { mutableStateOf(false) }
+    var playVid by remember { mutableStateOf<String?>(null) }
+    val vidPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val mime = ctx.contentResolver.getType(uri)?.takeIf { it.startsWith("video/") } ?: "video/mp4"
+        val b = runCatching { ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull()
+        when {
+            b == null -> err = "อ่านไฟล์วิดีโอไม่ได้"
+            b.size > 10 * 1024 * 1024 -> err = "วิดีโอต้องไม่เกิน 10MB (ตอนนี้ ${b.size / 1024 / 1024}MB)"
+            else -> { vidBytes = b to mime; vidPreview = uri.toString(); dropVid = false; err = "" }
+        }
+    }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) src = runCatching { ctx.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) } }.getOrNull()
     }
@@ -137,8 +169,30 @@ private fun CatalogItemEditor(ch: String, init: CatalogItem, onClose: (Boolean) 
                     Text("เลื่อนซ้าย/ขวา", color = Slate300, fontSize = 11.sp); Slider(ox, { ox = it }, valueRange = -0.5f..0.5f)
                     Text("เลื่อนขึ้น/ลง", color = Slate300, fontSize = 11.sp); Slider(oy, { oy = it }, valueRange = -0.5f..0.5f)
                 }
+                if (ch == "payopen") {
+                    Text("เอฟเฟกต์ตอนส่ง (ตัวอย่าง)", color = Slate300, fontSize = 12.sp)
+                    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(androidx.compose.ui.graphics.Color(0xFF1A0B3D)), contentAlignment = Alignment.Center) {
+                        key(fx, fxPreview, dropFx) {
+                            com.example.ui.payopen.PayGiftEffect(fx, init.imageUrl, if (dropFx) "" else fxPreview?.toString() ?: init.effectUrl, icon, 200.dp)
+                        }
+                    }
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        com.example.ui.payopen.PAY_FX.forEach { (k, l) -> FilterChip(selected = fx == k, onClick = { fx = k }, label = { Text(l) }) }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { fxPicker.launch("image/*") }) { Text("✨ อัปโหลดเอฟเฟกต์ (GIF/WebP)", color = White, fontSize = 12.sp) }
+                        if (fxPreview != null || (init.effectUrl.isNotBlank() && !dropFx)) TextButton(onClick = { fxBytes = null; fxPreview = null; dropFx = init.effectUrl.isNotBlank() }) { Text("เอาออก", color = Pink400) }
+                    }
+                }
+                val hasVid = vidPreview != null || (init.videoUrl.isNotBlank() && !dropVid)
+                Text("🎬 วิดีโอเอฟเฟกต์ (MP4/WebM ไม่เกิน 10MB) · เล่นเต็มจอตอนส่งของขวัญ" + if (hasVid) " · มีแล้ว ✓" else "", color = Slate300, fontSize = 12.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedButton(onClick = { vidPicker.launch("video/*") }) { Text(if (hasVid) "🎬 เปลี่ยนวิดีโอ" else "🎬 เพิ่มวิดีโอเอฟเฟกต์", color = White, fontSize = 12.sp) }
+                    if (hasVid) TextButton(onClick = { playVid = vidPreview ?: init.videoUrl }) { Text("▶ ดู", color = Emerald400) }
+                    if (hasVid) TextButton(onClick = { vidBytes = null; vidPreview = null; dropVid = init.videoUrl.isNotBlank() }) { Text("เอาออก", color = Pink400) }
+                }
                 OutlinedTextField(name, { name = it.take(40) }, label = { Text("ชื่อ") }, singleLine = true)
-                OutlinedTextField(price, { price = it.filter(Char::isDigit).take(7) }, label = { Text(if (ch == "chat") "ราคา (💎 เพชร)" else "ราคา (เหรียญ)" + if (ch == "stickers") " 0 = ฟรี" else "") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                OutlinedTextField(price, { price = it.filter(Char::isDigit).take(7) }, label = { Text(if (ch == "chat" || ch == "payopen") "ราคา (💎 เพชร)" else if (ch == "chatStickers") "ราคา (ใส่ 0 · สติกเกอร์แชทส่งฟรี)" else "ราคา (เหรียญ)" + if (ch == "stickers") " 0 = ฟรี" else "") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                 OutlinedTextField(category, { category = it.take(30) }, label = { Text("หมวดหมู่") }, singleLine = true)
                 OutlinedTextField(icon, { icon = it.take(4) }, label = { Text("อีโมจิ (ถ้าไม่มีรูป)") }, singleLine = true)
                 Row(verticalAlignment = Alignment.CenterVertically) { Text("เปิดใช้งาน", color = White, modifier = Modifier.weight(1f)); Switch(enabled, { enabled = it }) }
@@ -150,13 +204,17 @@ private fun CatalogItemEditor(ch: String, init: CatalogItem, onClose: (Boolean) 
                     Button(enabled = !busy && name.isNotBlank(), onClick = {
                         busy = true; err = ""
                         scope.launch {
-                            val r = GiftRepo.adminSave(ch, init.copy(name = name.trim(), price = price.toIntOrNull() ?: 0, category = category.ifBlank { ch }, icon = icon, enabled = enabled, order = init.order))
+                            val r = GiftRepo.adminSave(ch, init.copy(name = name.trim(), price = price.toIntOrNull() ?: 0, category = category.ifBlank { ch }, icon = icon, enabled = enabled, order = init.order, animationEffect = if (ch == "payopen") fx else init.animationEffect))
                             if (!r.ok) { err = r.msg; busy = false; return@launch }
                             out?.let { bmp ->
                                 val bytes = withContext(Dispatchers.Default) { compressWebp(bmp) }
                                 if (bytes == null) { err = "บีบอัดรูปให้ไม่เกิน 512KB ไม่ได้"; busy = false; return@launch }
                                 val u = GiftRepo.adminUploadImage(ch, init.id, bytes); if (!u.ok) { err = u.msg; busy = false; return@launch }
                             }
+                            fxBytes?.let { (b, m) -> val u = com.example.social.PayOpenRepo.adminUploadEffect(ch, init.id, b, m); if (!u.ok) { err = u.msg; busy = false; return@launch } }
+                            if (dropFx && fxBytes == null) com.example.social.PayOpenRepo.adminDeleteEffect(ch, init.id)
+                            vidBytes?.let { (b, m) -> err = "กำลังอัปโหลดวิดีโอ…"; val u = GiftRepo.adminUploadVideo(ch, init.id, b, m); if (!u.ok) { err = u.msg; busy = false; return@launch } }
+                            if (dropVid && vidBytes == null) GiftRepo.adminDeleteVideo(ch, init.id)
                             onMsg("บันทึก ${name} แล้ว"); onClose(true)
                         }
                     }, colors = ButtonDefaults.buttonColors(containerColor = Pink500)) { Text(if (busy) "กำลังบันทึก…" else "บันทึก") }
@@ -164,6 +222,8 @@ private fun CatalogItemEditor(ch: String, init: CatalogItem, onClose: (Boolean) 
             }
         }
     }
+    playVid?.let { v -> Dialog(onDismissRequest = { playVid = null }, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        com.example.ui.components.GiftVideoFx(v, { playVid = null }) } }
     if (confirmDel) AlertDialog(onDismissRequest = { confirmDel = false }, title = { Text("ลบ ${init.name}?") },
         confirmButton = { TextButton(onClick = { scope.launch { GiftRepo.adminDelete(ch, init.id); confirmDel = false; onClose(true) } }) { Text("ลบ") } },
         dismissButton = { TextButton(onClick = { confirmDel = false }) { Text("ยกเลิก") } })

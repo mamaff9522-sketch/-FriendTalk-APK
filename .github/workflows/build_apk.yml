@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # publish the friends-test download (GitHub Release)
 
     steps:
       - name: Checkout Code
@@ -104,14 +106,14 @@ jobs:
         run: |
           if [ -f "./gradlew" ]; then
             chmod +x ./gradlew
-            ./gradlew clean testReleaseUnitTest assembleRelease --no-daemon --stacktrace
+            ./gradlew clean testSideloadReleaseUnitTest assembleSideloadRelease --no-daemon --stacktrace
           else
-            gradle clean assembleRelease --no-daemon --stacktrace
+            gradle clean assembleSideloadRelease --no-daemon --stacktrace
           fi
 
       - name: Verify Signed APK
         run: |
-          APK_FILE="app/build/outputs/apk/release/app-release.apk"
+          APK_FILE="app/build/outputs/apk/sideload/release/app-sideload-release.apk"
 
           if [ ! -f "$APK_FILE" ]; then
             echo "::error::Release APK not found"
@@ -132,10 +134,26 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: FriendTalk-release-apk
-          path: app/build/outputs/apk/release/app-release.apk
+          path: app/build/outputs/apk/sideload/release/app-sideload-release.apk
           if-no-files-found: error
           compression-level: 0
           overwrite: true
+
+      # One fixed link that always serves the newest APK (no zip, no GitHub login):
+      # https://github.com/<owner>/<repo>/releases/download/friendtalk-test/FriendTalk.apk
+      - name: Publish test download (fixed link)
+        if: github.ref_name == 'claude/friendtalk-apk-structure-fpd3wq' || github.ref_name == 'main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          cp app/build/outputs/apk/sideload/release/app-sideload-release.apk FriendTalk.apk
+          NOTES="FriendTalk สำหรับทดลองใช้ — build #${{ github.run_number }} ($(date -u +'%Y-%m-%d %H:%M') UTC)
+          ดาวน์โหลด FriendTalk.apk ด้านล่าง แล้วกดติดตั้ง (ติดตั้งทับรุ่นเดิมได้ ข้อมูลไม่หาย)"
+          gh release view friendtalk-test >/dev/null 2>&1 || \
+            gh release create friendtalk-test --title "FriendTalk ทดลองใช้ (ล่าสุด)" --notes "$NOTES" --prerelease --target "${{ github.sha }}"
+          gh release upload friendtalk-test FriendTalk.apk --clobber
+          gh release edit friendtalk-test --notes "$NOTES"
 
   aab:
     name: Build signed AAB and upload to Play (internal, draft)
@@ -196,18 +214,18 @@ jobs:
         run: |
           if [ -f "./gradlew" ]; then
             chmod +x ./gradlew
-            ./gradlew bundleRelease --no-daemon --stacktrace
+            ./gradlew bundlePlayRelease --no-daemon --stacktrace
           else
-            gradle bundleRelease --no-daemon --stacktrace
+            gradle bundlePlayRelease --no-daemon --stacktrace
           fi
-          ls -la app/build/outputs/bundle/release/
+          ls -la app/build/outputs/bundle/playRelease/
 
       - name: Upload AAB artifact
         if: env.HAS_SIGNING == 'true' && env.HAS_GS == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: FriendTalk-release-aab
-          path: app/build/outputs/bundle/release/app-release.aab
+          path: app/build/outputs/bundle/playRelease/app-play-release.aab
           if-no-files-found: error
           compression-level: 0
           overwrite: true
@@ -221,7 +239,7 @@ jobs:
         uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
-          packageName: com.example
-          releaseFiles: app/build/outputs/bundle/release/app-release.aab
+          packageName: th.friendtalk.app
+          releaseFiles: app/build/outputs/bundle/playRelease/app-play-release.aab
           track: internal
           status: draft

@@ -154,7 +154,41 @@
     },
     "lives": {
       ".read": "(auth != null) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",
-      ".write": false
+      ".write": false,
+      ".indexOn": ["hostUid", "status"]
+    },
+    "liveChat": {
+      "$liveId": {
+        ".read": "auth != null",
+        ".write": false
+      }
+    },
+    "calls": {
+      "$callId": {
+        ".read": "auth != null && (data.child('callerUid').val() === auth.uid || data.child('calleeUid').val() === auth.uid)",
+        ".write": false
+      }
+    },
+    "callInbox": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": false
+      }
+    },
+    "payOpenInbox": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": false
+      }
+    },
+    "payOpenResults": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": false
+      }
+    },
+    "payOpens": {
+      ".indexOn": ["state"]
     },
     "liveViewers": {
       ".read": "(auth != null) && (root.child('appConfig').child('lock').child('locked').val() !== true || root.child('roles').child(auth.uid).exists())",

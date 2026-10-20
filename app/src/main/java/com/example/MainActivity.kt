@@ -49,6 +49,15 @@ import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseUser
 
 class MainActivity : ComponentActivity() {
+    /** A tapped push carries chatId → open that chat room. */
+    private fun openFromNotification(i: android.content.Intent?) {
+        i?.getStringExtra("chatId")?.takeIf { it.isNotBlank() }?.let { com.example.social.SocialRepo.openChat.value = it }
+    }
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        openFromNotification(intent)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         com.example.ui.components.I18n.load(this)
@@ -57,6 +66,16 @@ class MainActivity : ComponentActivity() {
         } catch (e: Exception) {
             Log.w("MainActivity", "Firebase initialization on startup: ${e.message}")
         }
+        com.example.push.PushRepo.ensureChannel(this)
+        com.example.ui.components.Tweaks.start() // admin 'ปรับละเอียด' values, live
+        lifecycle.addObserver(androidx.lifecycle.LifecycleEventObserver { _, e ->
+            when (e) {
+                androidx.lifecycle.Lifecycle.Event.ON_START -> com.example.push.MessageWatcher.foreground = true
+                androidx.lifecycle.Lifecycle.Event.ON_STOP -> com.example.push.MessageWatcher.foreground = false
+                else -> {}
+            }
+        })
+        openFromNotification(intent)
         enableEdgeToEdge()
         setContent {
             FriendTalkRoot()
@@ -95,6 +114,7 @@ fun FriendTalkRoot(
             viewModel.syncFirebaseUser(user)
             if (com.example.social.SocialRepo.upsertOnSignIn(user)) com.example.ui.social.InterestsPrompt.show.value = true
             com.example.social.SocialRepo.startPresence(context)
+            com.example.push.PushRepo.register() // this device gets chat / friend / gift notifications
             viewModel.refreshRemoteUiConfig() // published Remote UI config for everyone
             com.example.service.UiLayoutRepository.refreshHome()
             com.example.ui.components.UiPages.refresh()
@@ -123,12 +143,21 @@ fun FriendTalkRoot(
                 }
             )
         } else { com.example.ui.onboarding.OnboardingGate(firebaseUser) {
+            if (android.os.Build.VERSION.SDK_INT >= 33) {
+                val notifPerm = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { }
+                LaunchedEffect(Unit) {
+                    val prefs = context.getSharedPreferences("friendtalk", 0)
+                    val granted = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                    if (!granted && !prefs.getBoolean("askedNotif", false)) { prefs.edit().putBoolean("askedNotif", true).apply(); notifPerm.launch(android.Manifest.permission.POST_NOTIFICATIONS) }
+                }
+            }
             FriendTalkApp(
                 viewModel = viewModel,
                 currentUserFirebase = firebaseUser,
                 onSignOut = {
                     coroutineScope.launch {
                         // Mark inactive + hide from radar, then sign out (Firebase + Credential Manager)
+                        runCatching { com.example.push.PushRepo.unregister() }
                         runCatching { com.example.social.SocialRepo.stopPresence() }
                         runCatching {
                             com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.let { u ->
@@ -154,6 +183,7 @@ fun FriendTalkRoot(
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class) // HorizontalPager (tab swiping)
 @Composable
 fun FriendTalkApp(
     viewModel: FriendTalkViewModel,
@@ -182,14 +212,23 @@ fun FriendTalkApp(
     var activeCompanionWalletId by remember { mutableStateOf<String?>(null) }
 
     val unreadNotificationsCount = uiState.notifications.count { !it.isRead }
-    val totalUnreadMessages = uiState.conversations.sumOf { it.unreadCounts[uiState.currentUser.id] ?: 0 }
+    // Real unread chats (RTDB userChats + readReceipts), refreshed every minute
+    val totalUnreadMessages by com.example.ui.feed.HomeRepo.unreadChats.collectAsState()
+    val appCtx = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(uiState.currentUser.id) { com.example.push.MessageWatcher.start(appCtx); com.example.social.DiscoverFilter.load(appCtx) }
+    LaunchedEffect(uiState.currentUser.id) { while (true) { com.example.ui.feed.HomeRepo.refreshCounts(); kotlinx.coroutines.delay(60_000) } }
+    var isHomeNotifsOpen by remember { mutableStateOf(false) }
+    if (isHomeNotifsOpen) com.example.ui.feed.HomeNotificationsDialog { isHomeNotifsOpen = false }
     val activeLiveCount = 0 // live rooms are not real yet (no badge from mock data)
 
     val appBgColor = parseHexColor(uiState.uiConfig.theme.backgroundColorHex, Slate950)
 
     com.example.ui.social.ProfileNav.openOwn = { viewModel.setActiveTab("profile") }
     // Home uses the original mockup palette (dark navy + magenta/purple neon); other pages keep the published theme.
-    FriendTalkTheme(themeConfig = if (uiState.activeTab == "home") com.example.ui.feed.HOME_MOCKUP_THEME.copy(backgrounds = uiState.uiConfig.theme.backgrounds - "app") else uiState.uiConfig.theme) {
+    // User's mode from the "ฉัน" page: โหมดมืด = Home look on every page, โหมดปกติ = 'หาเพื่อน' look on every page.
+    val modeCtx = LocalContext.current
+    remember { com.example.ui.theme.AppThemeMode.load(modeCtx) }
+    FriendTalkTheme(themeConfig = com.example.ui.theme.AppThemeMode.themeConfig()) {
         // Maintenance mode from published Remote UI config: blocks normal users, admins still get in.
         LaunchedEffect(uiState.currentUser.id) { com.example.ui.components.AppGates.start(); com.example.social.Wallet.start() }
         // System back: other tab → Home; on Home press twice within 2s to exit. Dialogs/sub-screens handle back themselves first.
@@ -213,8 +252,7 @@ fun FriendTalkApp(
             }
             return@FriendTalkTheme
         }
-        val bgs = uiState.uiConfig.theme.backgrounds
-        com.example.ui.theme.AppBackground(bgs["tab_" + uiState.activeTab] ?: bgs["app"])
+        com.example.ui.theme.ModeBackground()
         Scaffold(
             containerColor = androidx.compose.ui.graphics.Color.Transparent,
             modifier = Modifier
@@ -223,24 +261,18 @@ fun FriendTalkApp(
                 Column {
                 com.example.ui.social.VerifyEmailBanner()
                 if (globalSearch) com.example.ui.social.GlobalSearchDialog { globalSearch = false }
+                // Same header as Home on every page (owner request). AppHeader / FriendsHeader are kept in code but no longer shown.
                 if (uiState.uiConfig.feed.showHeader) {
-                    AppHeader(
+                    com.example.ui.feed.HomeHeader(
                         currentUser = uiState.currentUser,
-                        appName = uiState.uiConfig.appName,
-                        showSearchBar = uiState.activeTab == "chat", // owner: no search bar on Home
-                        unreadNotificationsCount = unreadNotificationsCount,
-                        onOpenCoins = { isCoinsOpen = true },
-                        onOpenNotifications = { isNotifsOpen = true },
-                        onOpenAuth = { isAuthOpen = true },
-                        onOpenProfile = { if (com.google.firebase.auth.FirebaseAuth.getInstance().currentUser != null) viewModel.setActiveTab("profile") else isAuthOpen = true },
-                        onOpenSearch = { globalSearch = true },
-                        uiConfig = uiState.uiConfig,
-                        onRefreshConfig = { viewModel.refreshRemoteUiConfig() },
-                        isRefreshing = uiState.isRefreshingConfig,
-                        onOpenAdminDashboard = { isAdminDashboardOpen = true },
-                        onOpenUiBuilder = { isUiBuilderOpen = true },
-                        onOpenApkDownload = { isApkDownloadOpen = true }
+                        onAvatar = { if (com.google.firebase.auth.FirebaseAuth.getInstance().currentUser != null) viewModel.setActiveTab("profile") else isAuthOpen = true },
+                        onCoins = { if (com.google.firebase.auth.FirebaseAuth.getInstance().currentUser != null) com.example.ui.shop.Shop.open.value = "coins" else isAuthOpen = true },
+                        onDiamonds = { if (com.google.firebase.auth.FirebaseAuth.getInstance().currentUser != null) com.example.ui.shop.Shop.open.value = "diamonds" else isAuthOpen = true },
+                        onBell = { isHomeNotifsOpen = true },
+                        onAdmin = { isAdminDashboardOpen = true }
                     )
+                    // The chat page kept its global search (friends / #hashtags) under the header
+                    if (uiState.activeTab == "chat") com.example.ui.feed.HomeSearchPill { globalSearch = true }
                 }
                 }
             },
@@ -260,7 +292,9 @@ fun FriendTalkApp(
                     .fillMaxSize()
                     .padding(innerPadding)
             ) {
-                com.example.ui.components.UiPage(uiState.activeTab) { com.example.ui.components.UiSection("page", "ทั้งหน้า") { com.example.ui.components.ComingSoonGate("tab_" + uiState.activeTab, Modifier.fillMaxSize()) { com.example.ui.components.FeatureLockGate(when (uiState.activeTab) { "movie" -> "video"; else -> uiState.activeTab }, Modifier.fillMaxSize()) { when (uiState.activeTab) {
+                // Content of one tab (used directly, or as a page of the swipe pager below)
+                val tabContent: @Composable (String) -> Unit = { tab ->
+                com.example.ui.components.UiPage(tab) { com.example.ui.components.UiSection("page", "ทั้งหน้า") { com.example.ui.components.ComingSoonGate("tab_" + tab, Modifier.fillMaxSize()) { com.example.ui.components.FeatureLockGate(when (tab) { "movie" -> "video"; else -> tab }, Modifier.fillMaxSize()) { when (tab) {
                     "home" -> FeedTab(
                         onOpenSearch = { globalSearch = true },
                         onOpenFindFriends = { viewModel.setActiveTab("discover") },
@@ -316,13 +350,45 @@ fun FriendTalkApp(
                         currentUser = uiState.currentUser,
                         onEditProfile = { isEditProfileOpen = true },
                         onOpenCreatorStudio = { isCreatorStudioOpen = true },
-                        onOpenCoins = { isCoinsOpen = true },
+                        onOpenCoins = { com.example.ui.shop.Shop.open.value = "coins" }, // real shop / top-up (old CoinWalletDialog only said "not open")
                         onOpenAccount = { isAuthOpen = true },
                         onOpenPermissions = { isPermissionsOpen = true },
                         onOpenCompanionApply = { isCompanionApplyOpen = true },
                         onLogout = onSignOut
                     )
                 } } } } }
+                }
+                // Swipe left / right between the bottom-bar tabs (same order and admin toggles as BottomNavBar).
+                val navTabs = remember(uiState.uiConfig.bottomNav, uiState.uiConfig.isMovieFeatureEnabled) {
+                    buildList {
+                        if (uiState.uiConfig.bottomNav.showHomeTab) add("home")
+                        if (uiState.uiConfig.bottomNav.showDiscoverTab) add("discover")
+                        if (com.example.ui.components.TabSwipe.SHOW_SHORT_VIDEO_TAB && uiState.uiConfig.bottomNav.showMovieTab && uiState.uiConfig.isMovieFeatureEnabled) add("movie")
+                        if (uiState.uiConfig.bottomNav.showChatTab) add("chat")
+                        add("profile")
+                    }
+                }
+                if (uiState.activeTab in navTabs) {
+                    val pagerState = androidx.compose.foundation.pager.rememberPagerState(initialPage = navTabs.indexOf(uiState.activeTab).coerceAtLeast(0)) { navTabs.size }
+                    val currentTab by rememberUpdatedState(uiState.activeTab)
+                    // bottom bar / code changed the tab → scroll the pager there
+                    LaunchedEffect(uiState.activeTab, navTabs) {
+                        val i = navTabs.indexOf(uiState.activeTab)
+                        if (i >= 0 && i != pagerState.currentPage) pagerState.animateScrollToPage(i)
+                    }
+                    // user swiped → select that tab
+                    LaunchedEffect(pagerState, navTabs) {
+                        androidx.compose.runtime.snapshotFlow { pagerState.settledPage }.collect { p ->
+                            navTabs.getOrNull(p)?.let { if (it != currentTab) viewModel.setActiveTab(it) }
+                        }
+                    }
+                    androidx.compose.foundation.pager.HorizontalPager(
+                        state = pagerState,
+                        userScrollEnabled = !com.example.ui.components.TabSwipe.locked,
+                        key = { navTabs[it] },
+                        modifier = Modifier.fillMaxSize()
+                    ) { page -> Box(Modifier.fillMaxSize()) { tabContent(navTabs[page]) } }
+                } else tabContent(uiState.activeTab) // live / companion / ads pages: no swiping
                 if (uiState.activeTab == "discover") com.example.ads.PlacementBanner("discover", Modifier.align(androidx.compose.ui.Alignment.BottomCenter))
 
                 com.example.ui.components.UiPage("shop") { com.example.ui.shop.ShopHost() }
@@ -496,6 +562,8 @@ fun FriendTalkApp(
     openChatId?.let { id -> com.example.ui.components.UiPage("chatroom") { com.example.ui.social.RealChatRoomDialog(chatId = id, onClose = { com.example.social.SocialRepo.openChat.value = null }) } }
 
     com.example.ads.AdRoomHost()
+    com.example.rtc.RtcHost()
+    com.example.ui.payopen.PayOpenHost()
     val askInterests by com.example.ui.social.InterestsPrompt.show.collectAsStateWithLifecycle()
     if (askInterests) com.example.ui.social.InterestsEditorDialog(onDismiss = { com.example.ui.social.InterestsPrompt.show.value = false }, skippable = true)
 
@@ -504,11 +572,8 @@ fun FriendTalkApp(
             currentUser = uiState.currentUser,
             onDismiss = { isEditProfileOpen = false },
             onSave = { dName, bio, age, gen, prov, interests ->
+                // The dialog already saved to the server (PUT /me/profile); this only refreshes the local screen state.
                 viewModel.updateProfile(dName, bio, age, gen, prov, interests)
-                profileScope.launch {
-                    val ok = com.example.social.SocialRepo.saveProfile(dName, bio, age, gen.name.lowercase(), prov, interests)
-                    android.widget.Toast.makeText(profileContext, if (ok) "บันทึกโปรไฟล์แล้ว" else "บันทึกโปรไฟล์ไม่สำเร็จ (ยืนยันอีเมลแล้วหรือยัง?)", android.widget.Toast.LENGTH_SHORT).show()
-                }
             }
         )
     }
@@ -535,13 +600,8 @@ fun FriendTalkApp(
         )
     }
 
-    if (isCompanionApplyOpen) {
-        CompanionApplyDialog(
-            currentUser = uiState.currentUser,
-            onDismiss = { isCompanionApplyOpen = false },
-            onSubmitApplication = { viewModel.applyAsCompanion(it) }
-        )
-    }
+    // Real companion sign-up (friendtalk-brain /companion-apply); the old local-only CompanionApplyDialog is no longer opened.
+    if (isCompanionApplyOpen) com.example.ui.social.CompanionSignupDialog { isCompanionApplyOpen = false }
 
     if (isCompanionKycOpen) {
         CompanionKycDialog(

@@ -70,60 +70,61 @@ fun AuthScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Slate950)
-            .statusBarsPadding()
-            .navigationBarsPadding(),
+            .background(Brush.verticalGradient(listOf(androidx.compose.ui.graphics.Color(0xFF0B0824), androidx.compose.ui.graphics.Color(0xFF221050), androidx.compose.ui.graphics.Color(0xFF4A1660)))),
         contentAlignment = Alignment.Center
     ) {
+        // soft neon glows behind the card
+        Box(Modifier.align(Alignment.TopStart).offset((-80).dp, 40.dp).size(300.dp).background(Brush.radialGradient(listOf(androidx.compose.ui.graphics.Color(0x5533C8FF), androidx.compose.ui.graphics.Color.Transparent))))
+        Box(Modifier.align(Alignment.BottomEnd).offset(90.dp, (-60).dp).size(340.dp).background(Brush.radialGradient(listOf(androidx.compose.ui.graphics.Color(0x66FF2FA8), androidx.compose.ui.graphics.Color.Transparent))))
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 16.dp)
-                .verticalScroll(scrollState),
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .imePadding()
+                .verticalScroll(scrollState)
+                .padding(horizontal = 22.dp, vertical = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(44.dp))
 
-            // Branded Logo
-            Box(
-                modifier = Modifier
-                    .size(76.dp)
-                    .clip(CircleShape)
-                    .background(
-                        Brush.linearGradient(listOf(Pink500, Purple600))
-                    )
-                    .border(2.dp, Pink400.copy(alpha = 0.5f), CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "FT",
-                    fontWeight = FontWeight.Black,
-                    fontSize = 32.sp,
-                    color = White
+            // Brand logo (same artwork as the launcher icon) with a soft halo
+            Box(contentAlignment = Alignment.Center) {
+                Box(Modifier.size(170.dp).background(Brush.radialGradient(listOf(androidx.compose.ui.graphics.Color(0x66FF4FB8), androidx.compose.ui.graphics.Color(0x2233C8FF), androidx.compose.ui.graphics.Color.Transparent))))
+                androidx.compose.foundation.Image(
+                    painter = androidx.compose.ui.res.painterResource(com.example.R.drawable.brand_logo),
+                    contentDescription = "FriendTalk",
+                    modifier = Modifier.size(96.dp)
                 )
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
-            // App Title
-            Text(
-                text = "FriendTalk",
-                fontWeight = FontWeight.ExtraBold,
-                fontSize = 28.sp,
-                color = White,
-                letterSpacing = (-0.5).sp
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Friend", fontWeight = FontWeight.Black, fontSize = 32.sp, color = PureWhite, letterSpacing = (-0.5).sp)
+                Text("Talk", fontWeight = FontWeight.Black, fontSize = 32.sp, color = androidx.compose.ui.graphics.Color(0xFFFF4FB8), letterSpacing = (-0.5).sp)
+            }
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "พื้นที่พบปะเพื่อนใหม่ ไลฟ์สด และคอมมูนิตี้ที่คุณรัก",
-                fontSize = 13.sp,
-                color = Slate300,
+                text = "เจอเพื่อนใหม่ ใกล้ตัวคุณ",
+                fontSize = 15.sp,
+                color = PureWhite.copy(alpha = 0.7f),
                 textAlign = TextAlign.Center
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(40.dp))
+
+            // Glass card holding the sign-in options
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp))
+                    .background(if (com.example.ui.theme.AppThemeMode.dark) androidx.compose.ui.graphics.Color(0xD9140F35) else androidx.compose.ui.graphics.Color(0xF2FFFFFF))
+                    .border(1.dp, Brush.linearGradient(listOf(androidx.compose.ui.graphics.Color(0x8833C8FF), androidx.compose.ui.graphics.Color(0x88FF2FA8))), RoundedCornerShape(28.dp))
+                    .padding(horizontal = 20.dp, vertical = 22.dp)
+            ) {
+            Text("ยินดีต้อนรับ", color = PureWhite, fontWeight = FontWeight.Bold, fontSize = 22.sp, modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp), textAlign = TextAlign.Center)
+            Text("เข้าสู่ระบบหรือสมัครสมาชิกฟรี", color = Slate400, fontSize = 13.sp, modifier = Modifier.fillMaxWidth().padding(bottom = 18.dp), textAlign = TextAlign.Center)
 
             // Error Banner
             AnimatedVisibility(visible = displayError != null) {
@@ -209,44 +210,21 @@ fun AuthScreen(
                 }
             }
 
-            // Segmented Channel Selector (3 Channels)
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = Slate900,
-                border = androidx.compose.foundation.BorderStroke(1.dp, Slate800),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(modifier = Modifier.padding(4.dp)) {
-                    val channels = listOf("🌐 Google", "✉️ อีเมล", "📱 เบอร์โทร")
-                    channels.forEachIndexed { index, title ->
-                        val isSelected = selectedAuthChannel == index
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = if (isSelected) Pink600 else Slate900,
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(10.dp))
-                                .clickable {
-                                    selectedAuthChannel = index
-                                    localError = null
-                                    infoMessage = null
-                                    authService.clearError()
-                                }
-                        ) {
-                            Text(
-                                text = title,
-                                color = if (isSelected) White else Slate400,
-                                fontSize = 12.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.padding(vertical = 8.dp)
-                            )
-                        }
-                    }
+            if (selectedAuthChannel != 0) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clip(RoundedCornerShape(10.dp)).clickable {
+                        selectedAuthChannel = 0; localError = null; infoMessage = null; authService.clearError()
+                    }.padding(vertical = 6.dp, horizontal = 2.dp)
+                ) {
+                    Icon(Icons.Default.ArrowBack, contentDescription = null, tint = Slate400, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("เลือกวิธีอื่น", color = Slate400, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                 }
+                Spacer(modifier = Modifier.height(10.dp))
+            } else {
+                Spacer(modifier = Modifier.height(6.dp))
             }
-
-            Spacer(modifier = Modifier.height(18.dp))
 
             // Channel Content
             when (selectedAuthChannel) {
@@ -258,11 +236,12 @@ fun AuthScreen(
                     ) {
                         Surface(
                             shape = RoundedCornerShape(16.dp),
-                            color = White,
-                            tonalElevation = 4.dp,
+                            color = PureWhite,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, androidx.compose.ui.graphics.Color(0xFFDADCE0)),
+                            shadowElevation = 2.dp,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(52.dp)
+                                .height(54.dp)
                         ) {
                             Button(
                                 onClick = {
@@ -294,8 +273,9 @@ fun AuthScreen(
                                     }
                                 },
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = White,
-                                    contentColor = Slate900
+                                    containerColor = PureWhite,
+                                    contentColor = androidx.compose.ui.graphics.Color(0xFF1F1F1F),
+                                    disabledContainerColor = PureWhite
                                 ),
                                 shape = RoundedCornerShape(16.dp),
                                 modifier = Modifier.fillMaxSize(),
@@ -312,26 +292,34 @@ fun AuthScreen(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.Center
                                     ) {
-                                        Text(text = "🌐", fontSize = 18.sp)
-                                        Spacer(modifier = Modifier.width(10.dp))
+                                        GoogleMark()
+                                        Spacer(modifier = Modifier.width(12.dp))
                                         Text(
-                                            text = "เข้าสู่ระบบด้วย Google",
-                                            fontWeight = FontWeight.Bold,
+                                            text = "ดำเนินการต่อด้วย Google",
+                                            fontWeight = FontWeight.SemiBold,
                                             fontSize = 15.sp,
-                                            color = Slate900
+                                            color = androidx.compose.ui.graphics.Color(0xFF1F1F1F)
                                         )
                                     }
                                 }
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = "💡 สำหรับอุปกรณ์จริง (APK) ที่มี Google Account",
-                            fontSize = 11.sp,
-                            color = Slate400,
-                            textAlign = TextAlign.Center
-                        )
+                        Spacer(modifier = Modifier.height(18.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            Box(Modifier.weight(1f).height(1.dp).background(Slate400.copy(alpha = 0.3f)))
+                            Text("หรือ", color = Slate400, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 12.dp))
+                            Box(Modifier.weight(1f).height(1.dp).background(Slate400.copy(alpha = 0.3f)))
+                        }
+                        Spacer(modifier = Modifier.height(18.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                            AltMethodButton(Icons.Default.Email, "อีเมล", Modifier.weight(1f)) {
+                                selectedAuthChannel = 1; localError = null; infoMessage = null; authService.clearError()
+                            }
+                            AltMethodButton(Icons.Default.Phone, "เบอร์โทร", Modifier.weight(1f)) {
+                                selectedAuthChannel = 2; localError = null; infoMessage = null; authService.clearError()
+                            }
+                        }
                     }
                 }
 
@@ -386,8 +374,8 @@ fun AuthScreen(
                                 shape = RoundedCornerShape(12.dp),
                                 singleLine = true,
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedTextColor = White,
-                                    unfocusedTextColor = White,
+                                    focusedTextColor = PureWhite,
+                                    unfocusedTextColor = PureWhite,
                                     focusedBorderColor = Pink500,
                                     unfocusedBorderColor = Slate800,
                                     focusedContainerColor = Slate900,
@@ -407,8 +395,8 @@ fun AuthScreen(
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = White,
-                                unfocusedTextColor = White,
+                                focusedTextColor = PureWhite,
+                                unfocusedTextColor = PureWhite,
                                 focusedBorderColor = Pink500,
                                 unfocusedBorderColor = Slate800,
                                 focusedContainerColor = Slate900,
@@ -439,8 +427,8 @@ fun AuthScreen(
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = White,
-                                unfocusedTextColor = White,
+                                focusedTextColor = PureWhite,
+                                unfocusedTextColor = PureWhite,
                                 focusedBorderColor = Pink500,
                                 unfocusedBorderColor = Slate800,
                                 focusedContainerColor = Slate900,
@@ -461,8 +449,8 @@ fun AuthScreen(
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedTextColor = White,
-                                    unfocusedTextColor = White,
+                                    focusedTextColor = PureWhite,
+                                    unfocusedTextColor = PureWhite,
                                     focusedBorderColor = Pink500,
                                     unfocusedBorderColor = Slate800,
                                     focusedContainerColor = Slate900,
@@ -544,18 +532,18 @@ fun AuthScreen(
                                     )
                                 }
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = Pink600),
-                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color(0xFFE6399B)),
+                            shape = RoundedCornerShape(16.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(50.dp),
+                                .height(52.dp),
                             enabled = !isLoading
                         ) {
                             if (isLoading) {
-                                CircularProgressIndicator(modifier = Modifier.size(20.dp), color = White, strokeWidth = 2.dp)
+                                CircularProgressIndicator(modifier = Modifier.size(20.dp), color = PureWhite, strokeWidth = 2.dp)
                             } else {
                                 Text(
-                                    text = if (isSignUp) "สมัครสมาชิกด้วย Firebase" else "เข้าสู่ระบบด้วย Firebase Email",
+                                    text = if (isSignUp) "สมัครสมาชิก" else "เข้าสู่ระบบ",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 14.sp
                                 )
@@ -564,7 +552,7 @@ fun AuthScreen(
 
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "💡 ใช้งานได้บน AI Studio Preview และทุกอุปกรณ์",
+                            text = if (isSignUp) "เราจะส่งลิงก์ยืนยันไปที่อีเมลของคุณ" else "ลืมรหัสผ่าน? เข้าด้วย Google หรือเบอร์โทรแทนได้",
                             fontSize = 11.sp,
                             color = Slate400,
                             textAlign = TextAlign.Center,
@@ -589,8 +577,8 @@ fun AuthScreen(
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedTextColor = White,
-                                    unfocusedTextColor = White,
+                                    focusedTextColor = PureWhite,
+                                    unfocusedTextColor = PureWhite,
                                     focusedBorderColor = Pink500,
                                     unfocusedBorderColor = Slate800,
                                     focusedContainerColor = Slate900,
@@ -637,9 +625,9 @@ fun AuthScreen(
                                 enabled = !isLoading
                             ) {
                                 if (isLoading) {
-                                    CircularProgressIndicator(modifier = Modifier.size(20.dp), color = White, strokeWidth = 2.dp)
+                                    CircularProgressIndicator(modifier = Modifier.size(20.dp), color = PureWhite, strokeWidth = 2.dp)
                                 } else {
-                                    Text("ส่งรหัส OTP ผ่าน SMS (Firebase)", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    Text("ส่งรหัส OTP ทาง SMS", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                                 }
                             }
                         } else {
@@ -661,8 +649,8 @@ fun AuthScreen(
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedTextColor = White,
-                                    unfocusedTextColor = White,
+                                    focusedTextColor = PureWhite,
+                                    unfocusedTextColor = PureWhite,
                                     focusedBorderColor = Purple500,
                                     unfocusedBorderColor = Slate800,
                                     focusedContainerColor = Slate900,
@@ -703,7 +691,7 @@ fun AuthScreen(
                                 enabled = !isLoading
                             ) {
                                 if (isLoading) {
-                                    CircularProgressIndicator(modifier = Modifier.size(20.dp), color = White, strokeWidth = 2.dp)
+                                    CircularProgressIndicator(modifier = Modifier.size(20.dp), color = PureWhite, strokeWidth = 2.dp)
                                 } else {
                                     Text("ยืนยันรหัส OTP และเข้าสู่ระบบ", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                                 }
@@ -726,28 +714,57 @@ fun AuthScreen(
                 }
             }
 
+            }
+
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Security note
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Security,
-                    contentDescription = null,
-                    tint = Slate500,
-                    modifier = Modifier.size(14.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "รับรองความปลอดภัยด้วย Firebase Authentication",
-                    fontSize = 11.sp,
-                    color = Slate500
-                )
-            }
+            Text(
+                text = "การดำเนินการต่อถือว่าคุณยอมรับข้อกำหนดการใช้งาน\nและนโยบายความเป็นส่วนตัวของ FriendTalk",
+                fontSize = 11.sp,
+                lineHeight = 16.sp,
+                color = PureWhite.copy(alpha = 0.55f),
+                textAlign = TextAlign.Center
+            )
 
             Spacer(modifier = Modifier.height(12.dp))
         }
+    }
+}
+
+@Composable
+private fun AltMethodButton(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, modifier: Modifier, onClick: () -> Unit) {
+    Row(
+        modifier
+            .height(48.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .border(1.dp, Slate400.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        Icon(icon, contentDescription = null, tint = PureWhite, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(label, color = PureWhite, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+/** Four-colour Google "G" drawn as arcs so no extra asset is needed. */
+@Composable
+private fun GoogleMark() {
+    androidx.compose.foundation.Canvas(Modifier.size(20.dp)) {
+        val stroke = size.minDimension * 0.2f
+        val inset = stroke / 2
+        val arcSize = androidx.compose.ui.geometry.Size(size.width - stroke, size.height - stroke)
+        val tl = androidx.compose.ui.geometry.Offset(inset, inset)
+        val st = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke)
+        drawArc(androidx.compose.ui.graphics.Color(0xFFEA4335), -150f, 105f, false, tl, arcSize, style = st)
+        drawArc(androidx.compose.ui.graphics.Color(0xFFFBBC05), 150f, 60f, false, tl, arcSize, style = st)
+        drawArc(androidx.compose.ui.graphics.Color(0xFF34A853), 45f, 105f, false, tl, arcSize, style = st)
+        drawArc(androidx.compose.ui.graphics.Color(0xFF4285F4), -5f, 50f, false, tl, arcSize, style = st)
+        drawRect(
+            androidx.compose.ui.graphics.Color(0xFF4285F4),
+            topLeft = androidx.compose.ui.geometry.Offset(size.width / 2, size.height / 2 - stroke / 2),
+            size = androidx.compose.ui.geometry.Size(size.width / 2 - inset + stroke / 2, stroke)
+        )
     }
 }

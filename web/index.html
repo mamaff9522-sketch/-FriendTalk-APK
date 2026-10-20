@@ -1,0 +1,884 @@
+<!doctype html>
+<html lang="th" class="bg-[#0a0820]">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0820">
+<title>FriendTalk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Kanit:ital,wght@0,400;0,500;0,600;1,700;1,800&family=Sarabun:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com/3.4.16"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        ink: '#0a0820', panel: '#120f2c', card: '#16123a', line: '#2a2357',
+        neon: '#ff2fa8', violet: '#b04dff', muted: '#a49cc8'
+      },
+      fontFamily: { th: ['Kanit', 'Sarabun', 'sans-serif'], body: ['Sarabun', 'Kanit', 'sans-serif'] }
+    }
+  }
+};
+</script>
+<style>
+  :root { --neon: #ff2fa8; --violet: #b04dff; }
+  html, body { background: #0a0820; color: #f4f1ff; -webkit-tap-highlight-color: transparent; }
+  body { font-family: 'Kanit', 'Sarabun', system-ui, sans-serif; overscroll-behavior-y: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; } .no-scrollbar { scrollbar-width: none; }
+  .brand { font-family: 'Kanit', sans-serif; font-style: italic; font-weight: 800; letter-spacing: -.5px; }
+  .glow-text { text-shadow: 0 0 10px rgba(255, 47, 168, .75), 0 0 22px rgba(176, 77, 255, .45); }
+  .glow-white { text-shadow: 0 0 10px rgba(214, 160, 255, .65); }
+  .neon-border { border: 1.5px solid rgba(190, 90, 255, .75); box-shadow: 0 0 12px rgba(176, 77, 255, .45), inset 0 0 10px rgba(176, 77, 255, .15); }
+  .ring-neon { background: conic-gradient(from 200deg, #ff2fa8, #b04dff, #6d5bff, #ff2fa8); box-shadow: 0 0 14px rgba(190, 80, 255, .7); }
+  .card-glow { box-shadow: 0 0 0 1px rgba(120, 90, 220, .25), 0 6px 22px rgba(10, 5, 40, .6); }
+  .icon-glow { filter: drop-shadow(0 0 6px rgba(190, 90, 255, .95)); }
+  .pink-glow { filter: drop-shadow(0 0 6px rgba(255, 47, 168, .8)); }
+  .skel { background: linear-gradient(90deg, #17133a 0%, #221c4d 50%, #17133a 100%); background-size: 200% 100%; animation: sk 1.3s infinite linear; }
+  @keyframes sk { to { background-position: -200% 0; } }
+  .sheet-enter { animation: up .22s ease-out; } @keyframes up { from { transform: translateY(100%); } to { transform: none; } }
+  .safe-b { padding-bottom: env(safe-area-inset-bottom); }
+  input::placeholder, textarea::placeholder { color: #8e86b8; }
+  /* สัดส่วนตามภาพต้นแบบ: เห็นการ์ดไลฟ์ ~4.75 ใบ และวงกลมคนใกล้คุณ 6 วงต่อหนึ่งจอ */
+  .live-w { width: calc((min(100vw, 480px) - 44px) / 4.75); }
+  .near-w { width: calc((min(100vw, 480px) - 12px) / 6); }
+</style>
+</head>
+<body class="min-h-screen">
+<div id="app" class="relative mx-auto min-h-screen w-full max-w-[480px] bg-ink pb-[72px]">
+
+  <!-- ===== ส่วนหัว ===== -->
+  <header class="sticky top-0 z-30 flex items-center gap-1.5 border-b border-line/70 bg-ink/95 px-2.5 pb-2 pt-[max(8px,env(safe-area-inset-top))] backdrop-blur">
+    <button id="hdrAvatarBtn" class="relative shrink-0" aria-label="โปรไฟล์">
+      <span class="ring-neon block rounded-full p-[2px]">
+        <img id="hdrAvatar" alt="" class="h-[38px] w-[38px] rounded-full bg-card object-cover">
+      </span>
+      <span class="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-ink bg-[#2bd96b]"></span>
+    </button>
+    <div class="min-w-0 flex-1 leading-tight">
+      <div class="flex items-center gap-0.5">
+        <span class="brand whitespace-nowrap text-[21px] leading-none"><span class="glow-white text-white">Friend</span><span class="glow-text text-neon">Talk</span></span>
+        <svg class="pink-glow h-[18px] w-[18px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="#ff4fc0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 12.6 12 20l-7.5-7.4A5 5 0 0 1 12 6a5 5 0 0 1 7.5 6.6z"/><path d="M15 8.5c1 .2 1.8 1 2 2"/></svg>
+      </div>
+      <div id="hdrName" class="mt-0.5 truncate text-[11px] text-[#d9d3f7]">&nbsp;</div>
+    </div>
+    <button id="coinBtn" class="flex shrink-0 items-center gap-1 rounded-full border border-[#5b3a8f] bg-[#1a1440] py-1 pl-1 pr-1 shadow-[0_0_10px_rgba(176,77,255,.35)]" aria-label="เติมเหรียญ">
+      <span class="grid h-[18px] w-[18px] place-items-center rounded-full bg-gradient-to-b from-[#ffd84a] to-[#f2a20c] text-[10px] font-bold text-[#8a5200] shadow-[0_0_6px_rgba(255,200,40,.7)]">$</span>
+      <span id="coinVal" class="text-[12px] font-medium text-[#ffe08a]">–</span>
+      <span class="grid h-5 w-5 place-items-center rounded-full bg-gradient-to-br from-neon to-violet text-[15px] leading-none text-white">+</span>
+    </button>
+    <button id="gemBtn" class="flex shrink-0 items-center gap-1 rounded-full border border-[#5b3a8f] bg-[#1a1440] py-1 pl-1.5 pr-1 shadow-[0_0_10px_rgba(176,77,255,.35)]" aria-label="เพชร">
+      <svg class="h-[15px] w-[15px]" viewBox="0 0 24 24"><path fill="#4fc3ff" d="M6 3h12l4 6-10 12L2 9z"/><path fill="#a5e4ff" d="M6 3l3 6h6l3-6z"/><path fill="#1e88e5" d="M9 9h6l-3 12z"/></svg>
+      <span id="gemVal" class="text-[12px] font-medium text-[#bfe8ff]">–</span>
+      <span class="grid h-5 w-5 place-items-center rounded-full bg-gradient-to-br from-neon to-violet text-[15px] leading-none text-white">+</span>
+    </button>
+    <button id="bellBtn" class="relative shrink-0 p-0.5" aria-label="การแจ้งเตือน">
+      <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="#e9e4ff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M18 9a6 6 0 1 0-12 0c0 6-2.5 7.5-2.5 7.5h17S18 15 18 9"/><path d="M10.3 20a1.9 1.9 0 0 0 3.4 0"/></svg>
+      <span id="bellDot" class="absolute right-0 top-0 hidden h-2 w-2 rounded-full bg-[#ff2d55] shadow-[0_0_6px_#ff2d55]"></span>
+    </button>
+  </header>
+
+  <!-- ===== หน้าหลัก ===== -->
+  <main id="page-home" data-page="home">
+    <!-- ไลฟ์สดตอนนี้ -->
+    <section class="border-b border-line/60 pb-3 pt-2.5">
+      <div class="flex items-center justify-between px-3">
+        <h2 class="flex items-center gap-1.5 text-[16px] font-semibold">
+          <svg class="pink-glow h-5 w-6" viewBox="0 0 28 24"><rect x="1" y="5" width="18" height="14" rx="3.5" fill="#ff2fa8"/><path d="M20 10l6-3.5v11L20 14z" fill="#ff2fa8"/><circle cx="6.5" cy="9.5" r="1.8" fill="#0a0820"/></svg>
+          ไลฟ์สดตอนนี้
+        </h2>
+        <button data-go="lives" class="flex items-center gap-1 text-[12.5px] text-neon">ดูทั้งหมด <span class="text-base leading-none">›</span></button>
+      </div>
+      <div id="liveRow" class="no-scrollbar mt-2.5 flex gap-1.5 overflow-x-auto px-2.5"></div>
+    </section>
+
+    <!-- คนใกล้คุณ -->
+    <section class="pb-3 pt-2.5">
+      <div class="flex items-center justify-between px-3">
+        <h2 class="flex items-center gap-1.5 text-[16px] font-semibold">
+          <svg class="pink-glow h-5 w-5" viewBox="0 0 24 24"><path fill="#ff2fa8" d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.6A2.6 2.6 0 1 1 12 6.4a2.6 2.6 0 0 1 0 5.2z"/></svg>
+          คนใกล้คุณ
+        </h2>
+        <button data-tab="friends" class="flex items-center gap-1 text-[12.5px] text-neon">ดูทั้งหมด <span class="text-base leading-none">›</span></button>
+      </div>
+      <div id="nearRow" class="no-scrollbar mt-2.5 flex overflow-x-auto px-1.5"></div>
+    </section>
+
+    <!-- แถบโพสต์ -->
+    <section class="px-2.5 pb-2.5">
+      <form id="composer" class="neon-border flex items-center gap-2.5 rounded-2xl bg-[#130f30] px-3.5 py-1.5">
+        <svg class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="#c48cff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>
+        <input id="postText" maxlength="2000" enterkeyhint="send" autocomplete="off" placeholder="โพสต์..." class="min-w-0 flex-1 bg-transparent text-[16px] text-white outline-none">
+        <span id="attachPreview" class="hidden"></span>
+        <label class="shrink-0 cursor-pointer" aria-label="แนบรูป">
+          <input id="postImage" type="file" accept="image/*" class="hidden">
+          <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="#c48cff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="8.5" cy="9" r="1.6"/><path d="M21 16l-5-5-8.5 9"/></svg>
+        </label>
+        <button id="postSend" type="submit" class="hidden h-8 w-8 shrink-0 place-items-center rounded-full bg-gradient-to-br from-neon to-violet" aria-label="โพสต์">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </button>
+      </form>
+    </section>
+
+    <!-- แท็บ -->
+    <nav id="feedTabs" class="flex border-b border-line/60 px-1.5 text-[14px]">
+      <button data-feed="all" class="relative px-4 pb-2.5 pt-1">ทั้งหมด</button>
+      <button data-feed="near" class="relative px-4 pb-2.5 pt-1">ใกล้คุณ</button>
+      <button data-feed="following" class="relative px-4 pb-2.5 pt-1">กำลังติดตาม</button>
+    </nav>
+
+    <!-- ฟีด -->
+    <section id="feed" class="grid grid-cols-2 items-start gap-2 px-2 pt-2.5"></section>
+    <div id="feedMore" class="py-5 text-center text-[13px] text-muted"></div>
+  </main>
+
+  <!-- ===== หน้าอื่น ๆ ===== -->
+  <main id="page-friends" data-page="friends" class="hidden px-3 pt-3"></main>
+  <main id="page-messages" data-page="messages" class="hidden pt-1"></main>
+  <main id="page-video" data-page="video" class="hidden px-3 pt-3"></main>
+  <main id="page-profile" data-page="profile" class="hidden px-3 pt-4"></main>
+
+  <!-- ===== แถบล่าง ===== -->
+  <nav id="bottomNav" class="safe-b fixed bottom-0 left-1/2 z-30 w-full max-w-[480px] -translate-x-1/2 border-t border-line/70 bg-[#0c0a24]/95 backdrop-blur">
+    <div class="grid grid-cols-5 pt-1.5">
+      <button data-tab="home" class="flex flex-col items-center gap-0.5 pb-1.5">
+        <svg class="h-[26px] w-[26px]" viewBox="0 0 24 24"><path class="ic" d="M3.5 10.6 12 3.5l8.5 7.1V20a1 1 0 0 1-1 1H15v-6h-6v6H4.5a1 1 0 0 1-1-1z"/></svg>
+        <span class="text-[11.5px]">หน้าหลัก</span>
+      </button>
+      <button data-tab="friends" class="flex flex-col items-center gap-0.5 pb-1.5">
+        <svg class="h-[26px] w-[26px]" viewBox="0 0 24 24"><path class="ic" d="M12 21s-7-7.4-7-12a7 7 0 0 1 14 0c0 4.6-7 12-7 12z"/><circle class="ic" cx="12" cy="9" r="2.6"/></svg>
+        <span class="text-[11.5px]">หาเพื่อน</span>
+      </button>
+      <button data-tab="messages" class="relative flex flex-col items-center gap-0.5 pb-1.5">
+        <span class="relative">
+          <svg class="h-[26px] w-[26px]" viewBox="0 0 24 24"><path class="ic" d="M12 3.5c5 0 9 3.5 9 7.8s-4 7.8-9 7.8c-1.1 0-2.2-.2-3.2-.5L4 20.5l1.4-3.9C4 15.2 3 13.3 3 11.3 3 7 7 3.5 12 3.5z"/><circle cx="8" cy="11.3" r="1.1" fill="currentColor"/><circle cx="12" cy="11.3" r="1.1" fill="currentColor"/><circle cx="16" cy="11.3" r="1.1" fill="currentColor"/></svg>
+          <span id="msgBadge" class="absolute -right-2.5 -top-1.5 hidden min-w-[18px] rounded-full bg-[#ff2d6f] px-1 text-center text-[11px] font-semibold leading-[18px] text-white shadow-[0_0_8px_#ff2d6f]"></span>
+        </span>
+        <span class="text-[11.5px]">ข้อความ</span>
+      </button>
+      <button data-tab="video" class="flex flex-col items-center gap-0.5 pb-1.5">
+        <svg class="h-[26px] w-[26px]" viewBox="0 0 24 24"><rect class="ic" x="3.5" y="4" width="17" height="16" rx="2.5"/><path d="M10 9.2v5.6l4.6-2.8z" fill="currentColor"/></svg>
+        <span class="text-[11.5px]">วิดีโอ</span>
+      </button>
+      <button data-tab="profile" class="flex flex-col items-center gap-0.5 pb-1.5">
+        <svg class="h-[26px] w-[26px]" viewBox="0 0 24 24"><circle class="ic" cx="12" cy="8" r="4"/><path class="ic" d="M4 20.5c1.2-3.8 4.3-5.5 8-5.5s6.8 1.7 8 5.5"/></svg>
+        <span class="text-[11.5px]">โปรไฟล์</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- ชั้นซ้อน: หน้าเต็มจอ / แผ่นล่าง / แจ้งข้อความ -->
+  <div id="overlay" class="fixed inset-0 z-40 hidden"></div>
+  <div id="toast" class="pointer-events-none fixed bottom-[100px] left-1/2 z-[60] hidden -translate-x-1/2 rounded-full bg-[#2a1f5c] px-4 py-2 text-[14px] text-white shadow-[0_0_14px_rgba(176,77,255,.6)]"></div>
+</div>
+
+<!-- ===== เข้าสู่ระบบ (แสดงเฉพาะตอนยังไม่ได้ล็อกอิน) ===== -->
+<div id="login" class="fixed inset-0 z-50 hidden bg-ink">
+  <form id="loginForm" class="mx-auto flex min-h-full max-w-[420px] flex-col justify-center gap-3 px-6">
+    <div class="mb-4 text-center">
+      <div class="brand text-[40px]"><span class="glow-white">Friend</span><span class="glow-text text-neon">Talk</span></div>
+      <div class="text-[14px] text-muted">เข้าสู่ระบบเพื่อดูไลฟ์ เพื่อนใกล้คุณ และฟีด</div>
+    </div>
+    <input id="loginEmail" type="email" required autocomplete="email" placeholder="อีเมล" class="neon-border rounded-2xl bg-[#130f30] px-4 py-3 text-[16px] outline-none">
+    <input id="loginPass" type="password" required autocomplete="current-password" placeholder="รหัสผ่าน" class="neon-border rounded-2xl bg-[#130f30] px-4 py-3 text-[16px] outline-none">
+    <div id="loginErr" class="min-h-[20px] text-center text-[13px] text-[#ff7aa8]"></div>
+    <button class="rounded-2xl bg-gradient-to-r from-neon to-violet py-3 text-[16px] font-semibold shadow-[0_0_16px_rgba(255,47,168,.55)]">เข้าสู่ระบบ</button>
+  </form>
+</div>
+
+<script>
+'use strict';
+/* =========================================================================
+ * ค่าเชื่อมต่อ backend จริงของ FriendTalk (ดู docs/BACKEND.md)
+ * - BRAIN : friendtalk-brain (Cloud Run) — ต้องใส่ origin ของหน้านี้ใน env CORS_ORIGINS
+ * - AUTH  : friendtalk-auth (Cloud Run) — ใช้เมื่อไม่ได้ใส่ FIREBASE_API_KEY
+ * - DB    : Firebase Realtime Database (REST, อ่านตามกฎ firebase/database.rules.json)
+ * - BUCKET: Firebase Storage สำหรับรูปโพสต์ (posts/{uid}/...)
+ * - FIREBASE_API_KEY: Web API key ของโปรเจกต์ (ไม่ใช่ความลับ) — ถ้าใส่ จะล็อกอินผ่าน
+ *   Google Identity Toolkit โดยตรง ซึ่งรองรับ CORS จากเบราว์เซอร์
+ * ======================================================================= */
+const CONFIG = {
+  BRAIN: 'https://friendtalk-brain-123224091480.asia-southeast1.run.app',
+  AUTH: 'https://friendtalk-auth-123224091480.asia-southeast1.run.app',
+  DB: 'https://friendtalk-4e623-default-rtdb.asia-southeast1.firebasedatabase.app',
+  BUCKET: 'friendtalk-4e623.firebasestorage.app',
+  FIREBASE_API_KEY: ''
+};
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const safeUrl = u => (typeof u === 'string' && /^https:\/\//i.test(u)) ? esc(u) : '';
+const fmtNum = n => (Number(n) || 0).toLocaleString('en-US');
+const fmtK = n => { n = Number(n) || 0; if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M'; if (n >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'K'; return String(n); };
+const AVATAR_FALLBACK = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="#221b4d"/><circle cx="32" cy="25" r="11" fill="#6f5fb8"/><path d="M12 58c3-11 11-16 20-16s17 5 20 16" fill="#6f5fb8"/></svg>');
+const avatar = u => safeUrl(u) || AVATAR_FALLBACK;
+function timeAgo(t) {
+  const s = Math.max(0, (Date.now() - Number(t || 0)) / 1000);
+  if (s < 60) return 'เมื่อสักครู่';
+  if (s < 3600) return Math.floor(s / 60) + ' นาทีที่แล้ว';
+  if (s < 86400) return Math.floor(s / 3600) + ' ชั่วโมงที่แล้ว';
+  if (s < 86400 * 30) return Math.floor(s / 86400) + ' วันที่แล้ว';
+  return new Date(Number(t)).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+}
+// "~1.2 km" / "~500 m" จาก backend → "1.2 กม." / "500 ม."
+const thDist = d => String(d || '').replace(/^~\s*/, '').replace(/\s*km$/i, ' กม.').replace(/\s*m$/i, ' ม.');
+const BADGE = '<svg class="inline-block h-[15px] w-[15px] shrink-0 align-[-2px]" viewBox="0 0 24 24"><path fill="#ff2fa8" d="M12 1.8l2.6 1.9 3.2-.1 1 3 2.6 1.9-1 3.1 1 3-2.6 1.9-1 3.1-3.2-.1L12 22.2l-2.6-1.9-3.2.1-1-3.1-2.6-1.9 1-3-1-3.1 2.6-1.9 1-3 3.2.1z"/><path d="M8 12.2l2.7 2.7L16.2 9.4" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+function toast(msg, ms = 2600) {
+  const t = $('#toast'); t.textContent = msg; t.classList.remove('hidden');
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.add('hidden'), ms);
+}
+
+/* ---------------- การยืนยันตัวตน ---------------- */
+const AUTH_KEY = 'ft_web_auth_v1';
+let session = null; // { uid, idToken, refreshToken, exp }
+function loadSession() { try { session = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null'); } catch { session = null; } }
+function saveSession(s) { session = s; try { s ? localStorage.setItem(AUTH_KEY, JSON.stringify(s)) : localStorage.removeItem(AUTH_KEY); } catch {} }
+const AUTH_ERR = { INVALID_LOGIN_CREDENTIALS: 'อีเมลหรือรหัสผ่านไม่ถูกต้อง', INVALID_PASSWORD: 'อีเมลหรือรหัสผ่านไม่ถูกต้อง', EMAIL_NOT_FOUND: 'อีเมลหรือรหัสผ่านไม่ถูกต้อง',
+  USER_DISABLED: 'บัญชีนี้ถูกระงับ', TOO_MANY_ATTEMPTS_TRY_LATER: 'ลองหลายครั้งเกินไป กรุณารอสักครู่', RATE_LIMITED: 'ลองหลายครั้งเกินไป กรุณารอสักครู่', INVALID_EMAIL: 'รูปแบบอีเมลไม่ถูกต้อง' };
+
+async function postJson(url, body, form = false) {
+  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': form ? 'application/x-www-form-urlencoded' : 'application/json' }, body: form ? new URLSearchParams(body) : JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { const code = String(j?.error?.message || j?.error || 'AUTH_ERROR').split(' ')[0].split(':')[0]; const e = new Error(AUTH_ERR[code] || code); e.status = r.status; throw e; }
+  return j;
+}
+async function login(email, password) {
+  let d;
+  if (CONFIG.FIREBASE_API_KEY) {
+    const j = await postJson(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${CONFIG.FIREBASE_API_KEY}`, { email, password, returnSecureToken: true });
+    d = { uid: j.localId, idToken: j.idToken, refreshToken: j.refreshToken, expiresIn: +j.expiresIn };
+  } else d = await postJson(CONFIG.AUTH + '/auth/login', { email, password });
+  saveSession({ uid: d.uid, idToken: d.idToken, refreshToken: d.refreshToken, exp: Date.now() + (d.expiresIn || 3600) * 1000 });
+}
+let refreshing = null;
+async function idToken(force = false) {
+  if (!session) throw Object.assign(new Error('กรุณาเข้าสู่ระบบ'), { status: 401 });
+  if (!force && session.exp - 60e3 > Date.now()) return session.idToken;
+  refreshing ||= (async () => {
+    try {
+      let d;
+      if (CONFIG.FIREBASE_API_KEY) {
+        const j = await postJson(`https://securetoken.googleapis.com/v1/token?key=${CONFIG.FIREBASE_API_KEY}`, { grant_type: 'refresh_token', refresh_token: session.refreshToken }, true);
+        d = { uid: j.user_id, idToken: j.id_token, refreshToken: j.refresh_token, expiresIn: +j.expires_in };
+      } else d = await postJson(CONFIG.AUTH + '/auth/refresh', { refreshToken: session.refreshToken });
+      saveSession({ uid: d.uid, idToken: d.idToken, refreshToken: d.refreshToken, exp: Date.now() + (d.expiresIn || 3600) * 1000 });
+    } catch (e) { if (e.status === 401 || e.status === 400) logout(); throw e; }
+    finally { refreshing = null; }
+  })();
+  await refreshing;
+  return session.idToken;
+}
+function logout() { saveSession(null); location.hash = ''; showLogin(); }
+
+/* ---------------- เรียก API ---------------- */
+function netError(e) { return e instanceof TypeError ? Object.assign(new Error('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้'), { status: 0 }) : e; }
+async function api(path, { method = 'GET', body, retry = true } = {}) {
+  const t = await idToken();
+  let r;
+  try {
+    r = await fetch(CONFIG.BRAIN + path, { method, headers: { Authorization: 'Bearer ' + t, Accept: 'application/json', ...(method !== 'GET' && method !== 'DELETE' ? { 'Content-Type': 'application/json' } : {}) },
+      body: method !== 'GET' && method !== 'DELETE' ? JSON.stringify(body || {}) : undefined });
+  } catch (e) { throw netError(e); }
+  if (r.status === 401 && retry) { await idToken(true); return api(path, { method, body, retry: false }); }
+  const j = await r.json().catch(() => null);
+  if (!r.ok) throw Object.assign(new Error(j?.error || `เกิดข้อผิดพลาด (${r.status})`), { status: r.status, data: j });
+  return j;
+}
+// Realtime Database REST
+async function rtdb(path, params = {}, { method = 'GET', body } = {}) {
+  const q = new URLSearchParams({ auth: await idToken(), ...params });
+  let r;
+  try { r = await fetch(`${CONFIG.DB}/${path}.json?${q}`, { method, body: body === undefined ? undefined : JSON.stringify(body) }); } catch (e) { throw netError(e); }
+  const j = await r.json().catch(() => null);
+  if (!r.ok) throw Object.assign(new Error(j?.error || `HTTP ${r.status}`), { status: r.status });
+  return j;
+}
+const userCache = new Map();
+function userOf(uid) {
+  if (!uid) return Promise.resolve({});
+  if (!userCache.has(uid)) userCache.set(uid, rtdb('users/' + encodeURIComponent(uid)).then(u => u || {}).catch(() => ({})));
+  return userCache.get(uid);
+}
+
+/* ---------------- สถานะแอป ---------------- */
+const S = { me: {}, nearby: null, nearbyErr: '', lives: null, feedTab: 'all', posts: [], cursor: null, feedLoading: false, feedEnd: false, chats: [], notif: { requests: [], matches: [], gifts: [] } };
+
+/* ---------------- ส่วนหัว / กระเป๋าเงิน ---------------- */
+async function loadMe() {
+  const u = await userOf(session.uid);
+  S.me = u;
+  $('#hdrAvatar').src = avatar(u.avatar);
+  $('#hdrName').textContent = u.displayName || 'ผู้ใช้ FriendTalk';
+}
+async function loadWallet() {
+  try {
+    const w = await rtdb('wallets/' + session.uid) || {};
+    S.coins = Number(w.coins) || 0; S.diamonds = Number(w.diamonds) || 0;
+    $('#coinVal').textContent = fmtNum(S.coins); $('#gemVal').textContent = fmtNum(S.diamonds);
+  } catch {}
+}
+
+/* ---------------- ไลฟ์สด ---------------- */
+function liveSkeleton() { return Array.from({ length: 5 }, () => '<div class="skel live-w shrink-0 rounded-xl" style="aspect-ratio:3/4"></div>').join(''); }
+function liveCard(l, wide = false) {
+  return `<button data-live="${esc(l.id)}" class="relative ${wide ? 'w-full' : 'live-w shrink-0'} overflow-hidden rounded-xl border border-[#3a2c72] bg-card text-left shadow-[0_0_10px_rgba(176,77,255,.25)]" style="aspect-ratio:3/4">
+    <img src="${avatar(l.cover)}" alt="" loading="lazy" class="absolute inset-0 h-full w-full object-cover">
+    <span class="absolute left-0 top-0 rounded-br-lg bg-neon px-1.5 py-[1px] text-[9.5px] font-semibold tracking-wide text-white shadow-[0_0_8px_#ff2fa8]">LIVE</span>
+    <span class="absolute inset-x-0 bottom-0 h-[55%] bg-gradient-to-t from-black/85 via-black/40 to-transparent"></span>
+    <span class="absolute bottom-[22px] left-1 flex items-center gap-0.5 rounded-full bg-black/45 px-1.5 text-[9.5px] leading-[15px] text-white">
+      <svg class="h-2.5 w-2.5" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>${fmtK(l.viewers)}</span>
+    <span class="absolute bottom-1 left-1 right-1 flex items-center gap-0.5 truncate text-[11px] font-medium text-white">${esc(l.name)}${l.verified ? BADGE : ''}</span>
+  </button>`;
+}
+async function loadLives() {
+  $('#liveRow').innerHTML = liveSkeleton();
+  try {
+    const raw = await rtdb('lives', { orderBy: '"$key"', limitToLast: '50' }) || {};
+    const list = Object.entries(raw).filter(([, v]) => v && v.status === 'live').map(([id, v]) => ({ id, ...v }));
+    S.lives = await Promise.all(list.map(async l => {
+      const u = await userOf(l.hostUid);
+      return { id: l.id, hostUid: l.hostUid, title: l.title || '', viewers: l.viewerCount || 0, name: u.displayName || 'ผู้ใช้', cover: l.coverUrl || l.thumbnailUrl || u.avatar, verified: u.isCreator === true };
+    }));
+    S.lives.sort((a, b) => b.viewers - a.viewers);
+  } catch (e) { S.lives = []; S.livesErr = e.message; }
+  $('#liveRow').innerHTML = S.lives.length ? S.lives.slice(0, 10).map(l => liveCard(l)).join('')
+    : `<div class="w-full rounded-2xl border border-dashed border-line py-8 text-center text-[14px] text-muted">${S.livesErr ? 'โหลดไลฟ์ไม่สำเร็จ' : 'ยังไม่มีใครไลฟ์ตอนนี้'}</div>`;
+}
+
+/* ---------------- คนใกล้คุณ ---------------- */
+function nearCircle(u) {
+  return `<button data-user="${esc(u.uid)}" class="near-w flex shrink-0 flex-col items-center">
+    <span class="relative">
+      <span class="ring-neon block rounded-full p-[2px]"><img src="${avatar(u.avatar)}" alt="" loading="lazy" class="h-[52px] w-[52px] rounded-full border-2 border-ink bg-card object-cover"></span>
+      <span class="absolute bottom-[2px] right-0 h-3 w-3 rounded-full border-2 border-ink bg-[#2bd96b]"></span>
+      <span class="absolute -bottom-1.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full border border-[#3b2f6e] bg-[#151033] px-1.5 text-[9.5px] leading-[15px] text-white">${esc(thDist(u.distance))}</span>
+    </span>
+    <span class="mt-2.5 w-full truncate px-0.5 text-center text-[12px]">${esc(u.displayName || 'ผู้ใช้')}</span>
+  </button>`;
+}
+function getPosition() {
+  return new Promise((res, rej) => {
+    if (!navigator.geolocation) return rej(new Error('อุปกรณ์ไม่รองรับตำแหน่ง'));
+    navigator.geolocation.getCurrentPosition(p => res(p.coords), () => rej(new Error('กรุณาอนุญาตตำแหน่งเพื่อดูคนใกล้คุณ')), { enableHighAccuracy: false, timeout: 12000, maximumAge: 300000 });
+  });
+}
+async function fetchNearby() {
+  try { return (await api('/radar/nearby?radiusKm=10')).users || []; }
+  catch (e) {
+    if (e.status !== 409) throw e;
+    const c = await getPosition(); // ยังไม่ได้แชร์ตำแหน่ง → ส่งตำแหน่งแบบหยาบให้ server แล้วลองใหม่
+    await api('/radar/location', { method: 'POST', body: { lat: c.latitude, lng: c.longitude } });
+    return (await api('/radar/nearby?radiusKm=10')).users || [];
+  }
+}
+async function loadNearby() {
+  $('#nearRow').innerHTML = Array.from({ length: 6 }, () => '<div class="near-w flex shrink-0 flex-col items-center gap-3"><div class="skel h-[56px] w-[56px] rounded-full"></div><div class="skel h-2.5 w-10 rounded"></div></div>').join('');
+  try { S.nearby = await fetchNearby(); S.nearbyErr = ''; }
+  catch (e) { S.nearby = []; S.nearbyErr = e.status === 429 ? 'ใช้เรดาร์ครบโควตาวันนี้แล้ว' : e.message; }
+  renderNearRow();
+  if (S.feedTab === 'near') loadFeed(true); else if (S.posts.length) renderFeed(); // แสดงระยะทางของผู้โพสต์ที่อยู่ใกล้
+}
+function renderNearRow() {
+  $('#nearRow').innerHTML = S.nearby.length ? S.nearby.slice(0, 12).map(nearCircle).join('')
+    : `<button id="nearRetry" class="w-full rounded-2xl border border-dashed border-line py-6 text-center text-[14px] text-muted">${esc(S.nearbyErr || 'ยังไม่พบคนใกล้คุณ')}${S.nearbyErr ? '<br><span class="text-neon">แตะเพื่อลองใหม่</span>' : ''}</button>`;
+  $('#nearRetry')?.addEventListener('click', loadNearby);
+  if (currentTab === 'friends') renderFriendsPage();
+}
+
+/* ---------------- ฟีด ---------------- */
+const isVideo = m => m && (m.type === 'video' || /\.(mp4|webm|mov|m4v)(\?|$)/i.test(decodeURIComponent(m.path || m.url || '')));
+const distOf = uid => { const n = (S.nearby || []).find(x => x.uid === uid); return n ? thDist(n.distance) : ''; };
+function postCard(p) {
+  const m = (p.images || [])[0];
+  const dist = distOf(p.authorId) || (p.place?.label || '');
+  const media = !m ? '' : isVideo(m)
+    ? `<div class="relative mx-1.5 overflow-hidden rounded-lg bg-black" style="aspect-ratio:1/1.08">
+         <video src="${safeUrl(m.url)}" preload="metadata" playsinline class="h-full w-full object-cover"></video>
+         <button data-play class="absolute inset-0 grid place-items-center"><span class="grid h-11 w-11 place-items-center rounded-full border-2 border-white/90 bg-black/45"><svg class="ml-0.5 h-5 w-5" viewBox="0 0 24 24"><path fill="#fff" d="M7 4.5v15l12-7.5z"/></svg></span></button>
+       </div>`
+    : `<div class="mx-1.5 overflow-hidden rounded-lg bg-black/30" style="aspect-ratio:1/1.08"><img src="${safeUrl(m.url)}" alt="" loading="lazy" class="h-full w-full object-cover"></div>`;
+  return `<article data-post="${esc(p.id)}" class="card-glow flex flex-col rounded-2xl border border-[#2a2357] bg-[#120e2e]">
+    <div class="flex items-start gap-1.5 p-2 pr-1.5">
+      <button data-user="${esc(p.authorId)}" class="ring-neon shrink-0 rounded-full p-[1.5px]"><img src="${avatar(p.authorAvatar)}" alt="" class="h-8 w-8 rounded-full border border-ink object-cover"></button>
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center gap-1 truncate text-[13px] font-medium">${esc(p.authorName || 'ผู้ใช้')}${p._verified ? BADGE : ''}</div>
+        <div class="overflow-hidden whitespace-nowrap text-[9.5px] tracking-tight text-muted">${esc(timeAgo(p.createdAt))}${dist ? ` • <svg class="inline h-2.5 w-2.5 align-[-1px]" viewBox="0 0 24 24" fill="none" stroke="#a49cc8" stroke-width="2"><path d="M12 21s-7-7.4-7-12a7 7 0 0 1 14 0c0 4.6-7 12-7 12z"/><circle cx="12" cy="9" r="2.5"/></svg> ${esc(dist)}` : ''}</div>
+      </div>
+      <button data-more class="-mr-1 px-0.5 text-muted" aria-label="เพิ่มเติม"><svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg></button>
+    </div>
+    ${p.text ? `<p class="line-clamp-3 whitespace-pre-line break-words px-2 pb-1.5 text-[12.5px] leading-snug">${esc(p.text)}</p>` : ''}
+    ${media}
+    <div class="mt-auto flex items-center gap-2.5 px-2 py-1.5 text-[11.5px] text-[#cfc9ee]">
+      <button data-like class="flex items-center gap-1">
+        <svg class="h-[19px] w-[19px] ${p.likedByMe ? 'pink-glow' : ''}" viewBox="0 0 24 24"><path d="M12 20.5 4.4 13A5 5 0 0 1 12 6.3 5 5 0 0 1 19.6 13z" fill="${p.likedByMe ? '#ff2d6f' : 'none'}" stroke="${p.likedByMe ? '#ff2d6f' : '#cfc9ee'}" stroke-width="1.7" stroke-linejoin="round"/></svg>
+        <span data-likes>${fmtK(p.likeCount)}</span></button>
+      <button data-comment class="flex items-center gap-1">
+        <svg class="h-[17px] w-[17px]" viewBox="0 0 24 24" fill="none" stroke="#cfc9ee" stroke-width="1.6" stroke-linejoin="round"><path d="M12 4c4.7 0 8.5 3.2 8.5 7.2s-3.8 7.2-8.5 7.2c-1 0-2-.1-2.9-.4L4.5 20l1.2-3.6C4.3 15 3.5 13.2 3.5 11.2 3.5 7.2 7.3 4 12 4z"/></svg>
+        <span data-comments>${fmtK(p.commentCount)}</span></button>
+      <button data-share class="flex items-center gap-1">
+        <svg class="h-[17px] w-[17px]" viewBox="0 0 24 24" fill="none" stroke="#cfc9ee" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 5l6 6-6 6v-3.5c-4.5 0-7.5 1.3-10 4.5 1-4.8 3.8-9 10-9.5z"/></svg>
+        <span>${fmtK(p.shareCount)}</span></button>
+      <button data-more class="ml-auto text-muted" aria-label="เพิ่มเติม"><svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg></button>
+    </div>
+  </article>`;
+}
+async function withVerified(posts) {
+  await Promise.all(posts.map(async p => { p._verified = (await userOf(p.authorId)).isCreator === true; }));
+  return posts;
+}
+// ดึงโพสต์ของผู้เขียนหลายคนรวมกัน (ใช้กับแท็บ ใกล้คุณ / กำลังติดตาม)
+async function feedByAuthors(uids) {
+  const lists = await Promise.all(uids.slice(0, 12).map(uid => api('/feed?limit=10&author=' + encodeURIComponent(uid)).then(r => r.posts || []).catch(() => [])));
+  return lists.flat().sort((a, b) => b.createdAt - a.createdAt);
+}
+function renderFeed() {
+  const f = $('#feed');
+  if (!S.posts.length && !S.feedLoading) {
+    const msg = { all: 'ยังไม่มีโพสต์', near: S.nearbyErr || 'ยังไม่มีโพสต์จากคนใกล้คุณ', following: 'ยังไม่มีโพสต์จากคนที่คุณติดตาม' }[S.feedTab];
+    f.innerHTML = `<div class="col-span-2 py-10 text-center text-[14px] text-muted">${esc(S.feedErr || msg)}</div>`;
+  } else f.innerHTML = S.posts.map(postCard).join('');
+  $('#feedMore').textContent = S.feedLoading ? 'กำลังโหลด…' : '';
+}
+async function loadFeed(reset = false) {
+  if (S.feedLoading || (!reset && S.feedEnd)) return;
+  const tab = S.feedTab;
+  if (reset) { S.posts = []; S.cursor = null; S.feedEnd = false; S.feedErr = ''; $('#feed').innerHTML = Array.from({ length: 4 }, () => '<div class="skel h-[300px] rounded-2xl"></div>').join(''); }
+  S.feedLoading = true; $('#feedMore').textContent = 'กำลังโหลด…';
+  try {
+    let posts;
+    if (tab === 'all') {
+      const r = await api('/feed?limit=20' + (S.cursor ? '&cursor=' + encodeURIComponent(S.cursor) : ''));
+      posts = r.posts || []; S.cursor = r.nextCursor; S.feedEnd = !r.nextCursor;
+    } else if (tab === 'near') {
+      if (S.nearby === null) { S.feedLoading = false; return; } // รอผลคนใกล้คุณก่อน
+      posts = await feedByAuthors(S.nearby.map(u => u.uid)); S.feedEnd = true;
+    } else {
+      const fr = (await api('/friends')).friends || [];
+      posts = await feedByAuthors(fr.map(u => u.uid)); S.feedEnd = true;
+    }
+    if (tab !== S.feedTab) return;
+    await withVerified(posts);
+    const seen = new Set(S.posts.map(p => p.id));
+    S.posts.push(...posts.filter(p => !seen.has(p.id)));
+  } catch (e) { if (tab === S.feedTab) S.feedErr = 'โหลดฟีดไม่สำเร็จ: ' + e.message; }
+  finally { S.feedLoading = false; }
+  if (tab === S.feedTab) { renderFeed(); if (currentTab === 'video') renderVideoPage(); }
+}
+function setFeedTab(t) {
+  S.feedTab = t;
+  document.querySelectorAll('#feedTabs [data-feed]').forEach(b => {
+    const on = b.dataset.feed === t;
+    b.className = 'relative px-4 pb-2.5 pt-1 ' + (on ? 'font-medium text-neon glow-text' : 'text-[#bdb6e0]');
+    b.innerHTML = b.textContent + (on ? '<span class="absolute inset-x-0 bottom-0 h-[3px] rounded-full bg-gradient-to-r from-neon to-violet shadow-[0_0_8px_#ff2fa8]"></span>' : '');
+  });
+  loadFeed(true);
+}
+const postById = id => S.posts.find(p => p.id === id) || (S.myPosts || []).find(p => p.id === id);
+
+async function toggleLike(card, p) {
+  const on = !p.likedByMe;
+  p.likedByMe = on; p.likeCount = Math.max(0, (p.likeCount || 0) + (on ? 1 : -1)); card.outerHTML = postCard(p);
+  try { const r = await api(`/posts/${encodeURIComponent(p.id)}/like`, { method: on ? 'POST' : 'DELETE' }); p.likeCount = r.likeCount; }
+  catch (e) { p.likedByMe = !on; p.likeCount = Math.max(0, p.likeCount + (on ? -1 : 1)); toast(e.message); }
+  document.querySelectorAll(`[data-post="${CSS.escape(p.id)}"]`).forEach(c => { c.outerHTML = postCard(p); });
+}
+async function sharePost(p) {
+  const text = (p.authorName ? p.authorName + ': ' : '') + (p.text || '') + '\n— FriendTalk';
+  try {
+    if (navigator.share) await navigator.share({ title: 'FriendTalk', text });
+    else { await navigator.clipboard.writeText(text); toast('คัดลอกโพสต์แล้ว'); }
+  } catch {}
+}
+function postMenu(p) {
+  const mine = p.authorId === session.uid;
+  openSheet('', `<div class="flex flex-col">
+    ${mine ? '<button data-act="delete" class="py-3.5 text-[16px] text-[#ff6b8f]">ลบโพสต์</button>' : '<button data-act="report" class="py-3.5 text-[16px] text-[#ff6b8f]">รายงานโพสต์</button>'}
+    <button data-act="close" class="border-t border-line py-3.5 text-[16px] text-muted">ยกเลิก</button></div>`, sheet => {
+    sheet.addEventListener('click', async ev => {
+      const a = ev.target.closest('[data-act]')?.dataset.act; if (!a) return;
+      closeOverlay(); if (a === 'close') return;
+      try {
+        if (a === 'delete') { await api('/posts/' + encodeURIComponent(p.id), { method: 'DELETE' }); S.posts = S.posts.filter(x => x.id !== p.id); if (S.myPosts) S.myPosts = S.myPosts.filter(x => x.id !== p.id); document.querySelectorAll(`[data-post="${CSS.escape(p.id)}"]`).forEach(c => c.remove()); toast('ลบโพสต์แล้ว'); }
+        else { await api('/reports', { method: 'POST', body: { targetType: 'post', targetId: p.id, reason: 'inappropriate' } }); toast('ส่งรายงานแล้ว ขอบคุณครับ'); }
+      } catch (e) { toast(e.message); }
+    });
+  });
+}
+async function openComments(p) {
+  openSheet('ความคิดเห็น', `<div id="cList" class="max-h-[55vh] min-h-[120px] overflow-y-auto px-1"><div class="py-6 text-center text-muted">กำลังโหลด…</div></div>
+    <form id="cForm" class="mt-2 flex gap-2"><input id="cInput" maxlength="1000" placeholder="เขียนความคิดเห็น…" class="neon-border min-w-0 flex-1 rounded-full bg-[#130f30] px-4 py-2.5 text-[15px] outline-none">
+    <button class="rounded-full bg-gradient-to-r from-neon to-violet px-4 text-[15px]">ส่ง</button></form>`, async sheet => {
+    const list = sheet.querySelector('#cList');
+    const render = cs => { list.innerHTML = cs.length ? cs.map(c => `<div class="flex gap-2 py-2"><img src="${avatar(c.authorAvatar)}" class="h-8 w-8 shrink-0 rounded-full object-cover" alt=""><div class="min-w-0 rounded-2xl bg-[#1b1640] px-3 py-1.5"><div class="text-[13px] font-medium">${esc(c.authorName || 'ผู้ใช้')} <span class="font-normal text-muted">· ${esc(timeAgo(c.createdAt))}</span></div><div class="whitespace-pre-line break-words text-[14.5px]">${esc(c.text)}</div></div></div>`).join('') : '<div class="py-6 text-center text-muted">ยังไม่มีความคิดเห็น</div>'; };
+    try { render((await api(`/posts/${encodeURIComponent(p.id)}/comments?limit=100`)).comments || []); } catch (e) { list.innerHTML = `<div class="py-6 text-center text-muted">${esc(e.message)}</div>`; }
+    if (p.commentsOff) { sheet.querySelector('#cForm').innerHTML = '<div class="w-full py-2 text-center text-[14px] text-muted">ผู้โพสต์ปิดความคิดเห็น</div>'; return; }
+    sheet.querySelector('#cForm').addEventListener('submit', async ev => {
+      ev.preventDefault(); const inp = sheet.querySelector('#cInput'); const text = inp.value.trim(); if (!text) return;
+      inp.disabled = true;
+      try {
+        const r = await api(`/posts/${encodeURIComponent(p.id)}/comments`, { method: 'POST', body: { text } });
+        p.commentCount = r.commentCount ?? (p.commentCount || 0) + 1; inp.value = '';
+        document.querySelectorAll(`[data-post="${CSS.escape(p.id)}"] [data-comments]`).forEach(s => { s.textContent = fmtK(p.commentCount); });
+        render((await api(`/posts/${encodeURIComponent(p.id)}/comments?limit=100`)).comments || []); list.scrollTop = list.scrollHeight;
+      } catch (e) { toast(e.message); }
+      finally { inp.disabled = false; inp.focus(); }
+    });
+  });
+}
+function onFeedClick(ev) {
+  const card = ev.target.closest('[data-post]'); if (!card) return;
+  const p = postById(card.dataset.post); if (!p) return;
+  if (ev.target.closest('[data-like]')) return toggleLike(card, p);
+  if (ev.target.closest('[data-comment]')) return openComments(p);
+  if (ev.target.closest('[data-share]')) return sharePost(p);
+  if (ev.target.closest('[data-more]')) return postMenu(p);
+  const play = ev.target.closest('[data-play]');
+  if (play) { const v = play.parentElement.querySelector('video'); play.remove(); v.controls = true; v.play().catch(() => {}); }
+}
+
+/* ---------------- แถบโพสต์ (ส่งข้อความ + แนบรูป) ---------------- */
+let attached = null; // File
+function refreshComposer() {
+  const has = !!attached || !!$('#postText').value.trim();
+  $('#postSend').classList.toggle('hidden', !has); $('#postSend').classList.toggle('grid', has);
+  const pv = $('#attachPreview');
+  if (attached) {
+    pv.className = 'relative shrink-0';
+    pv.innerHTML = `<img src="${URL.createObjectURL(attached)}" alt="" class="h-9 w-9 rounded-lg object-cover"><button type="button" id="attachX" class="absolute -right-1.5 -top-1.5 grid h-4 w-4 place-items-center rounded-full bg-[#ff2d6f] text-[11px] leading-none" aria-label="ลบรูป">×</button>`;
+    $('#attachX').onclick = () => { attached = null; $('#postImage').value = ''; refreshComposer(); };
+  } else { pv.className = 'hidden'; pv.innerHTML = ''; }
+}
+// ย่อรูปไม่เกิน 1600px เป็น JPEG ~85% (เหมือนแอป Android)
+async function compressImage(file) {
+  const bmp = await createImageBitmap(file);
+  const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas'); c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
+  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+  return new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('อ่านรูปไม่ได้')), 'image/jpeg', 0.85));
+}
+async function uploadPostImage(file) {
+  const blob = await compressImage(file);
+  if (blob.size > 10 * 1024 * 1024) throw new Error('รูปใหญ่เกิน 10MB');
+  const path = `posts/${session.uid}/${Date.now()}_0.jpg`;
+  let r;
+  try {
+    r = await fetch(`https://firebasestorage.googleapis.com/v0/b/${CONFIG.BUCKET}/o?uploadType=media&name=${encodeURIComponent(path)}`,
+      { method: 'POST', headers: { Authorization: 'Firebase ' + await idToken(), 'Content-Type': 'image/jpeg' }, body: blob });
+  } catch (e) { throw netError(e); }
+  if (!r.ok) throw new Error(r.status === 403 ? 'อัปโหลดรูปไม่สำเร็จ (ยืนยันอีเมลแล้วหรือยัง?)' : 'อัปโหลดรูปไม่สำเร็จ');
+  return path;
+}
+async function submitPost(ev) {
+  ev.preventDefault();
+  const text = $('#postText').value.trim();
+  if (!text && !attached) return;
+  const form = $('#composer'); form.classList.add('opacity-60', 'pointer-events-none');
+  try {
+    const imageRefs = attached ? [await uploadPostImage(attached)] : [];
+    const p = await api('/posts', { method: 'POST', body: { text, imageRefs, visibility: 'public' } });
+    p.likedByMe = false; p._verified = S.me.isCreator === true;
+    $('#postText').value = ''; attached = null; $('#postImage').value = ''; refreshComposer();
+    if (S.feedTab !== 'all') setFeedTab('all'); else { S.posts.unshift(p); renderFeed(); }
+    toast('โพสต์แล้ว');
+  } catch (e) { toast(e.data?.code === 'moderated' ? e.message : 'โพสต์ไม่สำเร็จ: ' + e.message, 3500); }
+  finally { form.classList.remove('opacity-60', 'pointer-events-none'); }
+}
+
+/* ---------------- ชั้นซ้อน ---------------- */
+function closeOverlay() { const o = $('#overlay'); o.classList.add('hidden'); o.innerHTML = ''; clearInterval(chatPoll); }
+function openSheet(title, html, init) {
+  const o = $('#overlay');
+  o.innerHTML = `<div data-close class="absolute inset-0 bg-black/60"></div>
+    <div class="sheet-enter safe-b absolute bottom-0 left-1/2 w-full max-w-[480px] -translate-x-1/2 rounded-t-3xl border-t border-[#4a3590] bg-[#120e2e] px-4 pb-4 pt-2 shadow-[0_-6px_30px_rgba(176,77,255,.35)]">
+      <div class="mx-auto mb-2 h-1 w-10 rounded-full bg-[#4a3f7d]"></div>
+      ${title ? `<h3 class="mb-2 text-center text-[17px] font-semibold">${esc(title)}</h3>` : ''}
+      <div data-body>${html}</div></div>`;
+  o.classList.remove('hidden');
+  o.querySelector('[data-close]').onclick = closeOverlay;
+  init && init(o.querySelector('[data-body]'));
+}
+function openFull(title, html, init) {
+  const o = $('#overlay');
+  o.innerHTML = `<div class="absolute inset-0 mx-auto flex max-w-[480px] flex-col bg-ink">
+    <div class="flex items-center gap-2 border-b border-line/70 px-2 pb-2 pt-[max(10px,env(safe-area-inset-top))]">
+      <button data-close class="p-2 text-[22px] leading-none" aria-label="กลับ">‹</button><h3 class="flex-1 truncate text-[17px] font-semibold">${title}</h3></div>
+    <div data-body class="min-h-0 flex-1 overflow-y-auto">${html}</div></div>`;
+  o.classList.remove('hidden');
+  o.querySelector('[data-close]').onclick = closeOverlay;
+  init && init(o.querySelector('[data-body]'), o);
+}
+
+/* ---------------- เหรียญ / เพชร ---------------- */
+async function openCoins() {
+  openSheet('เติมเหรียญ', '<div id="pk" class="py-4 text-center text-muted">กำลังโหลดแพ็กเกจ…</div>', async body => {
+    try {
+      const pk = Object.entries(await rtdb('coinPackages') || {}).filter(([, v]) => v && v.active !== false).map(([id, v]) => ({ id, ...v })).sort((a, b) => (a.coins || 0) - (b.coins || 0));
+      if (!pk.length) { body.querySelector('#pk').textContent = 'ยังไม่มีแพ็กเกจเหรียญ'; return; }
+      body.innerHTML = `<div class="mb-3 text-center text-[13px] text-muted">ยอดปัจจุบัน ${fmtNum(S.coins)} เหรียญ</div>
+        <div class="grid grid-cols-3 gap-2">${pk.map(p => `<button data-pk="${esc(p.id)}" class="rounded-2xl border border-[#4a3590] bg-[#1a1440] py-3"><div class="text-[18px] font-semibold text-[#ffe08a]">${fmtNum(p.coins)}</div><div class="text-[12px] text-muted">เหรียญ</div><div class="mt-1 text-[14px]">฿${fmtNum(p.priceThb)}</div></button>`).join('')}</div>
+        <form id="payForm" class="mt-4 hidden flex-col gap-2"><div id="payInfo" class="text-center text-[14px]"></div>
+          <input id="payRef" required maxlength="100" placeholder="เลขอ้างอิงการโอน / เลขที่สลิป" class="neon-border rounded-2xl bg-[#130f30] px-4 py-3 text-[15px] outline-none">
+          <button class="rounded-2xl bg-gradient-to-r from-neon to-violet py-3 font-semibold">ส่งคำขอเติมเหรียญ</button>
+          <div class="text-center text-[12px] text-muted">เหรียญจะเข้าบัญชีหลังแอดมินตรวจสอบการชำระเงิน</div></form>`;
+      let chosen = null;
+      body.querySelectorAll('[data-pk]').forEach(b => b.onclick = () => {
+        chosen = pk.find(x => x.id === b.dataset.pk);
+        body.querySelectorAll('[data-pk]').forEach(x => { x.style.boxShadow = x === b ? '0 0 0 2px #ff2fa8, 0 0 14px #ff2fa8' : ''; });
+        const f = body.querySelector('#payForm'); f.classList.remove('hidden'); f.classList.add('flex');
+        body.querySelector('#payInfo').textContent = `${fmtNum(chosen.coins)} เหรียญ ราคา ฿${fmtNum(chosen.priceThb)}`;
+      });
+      body.querySelector('#payForm').addEventListener('submit', async ev => {
+        ev.preventDefault(); if (!chosen) return;
+        try { await api('/coins/purchase', { method: 'POST', body: { packageId: chosen.id, paymentRef: body.querySelector('#payRef').value.trim() } }); closeOverlay(); toast('ส่งคำขอแล้ว รอแอดมินยืนยัน', 3500); }
+        catch (e) { toast(e.message); }
+      });
+    } catch (e) { body.querySelector('#pk').textContent = 'โหลดแพ็กเกจไม่สำเร็จ: ' + e.message; }
+  });
+}
+async function openGems() {
+  openSheet('เพชร', '<div id="gw" class="py-4 text-center text-muted">กำลังโหลด…</div>', async body => {
+    try {
+      const [w, shop] = await Promise.all([api('/gifts/wallet'), api('/shop/products').catch(() => ({ diamonds: [] }))]);
+      const items = (shop.diamonds || []).filter(x => x.enabled !== false).sort((a, b) => (a.order || 0) - (b.order || 0));
+      body.innerHTML = `<div class="grid grid-cols-3 gap-2 text-center">
+          <div class="rounded-2xl bg-[#1a1440] py-3"><div class="text-[18px] font-semibold text-[#bfe8ff]">${fmtNum(w.diamonds)}</div><div class="text-[12px] text-muted">เพชรทั้งหมด</div></div>
+          <div class="rounded-2xl bg-[#1a1440] py-3"><div class="text-[18px] font-semibold">${fmtNum(w.pending)}</div><div class="text-[12px] text-muted">รอรับของขวัญ</div></div>
+          <div class="rounded-2xl bg-[#1a1440] py-3"><div class="text-[18px] font-semibold text-[#2bd96b]">${fmtNum(w.available)}</div><div class="text-[12px] text-muted">ใช้ได้</div></div></div>
+        ${items.length ? `<div class="mt-4 text-[14px] text-muted">แพ็กเกจเพชร</div><div class="mt-2 grid grid-cols-3 gap-2">${items.map(x => `<div class="rounded-2xl border border-[#4a3590] bg-[#1a1440] py-3 text-center"><div class="text-[17px] font-semibold text-[#bfe8ff]">${fmtNum(x.amount)}${x.bonus ? ` <span class="text-[12px] text-[#2bd96b]">+${fmtNum(x.bonus)}</span>` : ''}</div><div class="text-[13px]">฿${fmtNum(x.priceTHB)}</div></div>`).join('')}</div>` : ''}
+        <div class="mt-4 text-center text-[13px] text-muted">การซื้อเพชรชำระผ่าน Google Play ในแอป FriendTalk บน Android</div>
+        <a href="${esc(CONFIG.BRAIN)}/download/apk" class="mt-3 block rounded-2xl bg-gradient-to-r from-neon to-violet py-3 text-center font-semibold">ดาวน์โหลดแอปเพื่อซื้อเพชร</a>`;
+    } catch (e) { body.querySelector('#gw').textContent = 'โหลดข้อมูลเพชรไม่สำเร็จ: ' + e.message; }
+  });
+}
+
+/* ---------------- การแจ้งเตือน ---------------- */
+const GIFT_SEEN_KEY = 'ft_gift_seen';
+async function loadNotif() {
+  const [req, mt, gf] = await Promise.all([
+    api('/friends/requests').then(r => r.requests || []).catch(() => []),
+    rtdb('matchNotifications/' + session.uid).catch(() => null),
+    rtdb('giftNotifications/' + session.uid, { orderBy: '"$key"', limitToLast: '20' }).catch(() => null)
+  ]);
+  S.notif.requests = req;
+  S.notif.matches = Object.entries(mt || {}).map(([id, v]) => ({ id, ...v })).sort((a, b) => b.at - a.at).slice(0, 20);
+  S.notif.gifts = Object.entries(gf || {}).map(([id, v]) => ({ id, ...v })).sort((a, b) => b.at - a.at);
+  const seenGift = Number(localStorage.getItem(GIFT_SEEN_KEY) || 0);
+  const dot = req.length > 0 || S.notif.matches.some(m => !m.seen) || S.notif.gifts.some(g => g.at > seenGift);
+  $('#bellDot').classList.toggle('hidden', !dot);
+}
+async function openNotif() {
+  openSheet('การแจ้งเตือน', '<div id="nl" class="py-4 text-center text-muted">กำลังโหลด…</div>', async body => {
+    await loadNotif();
+    const mUsers = await Promise.all(S.notif.matches.map(m => userOf(m.otherUid)));
+    const rows = [
+      ...S.notif.requests.map(r => ({ at: r.at, html: `<div class="flex items-center gap-3 py-2.5"><img src="${avatar(r.avatar)}" class="h-11 w-11 rounded-full object-cover" alt=""><div class="min-w-0 flex-1"><div class="truncate text-[15px]"><b class="font-medium">${esc(r.displayName || 'ผู้ใช้')}</b> ขอเป็นเพื่อน</div><div class="text-[12px] text-muted">${esc(timeAgo(r.at))}</div></div>
+        <button data-acc="${esc(r.uid)}" class="rounded-full bg-gradient-to-r from-neon to-violet px-3 py-1.5 text-[13px]">ตอบรับ</button><button data-rej="${esc(r.uid)}" class="rounded-full border border-line px-3 py-1.5 text-[13px] text-muted">ลบ</button></div>` })),
+      ...S.notif.matches.map((m, i) => ({ at: m.at, html: `<button data-chat="${esc(m.chatId)}" data-match="${esc(m.id)}" class="flex w-full items-center gap-3 py-2.5 text-left"><img src="${avatar(mUsers[i].avatar)}" class="h-11 w-11 rounded-full object-cover" alt=""><div class="min-w-0 flex-1"><div class="truncate text-[15px]">คุณกับ <b class="font-medium">${esc(mUsers[i].displayName || 'ผู้ใช้')}</b> แมตช์กันแล้ว</div><div class="text-[12px] text-muted">${esc(timeAgo(m.at))}</div></div>${m.seen ? '' : '<span class="h-2.5 w-2.5 rounded-full bg-neon"></span>'}</button>` })),
+      ...S.notif.gifts.map(g => ({ at: g.at, html: `<div class="flex items-center gap-3 py-2.5"><span class="grid h-11 w-11 place-items-center rounded-full bg-[#2a1f5c] text-[20px]">🎁</span><div class="min-w-0 flex-1"><div class="text-[15px]">${esc(g.msg || ('ของขวัญ ' + (g.name || '')))}</div><div class="text-[12px] text-muted">${esc(timeAgo(g.at))}</div></div></div>` }))
+    ].sort((a, b) => b.at - a.at);
+    body.innerHTML = `<div class="max-h-[60vh] divide-y divide-line/60 overflow-y-auto">${rows.length ? rows.map(r => r.html).join('') : '<div class="py-8 text-center text-muted">ยังไม่มีการแจ้งเตือน</div>'}</div>`;
+    try { localStorage.setItem(GIFT_SEEN_KEY, String(Date.now())); } catch {}
+    $('#bellDot').classList.toggle('hidden', S.notif.requests.length === 0);
+    body.addEventListener('click', async ev => {
+      const acc = ev.target.closest('[data-acc]'), rej = ev.target.closest('[data-rej]'), ch = ev.target.closest('[data-chat]');
+      try {
+        if (acc || rej) {
+          await api('/friends/respond', { method: 'POST', body: { fromUid: (acc || rej).dataset.acc || (acc || rej).dataset.rej, accept: !!acc } });
+          (acc || rej).closest('.flex').remove(); toast(acc ? 'เป็นเพื่อนกันแล้ว' : 'ลบคำขอแล้ว'); loadNotif();
+        } else if (ch) {
+          rtdb(`matchNotifications/${session.uid}/${ch.dataset.match}/seen`, {}, { method: 'PUT', body: true }).catch(() => {});
+          closeOverlay(); openChat(ch.dataset.chat);
+        }
+      } catch (e) { toast(e.message); }
+    });
+  });
+}
+
+/* ---------------- ข้อความ ---------------- */
+async function loadChats() {
+  try {
+    const uc = await rtdb('userChats/' + session.uid) || {};
+    const ids = Object.entries(uc).sort((a, b) => Number(b[1]) - Number(a[1])).slice(0, 30).map(([id]) => id);
+    S.chats = (await Promise.all(ids.map(async id => {
+      const [c, mem, rr] = await Promise.all([rtdb('chats/' + id).catch(() => null), rtdb('chatMembers/' + id).catch(() => null), rtdb(`readReceipts/${id}/${session.uid}`).catch(() => null)]);
+      if (!c) return null;
+      const other = Object.keys(mem || {}).find(u => u !== session.uid);
+      const ou = c.type === 'direct' || !c.title ? await userOf(other) : {};
+      return { id, title: c.title || ou.displayName || 'แชท', avatar: c.avatar || ou.avatar, last: c.lastMessage || '', at: c.lastAt || uc[id] || 0,
+        unread: !!c.lastAt && c.lastSenderUid !== session.uid && c.lastAt > (Number(rr) || 0) };
+    }))).filter(Boolean);
+  } catch { S.chats = S.chats || []; }
+  const n = S.chats.filter(c => c.unread).length;
+  const b = $('#msgBadge'); b.textContent = n > 99 ? '99+' : n; b.classList.toggle('hidden', !n);
+  if (currentTab === 'messages') renderMessagesPage();
+}
+function renderMessagesPage() {
+  $('#page-messages').innerHTML = `<h2 class="px-3 pb-2 pt-3 text-[20px] font-semibold">ข้อความ</h2>` + (S.chats.length ? S.chats.map(c => `
+    <button data-chat="${esc(c.id)}" class="flex w-full items-center gap-3 px-3 py-2.5 text-left active:bg-white/5">
+      <span class="ring-neon shrink-0 rounded-full p-[2px]"><img src="${avatar(c.avatar)}" alt="" class="h-12 w-12 rounded-full border-2 border-ink object-cover"></span>
+      <span class="min-w-0 flex-1"><span class="flex items-center justify-between gap-2"><span class="truncate text-[15.5px] ${c.unread ? 'font-semibold' : ''}">${esc(c.title)}</span><span class="shrink-0 text-[11.5px] text-muted">${esc(timeAgo(c.at))}</span></span>
+      <span class="flex items-center gap-2"><span class="truncate text-[13.5px] ${c.unread ? 'text-white' : 'text-muted'}">${esc(c.last)}</span>${c.unread ? '<span class="ml-auto h-2.5 w-2.5 shrink-0 rounded-full bg-neon shadow-[0_0_6px_#ff2fa8]"></span>' : ''}</span></span>
+    </button>`).join('') : '<div class="py-16 text-center text-muted">ยังไม่มีแชท</div>');
+}
+let chatPoll = null;
+async function openChat(chatId) {
+  const c = S.chats.find(x => x.id === chatId) || { title: 'แชท' };
+  openFull(esc(c.title), `<div id="msgs" class="flex flex-col gap-1.5 px-3 py-3"><div class="py-6 text-center text-muted">กำลังโหลด…</div></div>`, (body, root) => {
+    const form = document.createElement('form');
+    form.className = 'safe-b flex gap-2 border-t border-line/70 bg-ink px-3 py-2';
+    form.innerHTML = `<input maxlength="2000" enterkeyhint="send" placeholder="พิมพ์ข้อความ…" class="neon-border min-w-0 flex-1 rounded-full bg-[#130f30] px-4 py-2.5 text-[16px] outline-none"><button class="rounded-full bg-gradient-to-r from-neon to-violet px-4">ส่ง</button>`;
+    root.firstElementChild.appendChild(form);
+    const box = body.querySelector('#msgs'); let lastKey = '';
+    const load = async () => {
+      try {
+        const m = await rtdb('messages/' + chatId, { orderBy: '"$key"', limitToLast: '60' }) || {};
+        const keys = Object.keys(m).sort(); const k = keys[keys.length - 1] || '';
+        if (k === lastKey && box.dataset.ok) return; lastKey = k; box.dataset.ok = '1';
+        box.innerHTML = keys.length ? keys.map(id => { const x = m[id], me = x.senderUid === session.uid;
+          const t = x.text || (x.imagePath ? '[รูปภาพ]' : x.gift ? '[ของขวัญ]' : '');
+          return `<div class="flex ${me ? 'justify-end' : 'justify-start'}"><div class="max-w-[78%] whitespace-pre-line break-words rounded-2xl px-3.5 py-2 text-[15px] ${me ? 'bg-gradient-to-br from-neon to-violet' : 'bg-[#1d1745]'}">${esc(t)}</div></div>`; }).join('')
+          : '<div class="py-6 text-center text-muted">เริ่มคุยกันเลย</div>';
+        body.scrollTop = body.scrollHeight;
+        rtdb(`readReceipts/${chatId}/${session.uid}`, {}, { method: 'PUT', body: { '.sv': 'timestamp' } }).then(loadChats).catch(() => {});
+      } catch (e) { box.innerHTML = `<div class="py-6 text-center text-muted">${esc(e.message)}</div>`; }
+    };
+    load(); clearInterval(chatPoll); chatPoll = setInterval(load, 4000);
+    form.addEventListener('submit', async ev => {
+      ev.preventDefault(); const inp = form.querySelector('input'); const text = inp.value.trim(); if (!text) return;
+      inp.value = '';
+      try { const r = await api('/chat-send/' + encodeURIComponent(chatId), { method: 'POST', body: { text } }); if (r.warning) toast(r.warning); await load(); }
+      catch (e) { inp.value = text; toast(e.message); }
+    });
+  });
+}
+
+/* ---------------- หาเพื่อน / วิดีโอ / โปรไฟล์ / ไลฟ์ทั้งหมด ---------------- */
+function renderFriendsPage() {
+  const list = S.nearby;
+  $('#page-friends').innerHTML = `<h2 class="pb-3 text-[20px] font-semibold">หาเพื่อน</h2>` + (list === null ? '<div class="py-16 text-center text-muted">กำลังค้นหาคนใกล้คุณ…</div>'
+    : list.length ? `<div class="grid grid-cols-3 gap-x-2 gap-y-5">${list.map(u => `<div class="flex flex-col items-center">${nearCircle(u).replace('w-[70px] shrink-0', 'w-full')}
+        <button data-add="${esc(u.uid)}" class="mt-2 rounded-full border border-[#6b4bc0] px-3 py-1 text-[12.5px] text-[#e3d4ff] shadow-[0_0_8px_rgba(176,77,255,.35)]">เพิ่มเพื่อน</button></div>`).join('')}</div>`
+    : `<button id="frRetry" class="w-full py-16 text-center text-muted">${esc(S.nearbyErr || 'ยังไม่พบคนใกล้คุณ')}<br><span class="text-neon">แตะเพื่อลองใหม่</span></button>`);
+  $('#frRetry')?.addEventListener('click', loadNearby);
+}
+function renderVideoPage() {
+  const vids = S.posts.filter(p => (p.images || []).some(isVideo));
+  $('#page-video').innerHTML = `<h2 class="pb-3 text-[20px] font-semibold">วิดีโอ</h2>` + (vids.length ? `<div class="grid grid-cols-1 gap-3">${vids.map(postCard).join('')}</div>` : '<div class="py-16 text-center text-muted">ยังไม่มีวิดีโอ</div>');
+}
+async function renderProfilePage() {
+  const u = S.me;
+  $('#page-profile').innerHTML = `<div class="flex flex-col items-center text-center">
+      <span class="ring-neon rounded-full p-[3px]"><img src="${avatar(u.avatar)}" alt="" class="h-24 w-24 rounded-full border-2 border-ink object-cover"></span>
+      <div class="mt-3 flex items-center gap-1 text-[20px] font-semibold">${esc(u.displayName || 'ผู้ใช้')}${u.isCreator ? BADGE : ''}</div>
+      ${u.username ? `<div class="text-[13px] text-muted">@${esc(u.username)}</div>` : ''}
+      ${u.bio ? `<p class="mt-2 max-w-[320px] whitespace-pre-line text-[14px] text-[#d9d3f7]">${esc(u.bio)}</p>` : ''}
+      <div class="mt-4 flex gap-3"><div class="rounded-2xl bg-[#1a1440] px-5 py-2"><div class="font-semibold text-[#ffe08a]">${fmtNum(S.coins)}</div><div class="text-[12px] text-muted">เหรียญ</div></div>
+        <div class="rounded-2xl bg-[#1a1440] px-5 py-2"><div class="font-semibold text-[#bfe8ff]">${fmtNum(S.diamonds)}</div><div class="text-[12px] text-muted">เพชร</div></div></div>
+      <button id="logoutBtn" class="mt-4 rounded-full border border-line px-5 py-2 text-[14px] text-muted">ออกจากระบบ</button></div>
+    <h3 class="mb-2 mt-6 text-[16px] font-semibold">โพสต์ของฉัน</h3><div id="myPosts" class="grid grid-cols-2 gap-2.5"><div class="skel h-[200px] rounded-2xl"></div><div class="skel h-[200px] rounded-2xl"></div></div>`;
+  $('#logoutBtn').onclick = logout;
+  try {
+    S.myPosts = await withVerified((await api('/feed?limit=20&author=' + encodeURIComponent(session.uid))).posts || []);
+    $('#myPosts').innerHTML = S.myPosts.length ? S.myPosts.map(postCard).join('') : '<div class="col-span-2 py-8 text-center text-muted">ยังไม่มีโพสต์</div>';
+  } catch (e) { $('#myPosts').innerHTML = `<div class="col-span-2 py-8 text-center text-muted">${esc(e.message)}</div>`; }
+}
+function openAllLives() {
+  openFull('ไลฟ์สดตอนนี้', `<div class="grid grid-cols-2 gap-2.5 p-3">${(S.lives || []).map(l => liveCard(l, true)).join('') || '<div class="col-span-2 py-16 text-center text-muted">ยังไม่มีใครไลฟ์ตอนนี้</div>'}</div>`, body => body.addEventListener('click', onLiveClick));
+}
+function onLiveClick(ev) {
+  const b = ev.target.closest('[data-live]'); if (!b) return;
+  const l = (S.lives || []).find(x => x.id === b.dataset.live);
+  toast(l?.title ? `“${l.title}” — เข้าชมไลฟ์ได้ในแอป FriendTalk` : 'เข้าชมไลฟ์ได้ในแอป FriendTalk');
+}
+async function openUser(uid) {
+  if (!uid || uid === session.uid) return switchTab('profile');
+  const u = await userOf(uid); const dist = distOf(uid);
+  openSheet('', `<div class="flex flex-col items-center pb-2 text-center">
+      <span class="ring-neon rounded-full p-[3px]"><img src="${avatar(u.avatar)}" alt="" class="h-20 w-20 rounded-full border-2 border-ink object-cover"></span>
+      <div class="mt-2 flex items-center gap-1 text-[18px] font-semibold">${esc(u.displayName || 'ผู้ใช้')}${u.isCreator ? BADGE : ''}</div>
+      <div class="text-[13px] text-muted">${[u.age ? u.age + ' ปี' : '', dist ? 'ห่าง ' + dist : ''].filter(Boolean).map(esc).join(' • ')}</div>
+      ${u.bio ? `<p class="mt-2 whitespace-pre-line text-[14px]">${esc(u.bio)}</p>` : ''}
+      <button id="addFr" class="mt-4 w-full rounded-2xl bg-gradient-to-r from-neon to-violet py-3 font-semibold">เพิ่มเพื่อน</button></div>`,
+    body => body.querySelector('#addFr').onclick = () => addFriend(uid, body.querySelector('#addFr')));
+}
+async function addFriend(uid, btn) {
+  try {
+    const r = await api('/friends/request', { method: 'POST', body: { toUid: uid } });
+    const msg = { requested: 'ส่งคำขอแล้ว', friends: 'เป็นเพื่อนกันแล้ว', already_friends: 'เป็นเพื่อนกันอยู่แล้ว' }[r.status] || 'ส่งคำขอแล้ว';
+    if (btn) { btn.textContent = msg; btn.disabled = true; btn.classList.add('opacity-60'); }
+    toast(msg);
+  } catch (e) { toast(e.message); }
+}
+
+/* ---------------- การนำทาง ---------------- */
+let currentTab = 'home';
+const TABS = ['home', 'friends', 'messages', 'video', 'profile'];
+function paintNav() {
+  document.querySelectorAll('#bottomNav [data-tab]').forEach(b => {
+    const on = b.dataset.tab === currentTab;
+    b.style.color = on ? '#c77dff' : '#cfc9ee';
+    b.querySelector('svg').classList.toggle('icon-glow', on);
+    b.querySelectorAll('.ic').forEach(p => { p.setAttribute('fill', on ? 'url(#navGrad)' : 'none'); p.setAttribute('stroke', on ? '#d9a8ff' : 'currentColor'); p.setAttribute('stroke-width', '1.6'); p.setAttribute('stroke-linejoin', 'round'); });
+    b.querySelector('span:last-child').classList.toggle('glow-text', on);
+  });
+}
+function switchTab(t, push = true) {
+  if (!TABS.includes(t)) t = 'home';
+  currentTab = t;
+  document.querySelectorAll('main[data-page]').forEach(m => m.classList.toggle('hidden', m.dataset.page !== t));
+  paintNav(); window.scrollTo(0, 0);
+  if (push && location.hash !== '#' + t) history.pushState(null, '', t === 'home' ? location.pathname + location.search : '#' + t);
+  if (t === 'friends') { renderFriendsPage(); if (S.nearby && !S.nearby.length) loadNearby(); }
+  if (t === 'messages') { renderMessagesPage(); loadChats(); }
+  if (t === 'video') renderVideoPage();
+  if (t === 'profile') renderProfilePage();
+}
+
+/* ---------------- เริ่มต้น ---------------- */
+function showLogin() { $('#login').classList.remove('hidden'); }
+let started = false;
+async function start() {
+  $('#login').classList.add('hidden');
+  if (started) return location.reload();
+  started = true;
+  switchTab((location.hash || '#home').slice(1), false);
+  setFeedTab('all');
+  try { await loadMe(); } catch (e) { if (e.status === 401) return logout(); }
+  loadWallet(); loadLives(); loadNearby(); loadNotif(); loadChats();
+  setInterval(() => { if (document.visibilityState === 'visible') { loadWallet(); loadNotif(); loadChats(); } }, 45000);
+}
+
+document.body.insertAdjacentHTML('afterbegin', '<svg width="0" height="0" class="absolute"><defs><linearGradient id="navGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d48bff"/><stop offset="1" stop-color="#8b3dff"/></linearGradient></defs></svg>');
+$('#loginForm').addEventListener('submit', async ev => {
+  ev.preventDefault(); $('#loginErr').textContent = '';
+  const btn = ev.target.querySelector('button'); btn.disabled = true; btn.textContent = 'กำลังเข้าสู่ระบบ…';
+  try { await login($('#loginEmail').value.trim(), $('#loginPass').value); start(); }
+  catch (e) { $('#loginErr').textContent = e.status === 0 ? 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้' : e.message; }
+  finally { btn.disabled = false; btn.textContent = 'เข้าสู่ระบบ'; }
+});
+$('#bottomNav').addEventListener('click', ev => { const b = ev.target.closest('[data-tab]'); if (b) switchTab(b.dataset.tab); });
+document.querySelector('#page-home [data-tab="friends"]').addEventListener('click', () => switchTab('friends'));
+$('#hdrAvatarBtn').onclick = () => switchTab('profile');
+$('#coinBtn').onclick = openCoins; $('#gemBtn').onclick = openGems; $('#bellBtn').onclick = openNotif;
+document.querySelector('[data-go="lives"]').onclick = openAllLives;
+$('#liveRow').addEventListener('click', onLiveClick);
+$('#feedTabs').addEventListener('click', ev => { const b = ev.target.closest('[data-feed]'); if (b && b.dataset.feed !== S.feedTab) setFeedTab(b.dataset.feed); });
+['#feed', '#page-video', '#page-profile'].forEach(s => $(s).addEventListener('click', onFeedClick));
+document.addEventListener('click', ev => {
+  const u = ev.target.closest('[data-user]'); if (u && !$('#login').contains(u)) { ev.preventDefault(); openUser(u.dataset.user); return; }
+  const add = ev.target.closest('[data-add]'); if (add) return addFriend(add.dataset.add, add);
+  const ch = ev.target.closest('#page-messages [data-chat]'); if (ch) openChat(ch.dataset.chat);
+});
+$('#composer').addEventListener('submit', submitPost);
+$('#postText').addEventListener('input', refreshComposer);
+$('#postImage').addEventListener('change', ev => { const f = ev.target.files[0]; if (f && !f.type.startsWith('image/')) return toast('เลือกได้เฉพาะไฟล์รูป'); attached = f || null; refreshComposer(); });
+window.addEventListener('popstate', () => { if (!$('#overlay').classList.contains('hidden')) closeOverlay(); switchTab((location.hash || '#home').slice(1), false); });
+window.addEventListener('scroll', () => { if (currentTab === 'home' && S.feedTab === 'all' && innerHeight + scrollY > document.body.scrollHeight - 600) loadFeed(); }, { passive: true });
+
+loadSession();
+if (session) start(); else showLogin();
+</script>
+</body>
+</html>

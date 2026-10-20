@@ -23,16 +23,19 @@ data class RealProfile(
     val uid: String, val displayName: String, val username: String = "", val avatar: String = "",
     val bio: String = "", val age: Int? = null, val gender: String = "", val interests: List<String> = emptyList(),
     val lastActive: Long = 0,
-    val similarity: Similarity? = null
+    val similarity: Similarity? = null,
+    /** Rounded distance ("~2 km") when both people opened the radar recently; blank otherwise. */
+    val distance: String = ""
 )
 data class ChatSummary(val chatId: String, val otherUid: String, val lastMessage: String, val lastAt: Long)
-data class GiftMsg(val txId: String, val name: String, val price: Int, val imageUrl: String, val icon: String, val status: String)
+data class GiftMsg(val txId: String, val name: String, val price: Int, val imageUrl: String, val icon: String, val status: String, val videoUrl: String = "")
 data class ChatMessage(val id: String, val senderUid: String, val text: String?, val imagePath: String?, val at: Long, val gift: GiftMsg? = null)
 private fun parseMsg(s: DataSnapshot): ChatMessage {
     val g = s.child("gift").takeIf { it.exists() }?.let {
         GiftMsg(it.child("txId").getValue(String::class.java).orEmpty(), it.child("name").getValue(String::class.java).orEmpty(),
             (it.child("price").getValue(Long::class.java) ?: 0L).toInt(), it.child("imageUrl").getValue(String::class.java).orEmpty(),
-            it.child("icon").getValue(String::class.java).orEmpty(), it.child("status").getValue(String::class.java) ?: "pending")
+            it.child("icon").getValue(String::class.java).orEmpty(), it.child("status").getValue(String::class.java) ?: "pending",
+            it.child("videoUrl").getValue(String::class.java).orEmpty())
     }
     return ChatMessage(s.key.orEmpty(), s.child("senderUid").getValue(String::class.java).orEmpty(), s.child("text").getValue(String::class.java),
         s.child("imagePath").getValue(String::class.java), s.child("at").getValue(Long::class.java) ?: 0, g)
@@ -157,6 +160,7 @@ object SocialRepo {
     fun markRead(chatId: String) {
         val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
         db.getReference("readReceipts/$chatId/$uid").setValue(System.currentTimeMillis())
+        com.example.push.MessageWatcher.markRead(chatId)
     }
 
     suspend fun chatOther(chatId: String, myUid: String): String? =
@@ -174,11 +178,18 @@ object SocialRepo {
         val ok = db.reference.updateChildren(mapOf(
             "messages/$chatId/$key" to (fields + mapOf("senderUid" to uid, "at" to now)),
             "chatCount/$uid" to mapOf("day" to day, "n" to n, "last" to key))).awaitOk()
-        if (ok) db.getReference("chats/$chatId").updateChildren(mapOf("lastMessage" to preview.take(200), "lastAt" to now, "lastSenderUid" to uid))
+        if (ok) {
+            db.getReference("chats/$chatId").updateChildren(mapOf("lastMessage" to preview.take(200), "lastAt" to now, "lastSenderUid" to uid))
+                .addOnCompleteListener { com.example.push.PushRepo.notifyChat(chatId) } // server notifies the other member
+        }
         return ok
     }
 
     suspend fun sendText(chatId: String, text: String) = pushMessage(chatId, mapOf("text" to text.trim().take(2000)), text.trim())
+
+    /** Chat sticker (admin catalog/chatStickers): sent as a normal text message "🎨 สติกเกอร์ [id]" so no rule change is
+     *  needed and older app versions still show readable text; this version draws the sticker image instead. */
+    suspend fun sendSticker(chatId: String, stickerId: String) = pushMessage(chatId, mapOf("text" to ChatSticker.encode(stickerId)), ChatSticker.PREVIEW)
 
     suspend fun sendImage(chatId: String, uri: Uri, mime: String): Boolean {
         val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return false
@@ -252,7 +263,23 @@ object SocialRepo {
             RealProfile(o.optString("uid"), o.optString("displayName"), o.optString("username"), o.optString("avatar"),
                 o.optString("bio"), if (o.isNull("age")) null else o.optInt("age"), o.optString("gender"),
                 if (ints == null) emptyList() else (0 until ints.length()).map { ints.optString(it) },
-                similarity = InterestsRepo.parseSim(o.optJSONObject("similarity")))
+                similarity = InterestsRepo.parseSim(o.optJSONObject("similarity")), distance = o.optString("distance"))
+        }
+    }
+
+    /** Swipe deck: online people only (server-side), each with their สุ่มหาเพื่อน intro card (null = plain profile). null = could not load. */
+    suspend fun swipeDeck(): List<Pair<RealProfile, com.example.ui.random.RandomCard?>>? {
+        val u = FirebaseAuth.getInstance().currentUser ?: return null
+        val r = BrainApi.call(u, "GET", "/swipe/candidates?limit=20")
+        val arr = r.json?.optJSONArray("candidates") ?: return if (r.code == 200) emptyList() else null
+        return (0 until arr.length()).map { i ->
+            val o = arr.getJSONObject(i)
+            val ints = o.optJSONArray("interests")
+            RealProfile(o.optString("uid"), o.optString("displayName"), o.optString("username"), o.optString("avatar"),
+                o.optString("bio"), if (o.isNull("age")) null else o.optInt("age"), o.optString("gender"),
+                if (ints == null) emptyList() else (0 until ints.length()).map { ints.optString(it) },
+                similarity = InterestsRepo.parseSim(o.optJSONObject("similarity")), distance = o.optString("distance")) to
+                com.example.ui.random.RandomCardRepo.parseCard(o.optJSONObject("card"))
         }
     }
 
@@ -263,4 +290,18 @@ object SocialRepo {
         val j = r.json
         return SwipeResult(r.code == 200, j?.optBoolean("matched") == true, j?.optString("chatId")?.ifBlank { null })
     }
+}
+
+
+/** Chat sticker messages: text "🎨 สติกเกอร์ [id]" where id is a catalog/chatStickers item. */
+object ChatSticker {
+    const val PREVIEW = "🎨 สติกเกอร์"
+    private val RE = Regex("^🎨 สติกเกอร์ \\[([A-Za-z0-9_-]{1,40})\\]$")
+    fun encode(id: String) = "$PREVIEW [$id]"
+    fun decode(text: String?): String? = text?.let { RE.matchEntire(it.trim())?.groupValues?.get(1) }
+    /** Free emoji stickers shown when the admin catalog (catalog/chatStickers) is still empty; ids start with "e_" so they never clash with admin items. */
+    val BUILT_IN: List<CatalogItem> = listOf("hi" to ("สวัสดี" to "👋"), "love" to ("รักนะ" to "🥰"), "lol" to ("ขำ" to "🤣"), "ok" to ("โอเค" to "👌"),
+        "thanks" to ("ขอบคุณ" to "🙏"), "sad" to ("เศร้า" to "🥺"), "wow" to ("ว้าว" to "😮"), "party" to ("เย่" to "🥳"), "sleep" to ("ฝันดี" to "😴"),
+        "hug" to ("กอด" to "🤗"), "heart" to ("หัวใจ" to "💖"), "cry" to ("ร้องไห้" to "😭")).mapIndexed { i, (id, nv) ->
+        CatalogItem("e_$id", nv.first, 0, "", nv.second, "อีโมจิ", true, i) }
 }

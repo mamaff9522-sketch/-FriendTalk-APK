@@ -148,5 +148,5 @@ fun HomeSearchBar(onOpen: () -> Unit) {
 }
 
 /** Original Home mockup palette (dark navy + magenta/purple). Applied on Home only. */
-val HOME_MOCKUP_THEME = com.example.model.AppUiThemeConfig(primaryColorHex = "#EC4899", secondaryColorHex = "#A855F7", accentColorHex = "#8B5CF6",
-    backgroundColorHex = "#060B1A", surfaceColorHex = "#0B1430", cardColorHex = "#101A3A", textPrimaryHex = "#FFFFFF", textSecondaryHex = "#B8C0D9")
+val HOME_MOCKUP_THEME = com.example.model.AppUiThemeConfig(primaryColorHex = "#FF2FA8", secondaryColorHex = "#B04DFF", accentColorHex = "#8B5CF6",
+    backgroundColorHex = "#0A0820", surfaceColorHex = "#120F2C", cardColorHex = "#120E2E", textPrimaryHex = "#FFFFFF", textSecondaryHex = "#A49CC8")

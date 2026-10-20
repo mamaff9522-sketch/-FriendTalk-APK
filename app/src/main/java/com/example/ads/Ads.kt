@@ -1,5 +1,7 @@
 package com.example.ads
 
+import com.example.ui.components.dialogNavPadding
+
 import com.example.ui.components.tr
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
@@ -54,6 +56,7 @@ data class AdOffer(val id: String, val title: String, val adFormat: String, val 
                    val validityHours: Int, val feature: String, val amount: Int)
 
 fun rewardText(feature: String, n: Int) = when (feature) {
+    "coins" -> "รับ 🪙 $n เหรียญเข้ากระเป๋า"
     "aiBotMessagesPerDay" -> "คุยกับ AI ได้เพิ่ม $n ข้อความ"
     "chatMessagesPerDay" -> "แชทกับคนได้เพิ่ม $n ข้อความ"
     "radarPerDay" -> "ใช้เรดาร์ได้เพิ่ม $n ครั้ง"
@@ -69,7 +72,9 @@ data class Limits(
     val interstitialEnabled: Boolean, val interstitialEverySwipes: Int, val ssvRequired: Boolean,
     /** canPost to reason */
     val posting: Pair<Boolean, String> = true to "",
-    val offers: List<AdOffer> = emptyList()
+    val offers: List<AdOffer> = emptyList(),
+    /** VIP bought with real-money diamonds → no ads. VIP from free/gifted diamonds or an admin grant still sees ads. */
+    val adFree: Boolean = false
 )
 
 /** Server limits (/limits) + Ad Room navigation state. All numbers come from the server. */
@@ -101,7 +106,8 @@ object AdRoom {
                 val rw = o.optJSONObject("reward") ?: JSONObject()
                 AdOffer(o.optString("id"), o.optString("title"), o.optString("adFormat", "rewarded"), o.optString("estDurationLabel"),
                     o.optString("description"), o.optInt("validityHours"), rw.optString("feature"), rw.optInt("amount"))
-            } } } ?: emptyList())
+            } } } ?: emptyList(),
+            a.optBoolean("adFree", j.optString("tier") == "vip" && !a.has("adFree"))) // older server: every VIP was ad-free
     }
     /** Returns null on success, else a Thai error message. */
     suspend fun claimReward(feature: String, offerId: String? = null): String? {
@@ -122,6 +128,16 @@ private fun Context.activity(): Activity? { var c: Context? = this; while (c is 
 
 object AdsManager {
     @Volatile private var started = false
+    /** Why the last rewarded ad could not be shown (Thai, for the user); null when it was shown. */
+    @Volatile var lastError: String? = null
+    private fun explain(code: Int, message: String): String = when (code) {
+        3 -> "ตอนนี้ยังไม่มีโฆษณาให้แสดง (No fill) ลองใหม่อีกครั้งภายหลัง"
+        2 -> "เชื่อมต่ออินเทอร์เน็ตไม่ได้ หรือถูกบล็อกโฆษณา (เช่น Private DNS / แอปบล็อกโฆษณา)"
+        1 -> "คำขอโฆษณาไม่ถูกต้อง (รหัสโฆษณาหรือแอปใน AdMob ยังไม่พร้อม)"
+        0 -> "AdMob ขัดข้องชั่วคราว ลองใหม่อีกครั้ง"
+        8 -> "แอปยังไม่ถูกต้องในระบบ AdMob (App ID)"
+        else -> "โหลดโฆษณาไม่ได้"
+    } + " [รหัส $code${if (message.isNotBlank()) ": " + message.take(80) else ""}]"
     /** UMP consent (required in EEA, no-op elsewhere) then MobileAds.initialize. */
     fun init(activity: Activity) {
         if (started) return; started = true
@@ -137,13 +153,14 @@ object AdsManager {
 
     /** Loads (only now, after the user's tap) and shows one ad of [format]. customData goes to SSV (e.g. "offer:standard"). */
     suspend fun showRewardedFormat(activity: Activity, format: String, customData: String): Boolean {
+        lastError = null
         val uid = FirebaseAuth.getInstance().currentUser?.uid
         if (format == "rewarded_interstitial") {
             val ad = suspendCancellableCoroutine<com.google.android.gms.ads.rewardedinterstitial.RewardedInterstitialAd?> { c ->
                 com.google.android.gms.ads.rewardedinterstitial.RewardedInterstitialAd.load(activity, AdUnits.unit(BuildConfig.ADMOB_REWARDED_INTERSTITIAL_ID, BuildConfig.ADMOB_TEST_REWARDED_INTERSTITIAL_ID), AdRequest.Builder().build(),
                     object : com.google.android.gms.ads.rewardedinterstitial.RewardedInterstitialAdLoadCallback() {
                         override fun onAdLoaded(a: com.google.android.gms.ads.rewardedinterstitial.RewardedInterstitialAd) { c.resume(a) }
-                        override fun onAdFailedToLoad(e: LoadAdError) { c.resume(null) }
+                        override fun onAdFailedToLoad(e: LoadAdError) { lastError = explain(e.code, e.message); c.resume(null) }
                     })
             } ?: return false
             uid?.let { ad.setServerSideVerificationOptions(ServerSideVerificationOptions.Builder().setUserId(it).setCustomData(customData).build()) }
@@ -151,7 +168,7 @@ object AdsManager {
                 var earned = false
                 ad.fullScreenContentCallback = object : FullScreenContentCallback() {
                     override fun onAdDismissedFullScreenContent() { if (c.isActive) c.resume(earned) }
-                    override fun onAdFailedToShowFullScreenContent(e: AdError) { if (c.isActive) c.resume(false) }
+                    override fun onAdFailedToShowFullScreenContent(e: AdError) { lastError = "แสดงโฆษณาไม่ได้ [รหัส ${e.code}: ${e.message.take(80)}]"; if (c.isActive) c.resume(false) }
                 }
                 ad.show(activity) { earned = true }
             }
@@ -160,7 +177,7 @@ object AdsManager {
         val ad = suspendCancellableCoroutine<RewardedAd?> { c ->
             RewardedAd.load(activity, AdUnits.unit(BuildConfig.ADMOB_REWARDED_ID, BuildConfig.ADMOB_TEST_REWARDED_ID), AdRequest.Builder().build(), object : RewardedAdLoadCallback() {
                 override fun onAdLoaded(a: RewardedAd) { c.resume(a) }
-                override fun onAdFailedToLoad(e: LoadAdError) { c.resume(null) }
+                override fun onAdFailedToLoad(e: LoadAdError) { lastError = explain(e.code, e.message); c.resume(null) }
             })
         } ?: return false
         FirebaseAuth.getInstance().currentUser?.uid?.let {
@@ -170,7 +187,7 @@ object AdsManager {
             var earned = false
             ad.fullScreenContentCallback = object : FullScreenContentCallback() {
                 override fun onAdDismissedFullScreenContent() { if (c.isActive) c.resume(earned) }
-                override fun onAdFailedToShowFullScreenContent(e: AdError) { if (c.isActive) c.resume(false) }
+                override fun onAdFailedToShowFullScreenContent(e: AdError) { lastError = "แสดงโฆษณาไม่ได้ [รหัส ${e.code}: ${e.message.take(80)}]"; if (c.isActive) c.resume(false) }
             }
             ad.show(activity) { earned = true }
         }
@@ -191,9 +208,9 @@ object AdsManager {
 
 /** Admin ad placements (RTDB appConfig/adPlacements, live). Defaults: home bottom + 1:1 chat-room top ON, others OFF. */
 object AdPlacements {
-    var cfg by androidx.compose.runtime.mutableStateOf(mapOf("home" to true, "chatRoom" to true))
+    var cfg by androidx.compose.runtime.mutableStateOf(mapOf("home" to true, "discover" to false, "chatList" to false, "video" to false, "inFeed" to false, "chatRoom" to true, "vipBanner" to true))
     var inFeedEvery by androidx.compose.runtime.mutableIntStateOf(5)
-    val DEFAULTS = linkedMapOf("home" to true, "discover" to false, "chatList" to false, "video" to false, "inFeed" to false, "chatRoom" to true)
+    val DEFAULTS = linkedMapOf("home" to true, "discover" to false, "chatList" to false, "video" to false, "inFeed" to false, "chatRoom" to true, "vipBanner" to true)
     private var started = false
     fun start() {
         if (started) return; started = true
@@ -203,7 +220,7 @@ object AdPlacements {
                     cfg = DEFAULTS.mapValues { (k, d) -> s.child(k).getValue(Boolean::class.java) ?: d }
                     inFeedEvery = (s.child("inFeedEvery").getValue(Long::class.java) ?: 5L).toInt().coerceIn(2, 50)
                 }
-                override fun onCancelled(e: com.google.firebase.database.DatabaseError) {}
+                override fun onCancelled(e: com.google.firebase.database.DatabaseError) { started = false } // e.g. read before sign-in: allow a retry later
             })
     }
     fun on(place: String) = cfg[place] ?: DEFAULTS[place] ?: false
@@ -242,7 +259,7 @@ fun QuotaChip(feature: String) {
 @Composable
 fun AdRoomHost() {
     val ctx = LocalContext.current
-    LaunchedEffect(Unit) { ctx.activity()?.let { AdsManager.init(it) }; AdRoom.refresh() }
+    LaunchedEffect(Unit) { AdUnits.load(ctx); ctx.activity()?.let { AdsManager.init(it) }; AdRoom.refresh() }
     val hit by AdRoom.quotaHit.collectAsState()
     val open by AdRoom.open.collectAsState()
     hit?.let { f ->
@@ -259,8 +276,9 @@ fun AdRoomHost() {
 /** Deep-link from a quota-exhausted dialog: same content; after a reward it closes and returns to the origin (draft kept). */
 @Composable
 fun AdRoomScreen(feature: String, onClose: () -> Unit) {
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.fillMaxSize().systemBarsPadding(), color = Slate950) { AdsPageContent(feature, onClose = onClose, returnAfterReward = true) }
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        // feature "" = opened from a menu just to browse offers (no quota ran out, stay after a reward)
+        Surface(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding(), color = Slate950) { AdsPageContent(feature.ifBlank { null }, onClose = onClose, returnAfterReward = feature.isNotBlank()) }
     }
 }
 
@@ -279,22 +297,35 @@ fun AdsPageContent(feature: String?, onClose: (() -> Unit)?, returnAfterReward: 
     val l by AdRoom.limits.collectAsState()
     var busy by remember { mutableStateOf<String?>(null) }
     var msg by remember { mutableStateOf("") }
+    var msgFor by remember { mutableStateOf<String?>(null) } // offer whose card shows the message (right under its button)
+    LaunchedEffect(msg) { if (msg.isNotBlank()) android.widget.Toast.makeText(ctx, msg, android.widget.Toast.LENGTH_LONG).show() }
     var vipInfo by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { AdRoom.refresh() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         val lim = l
         val vip = lim?.tier == "vip"
+        val adFree = lim?.adFree == true
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(tr("🎁 หน้าโฆษณา"), color = White, fontWeight = FontWeight.ExtraBold, fontSize = 24.sp)
-                Row { Text(tr("✦ สถานะ: "), color = Slate300, fontSize = 14.sp); Text(if (vip) tr("VIP ⭐ (ไม่มีโฆษณา)") else tr("ฟรี"), color = Emerald400, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
+                Row { Text(tr("✦ สถานะ: "), color = Slate300, fontSize = 14.sp); Text(if (adFree) tr("VIP ⭐ (ไม่มีโฆษณา)") else if (vip) tr("VIP ⭐") else tr("ฟรี"), color = Emerald400, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
                 if (onClose != null) TextButton(onClick = onClose, contentPadding = PaddingValues(0.dp)) { Text(tr("‹ กลับ"), color = Slate300) }
             }
             androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(com.example.R.drawable.art_gift), null, modifier = Modifier.width(170.dp).height(110.dp))
         }
-        if (lim == null) { CircularProgressIndicator(color = Pink500); return@Column }
+        if (lim == null) {
+            // /limits failed (offline / server not updated) → say so with a retry instead of spinning forever
+            var waited by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) { kotlinx.coroutines.delay(8000); waited = true }
+            if (!waited) CircularProgressIndicator(color = Pink500)
+            else Column(Modifier.padding(top = 12.dp)) {
+                Text(tr("โหลดหน้าโฆษณาไม่สำเร็จ ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่"), color = Amber400, fontSize = 13.sp)
+                TextButton(onClick = { waited = false; scope.launch { AdRoom.refresh() } }) { Text(tr("ลองใหม่"), color = Pink400) }
+            }
+            return@Column
+        }
         if (feature != null) Text("โควตาที่หมด: ${FEATURE_LABELS[feature] ?: feature}", color = Amber400, fontSize = 12.sp)
-        if (!vip && lim.showAds && lim.rewardEnabled) {
+        if (lim.showAds && lim.rewardEnabled) {
             Spacer(Modifier.height(10.dp))
             Surface(shape = RoundedCornerShape(16.dp), color = Slate900, border = androidx.compose.foundation.BorderStroke(1.dp, Slate700.copy(alpha = 0.6f)), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp)) {
@@ -333,27 +364,31 @@ fun AdsPageContent(feature: String?, onClose: (() -> Unit)?, returnAfterReward: 
                         Box(Modifier.fillMaxWidth().padding(top = 12.dp).clip(RoundedCornerShape(26.dp))
                             .background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Pink500, Pink400))).alpha(if (en) 1f else 0.5f)
                             .clickable(enabled = en) {
-                                val act = ctx.activity() ?: return@clickable
+                                msgFor = o.id
+                                val act = ctx.activity() ?: run { msg = tr("เปิดโฆษณาไม่ได้ในหน้านี้ ลองเปิดจากหน้าอื่น"); return@clickable }
                                 busy = o.id; msg = ""
                                 scope.launch {
-                                    val earned = AdsManager.showRewardedFormat(act, o.adFormat, "offer:${o.id}")
-                                    if (!earned) { msg = tr("ยังไม่ได้รับรางวัล (ดูโฆษณาไม่จบ หรือโหลดโฆษณาไม่ได้)"); busy = null; return@launch }
+                                    // never hang on "กำลังโหลดโฆษณา…": give up after 25 s with a clear message
+                                    val earned = kotlinx.coroutines.withTimeoutOrNull(25_000) { AdsManager.showRewardedFormat(act, o.adFormat, "offer:${o.id}") }
+                                        ?: run { if (AdsManager.lastError == null) AdsManager.lastError = tr("โหลดโฆษณาไม่ทันเวลา (เน็ตช้าหรือยังไม่มีโฆษณา) ลองใหม่อีกครั้ง"); false }
+                                    if (!earned) { msg = AdsManager.lastError ?: tr("ยังไม่ได้รับรางวัล (ดูโฆษณาไม่จบ)"); busy = null; return@launch }
                                     val err = AdRoom.claimReward(o.feature, o.id)
                                     busy = null
                                     if (err != null) msg = err
                                     else if (returnAfterReward) onClose?.invoke() // back to where the user was (draft kept)
-                                    else msg = "ได้รับแล้ว: ${rewardText(o.feature, o.amount)}"
+                                    else msg = "✅ ได้รับแล้ว: ${rewardText(o.feature, o.amount)}"
                                 }
                             }.padding(vertical = 11.dp), contentAlignment = Alignment.Center) {
                             Text(if (busy == o.id) tr("กำลังโหลดโฆษณา…") else if (capped) tr("ดูครบจำนวนวันนี้แล้ว") else tr("▶  ดูโฆษณานี้"), color = PureWhite, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp)
                             Text("›", color = PureWhite, fontSize = 20.sp, modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp))
                         }
+                        if (msgFor == o.id && msg.isNotBlank()) Text(msg, color = if (msg.startsWith("✅")) Emerald400 else Amber400, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
                     }
                     }
                 }
             }
-        } else if (!vip) Text(tr("ตอนนี้ยังไม่เปิดให้ดูโฆษณารับโควตา"), color = Slate400, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
-        if (msg.isNotBlank()) Text(msg, color = Amber400, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+        } else if (!adFree) Text(tr("ตอนนี้ยังไม่เปิดให้ดูโฆษณารับโควตา"), color = Slate400, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+        if (msgFor == null && msg.isNotBlank()) Text(msg, color = Amber400, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
         Spacer(Modifier.height(12.dp))
         Text(tr("โควตาวันนี้"), color = White, fontWeight = FontWeight.Bold)
         FEATURE_LABELS.forEach { (k, label) ->
@@ -370,15 +405,17 @@ fun AdsPageContent(feature: String?, onClose: (() -> Unit)?, returnAfterReward: 
             FeedBanner(Modifier.fillMaxWidth())
         }
     }
-    if (vipInfo) AlertDialog(onDismissRequest = { vipInfo = false }, title = { Text(tr("VIP เร็ว ๆ นี้")) },
-        text = { Text(tr("ยังไม่เปิดให้ซื้อ VIP ในแอป หากต้องการ VIP กรุณาติดต่อแอดมิน")) },
-        confirmButton = { TextButton(onClick = { vipInfo = false }) { Text(tr("ตกลง")) } })
+    if (vipInfo) com.example.ui.feed.VipDetailsDialog { vipInfo = false; scope.launch { AdRoom.refresh() } }
 }
 
 /** Admin/superadmin/moderator accounts always get Google TEST units, so the owner never views/clicks live ads. */
 object AdUnits {
     @Volatile var adminTestAds = true // safe default until /me confirms a normal USER role
-    fun unit(real: String, test: String) = if (adminTestAds) test else real
+    /** Staff switch (this phone only): show REAL ads on an admin account to check them. Never click them (AdMob invalid-traffic rules). */
+    @Volatile var forceReal = false
+    fun load(ctx: android.content.Context) { forceReal = ctx.getSharedPreferences("friendtalk", 0).getBoolean("adsForceReal", false) }
+    fun setForceReal(ctx: android.content.Context, on: Boolean) { forceReal = on; ctx.getSharedPreferences("friendtalk", 0).edit().putBoolean("adsForceReal", on).apply() }
+    fun unit(real: String, test: String) = if (adminTestAds && !forceReal) test else real
 }
 
 /** Decorative illustration: big emoji with glow + coins (bundled vector-free; uses system emoji). */

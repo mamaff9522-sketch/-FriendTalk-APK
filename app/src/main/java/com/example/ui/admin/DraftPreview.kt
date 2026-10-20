@@ -1,5 +1,7 @@
 package com.example.ui.admin
 
+import com.example.ui.components.dialogNavPadding
+
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -110,8 +112,8 @@ fun DraftHomePreview(t: AppUiThemeConfig, compact: Boolean, appName: String = "F
 /** The single full-screen preview of the unsaved draft. Closing returns to the editor with edits intact. */
 @Composable
 fun DraftPreviewDialog(t: AppUiThemeConfig, onClose: () -> Unit) {
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Column(Modifier.fillMaxSize()) {
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        Column(Modifier.fillMaxSize().background(Color.Black).systemBarsPadding().dialogNavPadding()) {
             Row(Modifier.fillMaxWidth().background(Color(0xFFF59E0B)).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("👁 PREVIEW / ยังไม่เผยแพร่", color = Color.Black, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 TextButton(onClick = onClose) { Text("ปิด ✕", color = Color.Black) }

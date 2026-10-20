@@ -13,11 +13,13 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 data class CatalogItem(val id: String, val name: String, val price: Int, val imageUrl: String, val icon: String,
-                       val category: String, val enabled: Boolean, val order: Int, val animationEffect: String = "POP")
+                       val category: String, val enabled: Boolean, val order: Int, val animationEffect: String = "POP",
+                       /** animated effect (GIF / WebP) — เปย์เปิดใจ gifts */ val effectUrl: String = "",
+                       /** admin-uploaded video effect (MP4 / WebM), any channel — plays full screen when sent */ val videoUrl: String = "")
 
 /** Gift catalog (live / vip / chat / stickers), chat gifts and VIP room decor — all via brain + RTDB catalog/. */
 object GiftRepo {
-    val CHANNELS = listOf("chat" to "แชท", "live" to "ไลฟ์", "vip" to "VIP", "stickers" to "สติกเกอร์ห้อง")
+    val CHANNELS = listOf("chat" to "แชท", "live" to "ไลฟ์", "vip" to "VIP", "stickers" to "สติกเกอร์ห้อง", "chatStickers" to "สติกเกอร์แชท", "payopen" to "เปย์เปิดใจ")
     private val db by lazy { FirebaseDatabase.getInstance(SocialRepo.DB_URL) }
     private fun user() = FirebaseAuth.getInstance().currentUser
 
@@ -25,7 +27,8 @@ object GiftRepo {
         (o.child("price").getValue(Long::class.java) ?: 0L).toInt(), o.child("imageUrl").getValue(String::class.java).orEmpty(),
         o.child("icon").getValue(String::class.java).orEmpty(), o.child("category").getValue(String::class.java).orEmpty(),
         o.child("enabled").getValue(Boolean::class.java) != false, (o.child("order").getValue(Long::class.java) ?: 0L).toInt(),
-        o.child("animationEffect").getValue(String::class.java) ?: "POP")
+        o.child("animationEffect").getValue(String::class.java) ?: "POP", o.child("effectUrl").getValue(String::class.java).orEmpty(),
+        o.child("videoUrl").getValue(String::class.java).orEmpty())
 
     /** Realtime catalog of a channel (sorted by order). enabledOnly for users. */
     fun catalog(ch: String, enabledOnly: Boolean = true): Flow<List<CatalogItem>> = callbackFlow {
@@ -62,7 +65,7 @@ object GiftRepo {
         val u = user() ?: return emptyList<CatalogItem>() to 0
         val r = BrainApi.call(u, "GET", "/admin/catalog/$ch?page=$page&size=$size"); val a = r.json?.optJSONArray("items") ?: return emptyList<CatalogItem>() to 0
         return (0 until a.length()).map { a.getJSONObject(it) }.map { o ->
-            CatalogItem(o.optString("id"), o.optString("name"), o.optInt("price"), o.optString("imageUrl"), o.optString("icon"), o.optString("category"), o.optBoolean("enabled", true), o.optInt("order"), o.optString("animationEffect", "POP"))
+            CatalogItem(o.optString("id"), o.optString("name"), o.optInt("price"), o.optString("imageUrl"), o.optString("icon"), o.optString("category"), o.optBoolean("enabled", true), o.optInt("order"), o.optString("animationEffect", "POP"), o.optString("effectUrl"), o.optString("videoUrl"))
         } to (r.json?.optInt("total") ?: 0)
     }
     suspend fun adminSave(ch: String, it: CatalogItem): Res {
@@ -77,6 +80,12 @@ object GiftRepo {
         return if (r.code == 200) Res(true, "อัปโหลดรูปแล้ว (${webp.size / 1024}KB)") else Res(false, err(r, "อัปโหลดไม่สำเร็จ"))
     }
     suspend fun adminDelete(ch: String, id: String) = user()?.let { BrainApi.call(it, "DELETE", "/admin/catalog/$ch/$id").code == 200 } ?: false
+    suspend fun adminUploadVideo(ch: String, id: String, bytes: ByteArray, mime: String): Res {
+        val u = user() ?: return Res(false, "no user")
+        val r = BrainApi.callRaw(u, "PUT", "/admin/catalog/$ch/$id/video", bytes, mime)
+        return if (r.code == 200) Res(true, "อัปโหลดวิดีโอแล้ว (${bytes.size / 1024}KB)") else Res(false, err(r, "อัปโหลดวิดีโอไม่สำเร็จ"))
+    }
+    suspend fun adminDeleteVideo(ch: String, id: String) = user()?.let { BrainApi.call(it, "DELETE", "/admin/catalog/$ch/$id/video").code == 200 } ?: false
     suspend fun adminOrder(ch: String, ids: List<String>) = user()?.let { BrainApi.call(it, "POST", "/admin/catalog/$ch/order", JSONObject().put("ids", JSONArray(ids))).code == 200 } ?: false
     suspend fun adminConfig(): JSONObject? = user()?.let { BrainApi.call(it, "GET", "/admin/gifts/config").json }
     suspend fun adminSetConfig(c: JSONObject): Res {

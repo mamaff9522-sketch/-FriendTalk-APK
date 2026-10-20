@@ -1,5 +1,7 @@
 package com.example.ui.chat
 
+import com.example.ui.components.dialogNavPadding
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -34,7 +36,7 @@ fun CallDialog(
 
     Dialog(
         onDismissRequest = onEndCall,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
@@ -44,7 +46,7 @@ fun CallDialog(
                 modifier = Modifier
                     .fillMaxSize()
                     .statusBarsPadding()
-                    .navigationBarsPadding()
+                    .navigationBarsPadding().dialogNavPadding()
             ) {
                 if (callSession.type == CallType.VIDEO) {
                     AsyncImage(

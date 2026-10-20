@@ -1,5 +1,7 @@
 package com.example.ui.social
 
+import com.example.ui.components.dialogNavPadding
+
 import com.example.ui.components.tr
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -51,9 +53,9 @@ fun GlobalSearchDialog(onClose: () -> Unit) {
             busy = false
         }
     }
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(Modifier.fillMaxSize(), color = Slate950) {
-            Column(Modifier.fillMaxSize().systemBarsPadding().imePadding().padding(16.dp)) {
+            Column(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding().imePadding().padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     TextButton(onClick = onClose) { Text("‹", color = White, fontSize = 26.sp) }
                     OutlinedTextField(value = q, onValueChange = { if (it.length <= 60) q = it }, singleLine = true, shape = RoundedCornerShape(18.dp),

@@ -14,6 +14,7 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import com.example.ui.components.ft.Text
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,57 +39,59 @@ fun ProfileTab(
     onOpenCompanionApply: () -> Unit,
     onLogout: () -> Unit = {}
 ) {
-    var editInterests by remember { mutableStateOf(false) }
     var myPosts by remember { mutableStateOf(false) }
     if (myPosts) com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.let { u -> com.example.ui.social.AuthorFeedDialog(u.uid, tr("ฉัน")) { myPosts = false } }
-    if (editInterests) com.example.ui.social.InterestsEditorDialog(onDismiss = { editInterests = false })
+    // Real profile from users/{uid}; tapping the cover / avatar uploads a new photo right here.
+    LaunchedEffect(Unit) { com.example.social.MyProfile.start() }
+    val me = com.example.social.MyProfile.me
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    var photoKind by remember { mutableStateOf("avatar") }
+    var photoBusy by remember { mutableStateOf<String?>(null) }
+    var photoMsg by remember { mutableStateOf("") }
+    val photoPicker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) { photoBusy = photoKind; photoMsg = ""; scope.launch { photoMsg = com.example.social.MyProfile.setPhoto(ctx, uri, photoKind) ?: ""; photoBusy = null } }
+    }
+    fun pickPhoto(kind: String) { if (photoBusy != null) return; photoKind = kind
+        photoPicker.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+    val shownName = me?.displayName?.ifBlank { null } ?: currentUser.displayName
+    val shownAvatar = me?.avatar?.ifBlank { null } ?: currentUser.avatar
+    val shownBio = me?.bio ?: currentUser.bio.takeUnless { it.startsWith("สมาชิก FriendTalk (UID") }.orEmpty()
     var confirmLogout by remember { mutableStateOf(false) }
+    var deleteAcc by remember { mutableStateOf(false) }
+    if (deleteAcc) DeleteAccountDialog(onClose = { deleteAcc = false }, onDeleted = { deleteAcc = false; onLogout() })
     if (confirmLogout) AlertDialog(onDismissRequest = { confirmLogout = false }, title = { Text(tr("ออกจากระบบ?")) },
         text = { Text(tr("คุณต้องการออกจากบัญชีนี้ใช่ไหม")) },
         confirmButton = { TextButton(onClick = { confirmLogout = false; onLogout() }) { Text(tr("ออกจากระบบ"), color = Rose500) } },
         dismissButton = { TextButton(onClick = { confirmLogout = false }) { Text(tr("ยกเลิก")) } })
     LazyColumn(
         modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .fillMaxSize(),
         contentPadding = PaddingValues(bottom = 80.dp)
     ) {
-        item(key = "logout_row") {
-            Row(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.End) {
-                OutlinedButton(onClick = { myPosts = true }) { Text(tr("📝 โพสต์ของฉัน"), color = White, fontSize = 13.sp) }
-                Spacer(Modifier.width(8.dp))
-                OutlinedButton(onClick = { editInterests = true }) { Text(tr("🧩 ความสนใจ"), color = Pink400, fontSize = 13.sp) }
-                Spacer(Modifier.width(8.dp))
-                OutlinedButton(onClick = { confirmLogout = true }) { Text(tr("🚪 ออกจากระบบ"), color = Rose500, fontSize = 13.sp) }
-            }
-        }
         // Cover Photo & Avatar
         item {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(200.dp)
-            ) {
-                AsyncImage(
-                    model = currentUser.coverPhoto,
-                    contentDescription = "Cover",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(150.dp)
-                )
-                AsyncImage(
-                    model = currentUser.avatar,
-                    contentDescription = "Avatar",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(88.dp)
-                        .align(Alignment.BottomStart)
-                        .padding(start = 16.dp)
-                        .clip(CircleShape)
-                        .background(Slate950)
-                )
+            Box(Modifier.fillMaxWidth().height(210.dp)) {
+                Box(Modifier.fillMaxWidth().height(160.dp).background(Brush.linearGradient(listOf(androidx.compose.ui.graphics.Color(0xFF5B23A0), Pink500))).clickable { pickPhoto("cover") }) {
+                    val cover = me?.cover.orEmpty()
+                    if (cover.isNotBlank()) AsyncImage(model = cover, contentDescription = tr("รูปปก"), contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                    Row(Modifier.align(Alignment.BottomEnd).padding(10.dp).clip(RoundedCornerShape(16.dp)).background(androidx.compose.ui.graphics.Color(0x99000000)).padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        if (photoBusy == "cover") CircularProgressIndicator(color = PureWhite, strokeWidth = 2.dp, modifier = Modifier.size(14.dp))
+                        else Icon(Icons.Filled.CameraAlt, null, tint = PureWhite, modifier = Modifier.size(15.dp))
+                        Spacer(Modifier.width(6.dp)); Text(tr("แก้ไขรูปปก"), color = PureWhite, fontSize = 12.sp)
+                    }
+                }
+                Box(Modifier.align(Alignment.BottomStart).padding(start = 16.dp).size(104.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Amber400, Pink500, Purple500))).padding(3.dp)
+                    .clip(CircleShape).background(Slate950).clickable { pickPhoto("avatar") }) {
+                    com.example.ui.social.Avatar(shownAvatar, shownName, 98)
+                    Box(Modifier.align(Alignment.BottomEnd).padding(4.dp).size(28.dp).clip(CircleShape).background(Pink500), contentAlignment = Alignment.Center) {
+                        if (photoBusy == "avatar") CircularProgressIndicator(color = PureWhite, strokeWidth = 2.dp, modifier = Modifier.size(14.dp))
+                        else Icon(Icons.Filled.CameraAlt, tr("เปลี่ยนรูปโปรไฟล์"), tint = PureWhite, modifier = Modifier.size(15.dp))
+                    }
+                }
             }
+            if (photoMsg.isNotBlank()) Text(photoMsg, color = Amber400, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp))
         }
 
         // Profile Info
@@ -106,7 +109,7 @@ fun ProfileTab(
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = currentUser.displayName,
+                                text = shownName,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 18.sp,
                                 color = White
@@ -128,7 +131,13 @@ fun ProfileTab(
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
-                Text(text = currentUser.bio, fontSize = 13.sp, color = Slate200)
+                Text(text = shownBio.ifBlank { tr("ยังไม่มีคำแนะนำตัว — แตะ 'แก้ไขโปรไฟล์' เพื่อเพิ่ม") }, fontSize = 13.sp, color = if (shownBio.isBlank()) Slate400 else Slate200)
+                // 📍 province · 💼 occupation · looking for
+                val chips = listOfNotNull(me?.province?.ifBlank { null }?.let { "📍 $it" }, me?.occupation?.ifBlank { null }?.let { "💼 $it" }) +
+                    (me?.lookingFor ?: emptyList()).mapNotNull { com.example.social.MyProfile.LOOKING_FOR[it] }
+                if (chips.isNotEmpty()) Row(Modifier.padding(top = 8.dp).horizontalScroll(androidx.compose.foundation.rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    chips.forEach { c -> Text(tr(c), color = Slate200, fontSize = 12.sp, modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(Slate800).padding(horizontal = 10.dp, vertical = 4.dp)) }
+                }
 
                 Spacer(modifier = Modifier.height(14.dp))
 
@@ -169,6 +178,7 @@ fun ProfileTab(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(14.dp))
+                            .clickable { onOpenCoins() } // opens the shop / top-up (it had no click handler)
                     ) {
                         Row(
                             modifier = Modifier.padding(14.dp),
@@ -181,6 +191,22 @@ fun ProfileTab(
                                 Text("${com.example.social.Wallet.coins} เหรียญ • ${com.example.social.Wallet.diamonds} เพชร", fontSize = 12.sp, color = Amber400)
                             }
                             Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Slate400)
+                        }
+                    }
+
+                    // 🎁 watch a short ad -> extra quota (opens the existing Ad Room in browse mode)
+                    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                        .background(Brush.horizontalGradient(listOf(androidx.compose.ui.graphics.Color(0xFFFFB547), androidx.compose.ui.graphics.Color(0xFFFF4F8B), androidx.compose.ui.graphics.Color(0xFF9B3DFF))))
+                        .clickable { com.example.ads.AdRoom.open.value = "" }) {
+                        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            androidx.compose.foundation.Image(androidx.compose.ui.res.painterResource(com.example.R.drawable.art_gift), null, modifier = Modifier.size(44.dp))
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(tr("รับสิทธิ์ฟรี — ดูโฆษณาสั้น ๆ"), fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = PureWhite)
+                                Text(tr("แลกโควตาเพิ่ม เช่น แชท ปัดหาเพื่อน เรดาร์"), fontSize = 12.sp, color = PureWhite.copy(alpha = 0.9f))
+                            }
+                            Text(tr("ดูเลย ›"), color = PureWhite, fontWeight = FontWeight.Bold, fontSize = 13.sp,
+                                modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(androidx.compose.ui.graphics.Color(0x33FFFFFF)).padding(horizontal = 10.dp, vertical = 5.dp))
                         }
                     }
 
@@ -201,7 +227,7 @@ fun ProfileTab(
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(tr("สมัครเป็นผู้ให้บริการเพื่อนคุย (18+)"), fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Rose500)
-                                    Text(tr("สร้างรายได้จากการคุยสายเสียง/วิดีโอคอล"), fontSize = 12.sp, color = Slate400)
+                                    Text(tr("สร้างรายได้จากการแชทกับผู้ใช้ (สมัครผ่านระบบจริง)"), fontSize = 12.sp, color = Slate400)
                                 }
                                 Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Slate400)
                             }
@@ -274,6 +300,8 @@ fun ProfileTab(
                             }
                         }
                     }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    ThemeModeRow()
                     }
 
                     Surface(
@@ -297,8 +325,83 @@ fun ProfileTab(
                             Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Slate400)
                         }
                     }
+                    Surface(shape = RoundedCornerShape(14.dp), color = Slate800, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable { myPosts = true }) {
+                        Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("📝", fontSize = 22.sp); Spacer(Modifier.width(12.dp))
+                            Text(tr("โพสต์ของฉัน"), fontWeight = FontWeight.Bold, fontSize = 14.sp, color = White, modifier = Modifier.weight(1f))
+                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Slate400)
+                        }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    // ออกจากระบบ — always the last item on the page
+                    OutlinedButton(onClick = { confirmLogout = true }, modifier = Modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(14.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Rose500)) {
+                        Text(tr("🚪 ออกจากระบบ"), color = Rose500, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    TextButton(onClick = { deleteAcc = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text(tr("🗑 ลบบัญชี"), color = Slate400, fontSize = 13.sp)
+                    }
                 }
             }
         }
     }
+}
+
+
+/** Settings row: โหมดมืด on/off (on = Home look on every page, off = โหมดปกติ, the 'หาเพื่อน' look). Saved on this device. */
+@Composable
+private fun ThemeModeRow() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val dark = com.example.ui.theme.AppThemeMode.dark
+    Surface(shape = RoundedCornerShape(14.dp), color = Slate900, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+        .clickable { com.example.ui.theme.AppThemeMode.set(ctx, !dark) }) {
+        Row(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(if (dark) "🌙" else "☀️", fontSize = 22.sp); Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(tr("โหมดมืด"), fontWeight = FontWeight.Bold, fontSize = 14.sp, color = White)
+                Text(if (dark) tr("เปิดอยู่ · ทุกหน้าใช้พื้นหลังสีเข้ม") else tr("ปิดอยู่ · ใช้โหมดปกติ (พื้นหลังสีอ่อน)"), fontSize = 11.sp, color = Slate400)
+            }
+            Switch(checked = dark, onCheckedChange = { com.example.ui.theme.AppThemeMode.set(ctx, it) },
+                colors = SwitchDefaults.colors(checkedTrackColor = Pink500, checkedThumbColor = PureWhite))
+        }
+    }
+}
+
+/** Permanent account deletion (Google Play requirement). The user must type ลบบัญชี; the server removes data + login, then we sign out. */
+@Composable
+private fun DeleteAccountDialog(onClose: () -> Unit, onDeleted: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var typed by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var err by remember { mutableStateOf("") }
+    val word = "ลบบัญชี"
+    AlertDialog(onDismissRequest = { if (!busy) onClose() }, title = { Text(tr("ลบบัญชีถาวร?")) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(tr("โปรไฟล์ รูป โพสต์ เพื่อน เหรียญ/เพชรคงเหลือ และ VIP จะถูกลบทั้งหมด กู้คืนไม่ได้"), fontSize = 13.sp)
+                Text(tr("พิมพ์คำว่า") + " \"$word\" " + tr("เพื่อยืนยัน"), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                OutlinedTextField(value = typed, onValueChange = { typed = it.take(20) }, singleLine = true, enabled = !busy)
+                if (err.isNotBlank()) Text(err, color = Rose500, fontSize = 12.sp)
+                TextButton(onClick = { runCatching { ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,
+                    android.net.Uri.parse("https://friendtalk-brain-123224091480.asia-southeast1.run.app/privacy"))) } }) { Text(tr("นโยบายความเป็นส่วนตัว"), fontSize = 12.sp) }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = !busy && typed.trim() == word, onClick = {
+                val u = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser ?: return@TextButton
+                busy = true; err = ""
+                scope.launch {
+                    val r = runCatching { com.example.network.BrainApi.call(u, "POST", "/me/account/delete", org.json.JSONObject().put("confirm", "DELETE")) }.getOrNull()
+                    busy = false
+                    when {
+                        r?.code == 200 -> onDeleted()
+                        r?.code == 404 -> err = tr("เซิร์ฟเวอร์ยังไม่อัปเดต ลองใหม่ภายหลัง")
+                        else -> err = tr("ลบไม่สำเร็จ ลองใหม่อีกครั้ง") + (r?.code?.let { " ($it)" } ?: "")
+                    }
+                }
+            }) { Text(if (busy) tr("กำลังลบ…") else tr("ลบบัญชีถาวร"), color = Rose500, fontWeight = FontWeight.Bold) }
+        },
+        dismissButton = { TextButton(enabled = !busy, onClick = onClose) { Text(tr("ยกเลิก")) } })
 }

@@ -1,6 +1,15 @@
 package com.example.ui.social
 
+import com.example.ui.components.dialogNavPadding
+
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -63,8 +72,8 @@ fun InterestsEditorDialog(onDismiss: () -> Unit, skippable: Boolean = false) {
         cats = InterestsRepo.config()
         FirebaseAuth.getInstance().currentUser?.uid?.let { InterestsRepo.profile(it)?.interests?.forEach { (k, v) -> sel[k] = v } }
     }
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.fillMaxSize().systemBarsPadding().imePadding(), color = Slate950) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        Surface(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding().imePadding(), color = Slate950) {
             Column(Modifier.fillMaxSize().padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("ความสนใจของฉัน", color = White, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.weight(1f))
@@ -103,7 +112,8 @@ fun InterestsEditorDialog(onDismiss: () -> Unit, skippable: Boolean = false) {
     }
 }
 
-/** Another user's profile: interests by category, shared ones highlighted, similarity %, add friend / chat. */
+/** Another user's profile: banner + ringed photo, compatibility gauge, bio, interests by category (shared ones highlighted), actions. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun UserProfileDialog(uid: String, distance: String? = null, onDismiss: () -> Unit) {
     // Own avatar anywhere -> own Profile page (logout, my posts) instead of the public card.
@@ -113,48 +123,137 @@ fun UserProfileDialog(uid: String, distance: String? = null, onDismiss: () -> Un
     var sent by remember { mutableStateOf<InterestsRepo.FriendResult?>(null) }
     var msg by remember { mutableStateOf("") }
     var showPosts by remember { mutableStateOf(false) }
+    var repU by remember { mutableStateOf(false) }
     LaunchedEffect(uid) { InterestsRepo.config(); fp = InterestsRepo.profile(uid) }
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(shape = RoundedCornerShape(20.dp), color = Slate900, modifier = Modifier.heightIn(max = 640.dp)) {
-            Column(Modifier.padding(20.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
-                val f = fp
-                if (f == null) { CircularProgressIndicator(color = Pink500); TextButton(onClick = onDismiss) { Text("ปิด") }; return@Column }
-                val p = f.profile
-                Avatar(p.avatar, p.displayName, 84)
-                Text(p.displayName + (p.age?.let { ", $it" } ?: ""), color = White, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(top = 8.dp))
-                distance?.let { Text("ห่างประมาณ $it", color = Pink400, fontSize = 12.sp) }
-                f.similarity?.let { Text("เข้ากันได้ ${it.percent}%", color = Emerald400, fontWeight = FontWeight.Bold, fontSize = 14.sp) }
-                if (p.bio.isNotBlank()) Text(p.bio, color = Slate300, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
-                val shared = f.similarity?.shared.orEmpty()
-                f.interests.forEach { (cat, items) ->
-                    Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                        Text(InterestsRepo.label(cat), color = Slate400, fontSize = 11.sp)
-                        ChipsFlow(items, shared[cat].orEmpty().map { it.lowercase() }.toSet())
+    val pink = Color(0xFFFF2FA8); val violet = Color(0xFF8B3DFF); val indigo = Color(0xFF4F46E5)
+    val ink = com.example.ui.theme.AppThemeMode.text; val soft = com.example.ui.theme.AppThemeMode.muted
+    val dark = com.example.ui.theme.AppThemeMode.dark
+    val glass = if (dark) Color(0xFF1C1645) else Color(0xFFF4EAFF)
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(shape = RoundedCornerShape(28.dp), color = com.example.ui.theme.AppThemeMode.dialog, shadowElevation = 12.dp,
+            modifier = Modifier.fillMaxWidth(0.92f).fillMaxHeight(0.86f)) {
+            val f = fp
+            if (f == null) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = pink) }; return@Surface }
+            val p = f.profile
+            val sim = f.similarity
+            val shared = sim?.shared.orEmpty()
+            val sharedCount = shared.values.sumOf { it.size }
+            Column(Modifier.fillMaxSize()) {
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
+                    // banner + photo
+                    Box(Modifier.fillMaxWidth().height(178.dp)) {
+                        Box(Modifier.fillMaxWidth().height(124.dp).background(Brush.linearGradient(listOf(pink, violet, indigo))))
+                        androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(124.dp)) {
+                            drawCircle(Color.White.copy(alpha = 0.12f), size.width * 0.28f, androidx.compose.ui.geometry.Offset(size.width * 0.9f, size.height * 0.1f))
+                            drawCircle(Color.White.copy(alpha = 0.10f), size.width * 0.18f, androidx.compose.ui.geometry.Offset(size.width * 0.08f, size.height * 0.95f))
+                            drawCircle(Color.White.copy(alpha = 0.18f), 5f, androidx.compose.ui.geometry.Offset(size.width * 0.3f, size.height * 0.3f))
+                            drawCircle(Color.White.copy(alpha = 0.25f), 3f, androidx.compose.ui.geometry.Offset(size.width * 0.7f, size.height * 0.55f))
+                        }
+                        Text("✦ ✧ ✦", color = Color.White.copy(alpha = 0.55f), fontSize = 12.sp, modifier = Modifier.align(Alignment.TopStart).padding(16.dp))
+                        Text("✕", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.TopEnd).padding(12.dp)
+                            .clip(CircleShape).background(Color(0x33000000)).clickable(onClick = onDismiss).padding(horizontal = 11.dp, vertical = 6.dp))
+                        Box(Modifier.align(Alignment.BottomCenter).size(112.dp).clip(CircleShape).background(Brush.sweepGradient(listOf(pink, Color(0xFFFFC94D), violet, pink))).padding(4.dp)
+                            .clip(CircleShape).background(com.example.ui.theme.AppThemeMode.dialog).padding(3.dp), contentAlignment = Alignment.Center) {
+                            Avatar(p.avatar, p.displayName, 98)
+                        }
+                    }
+                    Text(p.displayName + (p.age?.let { ", $it" } ?: ""), color = ink, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp, modifier = Modifier.padding(top = 8.dp, start = 20.dp, end = 20.dp),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    if (p.username.isNotBlank()) Text("@${p.username}", color = soft, fontSize = 12.sp)
+                    distance?.takeIf { it.isNotBlank() }?.let {
+                        Text("📍 ห่างประมาณ $it", color = pink, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 6.dp)
+                            .clip(RoundedCornerShape(12.dp)).background(pink.copy(alpha = 0.12f)).padding(horizontal = 10.dp, vertical = 3.dp))
+                    }
+                    // compatibility
+                    sim?.let { s ->
+                        Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 14.dp).clip(RoundedCornerShape(20.dp)).background(glass).padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            val pct = s.percent.coerceIn(0, 100)
+                            Box(Modifier.size(66.dp), contentAlignment = Alignment.Center) {
+                                androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+                                    val st = androidx.compose.ui.graphics.drawscope.Stroke(7.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                                    drawArc(soft.copy(alpha = 0.2f), 0f, 360f, false, style = st)
+                                    drawArc(Brush.sweepGradient(listOf(pink, violet, pink)), -90f, 360f * pct / 100f, false, style = st)
+                                }
+                                Text("$pct%", color = ink, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+                            }
+                            Spacer(Modifier.width(14.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("เข้ากันได้", color = soft, fontSize = 12.sp)
+                                Text(when { pct >= 80 -> "คู่ซี้ในอนาคต 💞"; pct >= 50 -> "คุยกันถูกคอแน่ ✨"; pct >= 25 -> "มีเรื่องคุยกันได้ 😊"; else -> "ลองทักไปทำความรู้จัก 👋" },
+                                    color = ink, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                Text(if (sharedCount > 0) "ชอบเหมือนกัน $sharedCount อย่าง" else "ยังไม่มีความสนใจที่ตรงกัน", color = pink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+                    // bio
+                    if (p.bio.isNotBlank()) Box(Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 12.dp)) {
+                        Text("“", color = pink.copy(alpha = 0.35f), fontSize = 44.sp, fontWeight = FontWeight.Black, modifier = Modifier.offset(x = (-2).dp, y = (-14).dp))
+                        Text(p.bio, color = ink, fontSize = 14.sp, lineHeight = 20.sp, modifier = Modifier.padding(start = 22.dp, top = 4.dp))
+                    }
+                    // interests
+                    if (f.interests.isNotEmpty()) Text("ความสนใจ", color = ink, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp,
+                        modifier = Modifier.fillMaxWidth().padding(start = 20.dp, top = 16.dp, bottom = 4.dp))
+                    f.interests.forEach { (cat, items) ->
+                        val label = InterestsRepo.label(cat)
+                        val hit = shared[cat].orEmpty().map { it.lowercase() }.toSet()
+                        Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 5.dp).clip(RoundedCornerShape(18.dp)).background(glass).padding(12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(catEmoji(label), fontSize = 16.sp); Spacer(Modifier.width(6.dp))
+                                Text(label, color = ink, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                                if (hit.isNotEmpty()) Text("ตรงกัน ${hit.size}", color = pink, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                            FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                items.forEach { t ->
+                                    val on = t.lowercase() in hit
+                                    Text((if (on) "✓ " else "") + t, color = if (on) Color.White else ink, fontSize = 12.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Medium,
+                                        modifier = Modifier.clip(RoundedCornerShape(16.dp))
+                                            .then(if (on) Modifier.background(Brush.horizontalGradient(listOf(pink, violet)))
+                                                  else Modifier.background(com.example.ui.theme.AppThemeMode.dialog).border(1.dp, com.example.ui.theme.AppThemeMode.divider, RoundedCornerShape(16.dp)))
+                                            .padding(horizontal = 12.dp, vertical = 6.dp))
+                                }
+                            }
+                        }
+                    }
+                    if (msg.isNotBlank()) Text(msg, color = Amber400, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp, start = 18.dp, end = 18.dp))
+                    // small actions
+                    Row(Modifier.padding(top = 12.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        SmallAction("📝", "โพสต์", ink, glass) { showPosts = true }
+                        GiftToUserButton(uid, compact = true)
+                        SmallAction("🚩", "รายงาน", soft, glass) { repU = true }
                     }
                 }
-                Spacer(Modifier.height(12.dp))
-                if (uid != FirebaseAuth.getInstance().currentUser?.uid) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { scope.launch {
-                        val r = InterestsRepo.sendFriendRequest(uid)
-                        if (r == null) msg = "ส่งคำขอไม่สำเร็จ" else sent = r
-                    } }, colors = ButtonDefaults.buttonColors(containerColor = Purple600)) { Text("เพิ่มเพื่อน") }
-                    Button(onClick = { scope.launch {
-                        val cid = SocialRepo.openChatWith(uid)
-                        if (cid != null) { onDismiss(); SocialRepo.openChat.value = cid } else msg = SocialRepo.lastOpenError.ifBlank { "เปิดแชทไม่สำเร็จ" }
-                    } }, colors = ButtonDefaults.buttonColors(containerColor = Pink500)) { Text("เริ่มแชท") }
+                // main actions pinned at the bottom
+                Row(Modifier.fillMaxWidth().background(com.example.ui.theme.AppThemeMode.dialog).padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    FriendButton(uid, onSent = { sent = it }, onError = { msg = it }) // เพิ่มเพื่อน → ส่งคำขอแล้ว → เพื่อน
+                    Box(Modifier.weight(1f).height(46.dp).clip(RoundedCornerShape(23.dp)).background(Brush.horizontalGradient(listOf(pink, violet)))
+                        .clickable { scope.launch {
+                            val cid = SocialRepo.openChatWith(uid)
+                            if (cid != null) { onDismiss(); SocialRepo.openChat.value = cid } else msg = SocialRepo.lastOpenError.ifBlank { "เปิดแชทไม่สำเร็จ" }
+                        } }, contentAlignment = Alignment.Center) {
+                        Text("💬 เริ่มแชท", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp)
+                    }
                 }
-                if (msg.isNotBlank()) Text(msg, color = Amber400, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
-                OutlinedButton(onClick = { showPosts = true }) { Text("📝 ดูโพสต์ทั้งหมด", color = White) }
-                var repU by remember { mutableStateOf(false) }
-                GiftToUserButton(uid)
-                TextButton(onClick = { repU = true }) { Text("🚩 รายงานผู้ใช้", color = Slate400, fontSize = 12.sp) }
-                if (repU) ReportDialog("user", uid, uid) { repU = false }
-                TextButton(onClick = onDismiss) { Text("ปิด", color = Slate400) }
             }
         }
     }
+    if (repU) ReportDialog("user", uid, uid) { repU = false }
     if (showPosts) AuthorFeedDialog(uid, fp?.profile?.displayName ?: "") { showPosts = false }
     sent?.let { r -> FriendSentDialog(r) { sent = null } }
+}
+
+@Composable
+private fun SmallAction(icon: String, label: String, color: Color, bg: Color, onClick: () -> Unit) {
+    Row(Modifier.clip(RoundedCornerShape(16.dp)).background(bg).clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(icon, fontSize = 13.sp); Spacer(Modifier.width(4.dp)); Text(label, color = color, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+private fun catEmoji(label: String): String = when {
+    "เวลา" in label -> "⏰"; "อดิเรก" in label -> "🎨"; "ภาษา" in label -> "🗣️"; "ไลฟ์" in label -> "🌿"; "มองหา" in label -> "🔎"
+    "นิสัย" in label -> "💫"; "อาหาร" in label -> "🍜"; "เพลง" in label || "ดนตรี" in label -> "🎵"; "กีฬา" in label -> "⚽"; "เที่ยว" in label -> "✈️"
+    "หนัง" in label -> "🎬"; "เกม" in label -> "🎮"; "สัตว์" in label -> "🐾"; "งาน" in label || "อาชีพ" in label -> "💼"; else -> "✨"
 }
 
 @Composable

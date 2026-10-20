@@ -1,5 +1,7 @@
 package com.example.ui.social
 
+import com.example.ui.components.dialogNavPadding
+
 import androidx.compose.foundation.lazy.itemsIndexed
 import com.example.ui.components.tr
 import androidx.compose.ui.draw.alpha
@@ -211,8 +213,13 @@ private val fmt = SimpleDateFormat("d MMM HH:mm", Locale("th", "TH"))
 @Composable
 fun RealPostCard(p: FeedPost, onLike: () -> Unit, onComments: () -> Unit, onDelete: () -> Unit, onTag: (String) -> Unit = {}, onVisibility: (String) -> Unit = {}) {
     val me = FirebaseAuth.getInstance().currentUser?.uid
+    val ctx = LocalContext.current
     var confirm by remember { mutableStateOf(false) }
     var showAuthor by remember { mutableStateOf(false) }
+    // tap the post → full post screen (shared with the Home feed)
+    var detail by remember { mutableStateOf(false) }
+    var localCount by remember(p.id, p.commentCount) { mutableStateOf(p.commentCount) }
+    if (detail) com.example.ui.feed.PostDetailDialog(p.copy(commentCount = localCount), onDismiss = { detail = false }, onLike = onLike, onDelete = onDelete, onCommentCount = { localCount = it })
     if (showAuthor) UserProfileDialog(p.authorId) { showAuthor = false }
     val fs = FeedStyle.cfg
     Surface(shape = RoundedCornerShape(fs.cardCornerRadiusDp.coerceIn(0, 40).dp), color = Slate900, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = (fs.postSpacingDp.coerceIn(0, 48) / 2).dp)) {
@@ -223,7 +230,8 @@ fun RealPostCard(p: FeedPost, onLike: () -> Unit, onComments: () -> Unit, onDele
                 Column(Modifier.weight(1f)) {
                     Text(p.authorName, color = White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     Text(fmt.format(Date(p.createdAt)) + "  " + when (p.visibility) { "friends" -> "👥"; "only_me" -> "🔒"; else -> "🌐" }, color = Slate400, fontSize = 10.sp)
-                    if (p.placeLabel.isNotBlank()) Text("📍 ${p.placeLabel}", color = Pink400, fontSize = 11.sp)
+                    if (p.placeLabel.isNotBlank()) Text("📍 ${p.placeLabel}", color = Pink400, fontSize = 11.sp,
+                        modifier = Modifier.clickable { com.example.ui.feed.openPlaceOnMap(ctx, p.placeLabel, p.placeLat, p.placeLng) })
                 }
                 if (p.authorId == me) {
                     var visMenu by remember { mutableStateOf(false) }
@@ -243,14 +251,15 @@ fun RealPostCard(p: FeedPost, onLike: () -> Unit, onComments: () -> Unit, onDele
                     if (rep) ReportDialog("post", p.id, p.authorId) { rep = false }
                 }
             }
-            if (p.text.isNotBlank()) Text(p.text, color = White, fontSize = (14 * fs.textSizeScale.coerceIn(0.7f, 1.6f)).sp, modifier = Modifier.padding(vertical = 6.dp))
+            if (p.text.isNotBlank()) Text(p.text, color = White, fontSize = (14 * fs.textSizeScale.coerceIn(0.7f, 1.6f)).sp, modifier = Modifier.clickable { detail = true }.padding(vertical = 6.dp))
             if (p.hashtags.isNotEmpty()) Row(Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState())) {
                 p.hashtags.forEach { t -> Text("#$t", color = Cyan400, fontSize = 13.sp, modifier = Modifier.clickable { onTag(t) }.padding(end = 8.dp, bottom = 4.dp)) }
             }
             p.imageUrls.forEach { url ->
                 AsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp).padding(vertical = 3.dp).clip(RoundedCornerShape(12.dp)))
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp).padding(vertical = 3.dp).clip(RoundedCornerShape(12.dp)).clickable { detail = true })
             }
+            if (p.videoUrl.isNotBlank()) com.example.ui.feed.PostVideoThumb(p, Modifier.fillMaxWidth().height(260.dp).padding(vertical = 3.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = onLike) { Text((if (p.likedByMe) "❤️ " else "🤍 ") + p.likeCount, color = White) }
                 TextButton(onClick = onComments) { Text("💬 ${p.commentCount}", color = White) }
@@ -274,7 +283,7 @@ fun RealCommentsDialog(state: RealFeedState) {
     var msg by remember { mutableStateOf("") }
     suspend fun reload() { comments = FeedRepo.comments(post.id) ?: emptyList() }
     LaunchedEffect(post.id) { reload() }
-    Dialog(onDismissRequest = { state.commentsFor = null }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = { state.commentsFor = null }, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(Modifier.fillMaxWidth().fillMaxHeight(0.85f), shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp), color = Slate950) {
             Column(Modifier.padding(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -355,8 +364,8 @@ fun FilteredFeedDialog(title: String, tag: String?, author: String?, onClose: ()
     val scope = rememberCoroutineScope()
     val st = remember(tag, author) { RealFeedState(scope, tag, author) }
     LaunchedEffect(tag, author) { st.refresh() }
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.fillMaxSize().systemBarsPadding().imePadding(), color = Slate950) {
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        Surface(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding().imePadding(), color = Slate950) {
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(12.dp)) {
                     Text(title, color = White, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.weight(1f))

@@ -1,5 +1,7 @@
 package com.example.companion.ui
 
+import com.example.ui.components.dialogNavPadding
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -38,10 +40,10 @@ fun CompanionSessionActiveDialog(
 
     Dialog(
         onDismissRequest = { onEndSession(secondsElapsed) },
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
         Surface(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding().imePadding(),
             color = Slate950
         ) {
             Column(

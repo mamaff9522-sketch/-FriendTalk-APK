@@ -1,5 +1,7 @@
 package com.example.ui.chat
 
+import com.example.ui.components.dialogNavPadding
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -43,7 +45,7 @@ fun ChatRoomDialog(
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
@@ -53,7 +55,7 @@ fun ChatRoomDialog(
                 modifier = Modifier
                     .fillMaxSize()
                     .statusBarsPadding()
-                    .navigationBarsPadding()
+                    .navigationBarsPadding().dialogNavPadding()
             ) {
                 // Header
                 Row(

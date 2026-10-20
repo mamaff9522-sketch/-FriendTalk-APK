@@ -7,6 +7,7 @@
 | Auth service | `backend/friendtalk-auth/` | Cloud Run `friendtalk-auth` |
 | RTDB rules | `firebase/database.rules.json` | Realtime Database rules (matches deployed as of 2026-10-11) |
 | Storage rules | `firebase/storage.rules` | Firebase Storage |
+| Web home page | `web/index.html` | Any static host (single file). Needs its origin in friendtalk-brain `CORS_ORIGINS`; set `FIREBASE_API_KEY` in the file's `CONFIG` for browser login (friendtalk-auth sends no CORS headers) |
 
 Runtime config is via Cloud Run env vars (e.g. `OWNER_EMAILS`) and the service account — no keys are stored in this repo.
 `docs/legacy-docs-snapshot/` holds an older rules snapshot kept for reference only.

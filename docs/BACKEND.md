@@ -57,3 +57,28 @@ Open:
 - Endpoints (Firebase ID token required): `POST /match` (real waiting user first, else an enabled bot if bots are on, else `waiting`), `POST /bot/chat {botId, message}`, `DELETE /bot/chat/:botId` (end chat). Admin (`config_edit`): `GET /admin/bots`, `PUT /admin/bots/enabled {enabled}`, `PUT /admin/bots/:botId {enabled, ...}`.
 - Model: Vertex AI `gemini-2.5-flash-lite` (global endpoint), max 150 output tokens, last 10 messages as context, safety filters at BLOCK_LOW_AND_ABOVE. `ft-brain-sa` has `roles/aiplatform.user`.
 - Limits (env): `BOT_HOURLY_PER_USER=30`, `BOT_DAILY_LIMIT=2000` messages/day total; over the limit the endpoint returns 429.
+
+## Posts: video, place and privacy (2026-10-14)
+- `POST /posts` accepts `videoRef` (Storage `posts/{uid}/…`, `video/*`, ≤ 50 MB) and optional `posterRef` (cover image, moderated like post images). Saved as `posts/{id}/video {path,url,posterPath,posterUrl}`; older app versions ignore it.
+- Place: `place` (name, ≤ 80 chars) and optional `lat`/`lng`, rounded to ~1 km. `/feed` returns the point only to the author, or to everyone when the author sent `shareCoords: true` (stored as `place.share`).
+- Privacy: `visibility` = `public` / `friends` / `only_me`, checked on the server (`canView`) for `/feed`, likes, comments and now `/reports` too.
+- Needs deploying: `firebase/storage.rules` (allows `video/*` under `posts/{uid}/`) and friendtalk-brain. Until both are deployed, the app shows an error for video posts; text, photo and place posts keep working.
+
+## Chat stickers (2026-10-14)
+- Admins add free chat stickers in the app: Admin → ของขวัญ → **สติกเกอร์แชท** (`catalog/chatStickers`, image webp/png ≤ 512 KB via `PUT /admin/catalog/chatStickers/{id}/image`, price 0). `chatStickers` is a new catalog channel in friendtalk-brain — deploy brain before adding stickers.
+- Users send them from the 😊 button in a chat room. A sticker is a normal chat text `🎨 สติกเกอร์ [id]` (same RTDB rules and daily limits as text); the app draws the catalog image, older app versions show the text.
+
+## Push notifications (2026-10-14)
+- App registers its FCM token with `POST /push/token` after sign-in (removed with `DELETE /push/token` on sign-out). Tokens: `pushTokens/{uid}/{hash}` (server-only, max 10 devices).
+- Server sends pushes for: new chat message (app calls `POST /push/chat/{chatId}` after writing it; only the sender of the newest message, throttled 4 s), friend request / accepted, new match, chat gift, top-up confirmed / rejected. `users/{uid}/settings/push === false` turns them off.
+- Needs: Firebase Cloud Messaging API enabled in project friendtalk-4e623, and `ft-brain-sa` allowed to send (role **Firebase Cloud Messaging API Admin**, `roles/firebasecloudmessaging.admin`).
+
+## Coin / diamond top-up by bank transfer (2026-10-14)
+- Works without Google Play: Admin → เศรษฐกิจ → เติมเงิน (โอน) sets bank / PromptPay info and packages (`appConfig/topup`), users send a request with the transfer reference (`POST /coins/topup`), admins confirm (`/admin/coins/confirm`, now also credits diamonds) or reject (`/admin/coins/reject`). Users see their requests (`GET /coins/topup/mine`) and get a push when done.
+- Launch showcase: Admin → เศรษฐกิจ → รูปตัวอย่าง AI uploads sample images (via `/admin/ui/bg/sec_showcase_*`) and saves them with `PUT /admin/showcase` (`appConfig/showcase` = `{enabled, live[], nearby[]}`). The app shows them, labelled "ตัวอย่าง AI", only while the real live list / nearby list is empty, so they hide by themselves once real users appear.
+
+## Calls & live streaming (Agora)
+- Provider: Agora RTC (Free package: 10,000 standard minutes / month shared by calls + live; the service pauses instead of billing when it runs out).
+- Cloud Run env (set by the owner, never committed): `AGORA_APP_ID`, `AGORA_APP_CERTIFICATE`. Without them `/calls` and `/lives` answer 503 `rtc_not_configured`.
+- Endpoints: `POST /calls`, `/calls/:id/answer`, `/calls/:id/end`; `POST /lives`, `/lives/:id/ping|end|join|leave|chat`; `GET /rtc/status`.
+- RTDB: `calls/{id}`, `callInbox/{uid}` (ringing), `lives/{id}` (+`lastPing` heartbeat, 90 s), `liveChat/{id}`, `liveViewers/{id}` — all server-written; read rules in `firebase/database.rules.json` (deploy with `firebase deploy --only database`).

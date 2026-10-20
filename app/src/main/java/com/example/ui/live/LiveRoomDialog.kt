@@ -1,5 +1,7 @@
 package com.example.ui.live
 
+import com.example.ui.components.dialogNavPadding
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -42,7 +44,7 @@ fun LiveRoomDialog(
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
         Box(
             modifier = Modifier
@@ -154,7 +156,7 @@ fun LiveRoomDialog(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .navigationBarsPadding()
+                    .navigationBarsPadding().dialogNavPadding()
                     .padding(16.dp)
             ) {
                 // Comments Box

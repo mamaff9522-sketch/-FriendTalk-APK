@@ -1,5 +1,7 @@
 package com.example.ui.wallet
 
+import com.example.ui.components.dialogNavPadding
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -28,8 +30,8 @@ fun WithdrawDialog(isStaff: Boolean, onDismiss: () -> Unit) {
     var tab by remember { mutableStateOf(0) }
     var reload by remember { mutableStateOf(0) }
     LaunchedEffect(reload) { data = BrainApi.call(user, "GET", "/withdraw").json }
-    Dialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.fillMaxSize()) { Box(Modifier.systemBarsPadding().imePadding()) {
+    Dialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        Surface(Modifier.fillMaxSize()) { Box(Modifier.systemBarsPadding().dialogNavPadding().imePadding()) {
             Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
                 Row { Text("💸 ถอนเงิน", fontWeight = FontWeight.Bold, fontSize = 20.sp, modifier = Modifier.weight(1f)); TextButton(onDismiss) { Text("ปิด") } }
                 if (isStaff) TabRow(tab) { Tab(tab == 0, { tab = 0 }) { Text("ของฉัน", Modifier.padding(8.dp)) }; Tab(tab == 1, { tab = 1 }) { Text("คำขอถอน (แอดมิน)", Modifier.padding(8.dp)) } }

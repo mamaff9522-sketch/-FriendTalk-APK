@@ -20,8 +20,19 @@ data class FeedPost(
     val id: String, val authorId: String, val authorName: String, val authorAvatar: String,
     val text: String, val imageUrls: List<String>, val createdAt: Long,
     val likeCount: Int, val commentCount: Int, val likedByMe: Boolean,
-    val hashtags: List<String> = emptyList(), val placeLabel: String = "", val visibility: String = "public", val commentsOff: Boolean = false
+    val hashtags: List<String> = emptyList(), val placeLabel: String = "", val visibility: String = "public", val commentsOff: Boolean = false,
+    val videoUrl: String = "", val videoPosterUrl: String = "",
+    /** ~1 km point; only returned to the author, or to viewers when the author chose to share it. */
+    val placeLat: Double? = null, val placeLng: Double? = null,
+    val feeling: PostFeeling? = null
 )
+/** Feeling ("รู้สึก 😊 มีความสุข") or activity ("🎬 กำลังดูหนัง") attached to a post. */
+data class PostFeeling(val kind: String, val emoji: String, val label: String) {
+    fun display() = if (kind == "feeling") "รู้สึก $emoji $label" else "$emoji $label"
+}
+
+/** Place chosen in the composer. lat/lng are sent only when [shareCoords] is on (user consent). */
+data class PostPlace(val label: String, val lat: Double? = null, val lng: Double? = null, val shareCoords: Boolean = false)
 data class FeedComment(val id: String, val authorId: String, val authorName: String, val authorAvatar: String,
                        val text: String, val parentId: String?, val createdAt: Long)
 
@@ -36,7 +47,11 @@ object FeedRepo {
             o.optString("text"), (0 until imgs.length()).mapNotNull { imgs.optJSONObject(it)?.optString("url") },
             o.optLong("createdAt"), o.optInt("likeCount"), o.optInt("commentCount"), o.optBoolean("likedByMe"),
             o.optJSONArray("hashtags")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
-            o.optJSONObject("place")?.optString("label").orEmpty(), o.optString("visibility", "public"), o.optBoolean("commentsOff"))
+            o.optJSONObject("place")?.optString("label").orEmpty(), o.optString("visibility", "public"), o.optBoolean("commentsOff"),
+            o.optJSONObject("video")?.optString("url").orEmpty(), o.optJSONObject("video")?.optString("posterUrl").orEmpty(),
+            o.optJSONObject("place")?.let { pl -> if (pl.has("lat") && pl.has("lng")) pl.optDouble("lat") else null },
+            o.optJSONObject("place")?.let { pl -> if (pl.has("lat") && pl.has("lng")) pl.optDouble("lng") else null },
+            o.optJSONObject("feeling")?.let { f -> f.optString("label").takeIf { it.isNotBlank() }?.let { PostFeeling(f.optString("kind", "feeling"), f.optString("emoji"), it) } })
     }
 
     suspend fun feed(cursor: String?, tag: String? = null, author: String? = null): Pair<List<FeedPost>, String?>? {
@@ -49,7 +64,18 @@ object FeedRepo {
     }
 
     /** Downscale to max 1600px JPEG ~85% before upload. */
-    private suspend fun compress(ctx: Context, uri: Uri): ByteArray? = withContext(Dispatchers.IO) {
+    /** Compress + upload one picture under posts/{uid}/ ; returns its storage path (for the server to check), or null. */
+    suspend fun uploadImage(ctx: Context, uri: Uri, prefix: String): String? {
+        val u = user() ?: return null
+        val bytes = compress(ctx, uri) ?: return null
+        val path = "posts/${u.uid}/${prefix}_${System.currentTimeMillis()}.jpg"
+        val ok = suspendCancellableCoroutine { c ->
+            storage.reference.child(path).putBytes(bytes, StorageMetadata.Builder().setContentType("image/jpeg").build()).addOnCompleteListener { if (c.isActive) c.resume(it.isSuccessful) }
+        }
+        return if (ok) path else null
+    }
+
+    internal suspend fun compress(ctx: Context, uri: Uri): ByteArray? = withContext(Dispatchers.IO) {
         runCatching {
             val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             ctx.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, o) }
@@ -80,6 +106,97 @@ object FeedRepo {
         val r = BrainApi.call(u, "POST", "/posts", body)
         return if (r.code == 200 && r.json != null) Result.success(parsePost(r.json))
         else Result.failure(Exception(r.json?.optString("error")?.ifBlank { null } ?: "โพสต์ไม่สำเร็จ (${r.code})"))
+    }
+
+    const val VIDEO_MAX_BYTES = 50L * 1024 * 1024
+    const val VIDEO_MAX_MS = 3 * 60 * 1000L
+
+    /** Size (bytes) and duration (ms) of a picked video, or null when it cannot be read. */
+    suspend fun videoInfo(ctx: Context, uri: Uri): Pair<Long, Long>? = withContext(Dispatchers.IO) {
+        runCatching {
+            val size = ctx.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: -1L
+            val mmr = android.media.MediaMetadataRetriever()
+            val dur = try { mmr.setDataSource(ctx, uri); mmr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L } finally { runCatching { mmr.release() } }
+            size to dur
+        }.getOrNull()
+    }
+
+    /** First frame of a video as JPEG (cover image, also moderated by the server). */
+    private suspend fun videoPoster(ctx: Context, uri: Uri): ByteArray? = withContext(Dispatchers.IO) {
+        runCatching {
+            val mmr = android.media.MediaMetadataRetriever()
+            try {
+                mmr.setDataSource(ctx, uri)
+                val bmp = mmr.getFrameAtTime(0) ?: return@runCatching null
+                val scale = minOf(1f, 1280f / maxOf(bmp.width, bmp.height))
+                val out = if (scale < 1f) Bitmap.createScaledBitmap(bmp, (bmp.width * scale).toInt(), (bmp.height * scale).toInt(), true) else bmp
+                ByteArrayOutputStream().also { out.compress(Bitmap.CompressFormat.JPEG, 82, it) }.toByteArray()
+            } finally { runCatching { mmr.release() } }
+        }.getOrNull()
+    }
+
+    private suspend fun uploadBytes(path: String, bytes: ByteArray, mime: String): Boolean = suspendCancellableCoroutine { c ->
+        storage.reference.child(path).putBytes(bytes, StorageMetadata.Builder().setContentType(mime).build()).addOnCompleteListener { c.resume(it.isSuccessful) }
+    }
+
+    /**
+     * Composer post: up to 4 images and/or 1 video, optional place, visibility (public / friends / only_me).
+     * Files go to Storage posts/{uid}/ (same as before); friendtalk-brain POST /posts saves the post and enforces visibility.
+     */
+    suspend fun createPostFull(ctx: Context, text: String, images: List<Uri>, video: Uri?, place: PostPlace?, visibility: String,
+                               onProgress: (String) -> Unit = {}, feeling: PostFeeling? = null): Result<FeedPost> {
+        val u = user() ?: return Result.failure(Exception("กรุณาเข้าสู่ระบบ"))
+        val t0 = System.currentTimeMillis()
+        val refs = JSONArray()
+        val list = images.take(4)
+        for ((i, uri) in list.withIndex()) {
+            onProgress("กำลังอัปโหลดรูป ${i + 1}/${list.size}…")
+            val bytes = compress(ctx, uri) ?: return Result.failure(Exception("อ่านรูปไม่ได้"))
+            if (bytes.size > 10 * 1024 * 1024) return Result.failure(Exception("รูปใหญ่เกิน 10MB"))
+            val path = "posts/${u.uid}/${t0}_$i.jpg"
+            if (!uploadBytes(path, bytes, "image/jpeg")) return Result.failure(Exception("อัปโหลดรูปไม่สำเร็จ (ยืนยันอีเมลแล้วหรือยัง?)"))
+            refs.put(path)
+        }
+        var videoRef: String? = null
+        var posterRef: String? = null
+        if (video != null) {
+            val info = videoInfo(ctx, video) ?: return Result.failure(Exception("อ่านไฟล์วิดีโอไม่ได้"))
+            if (info.first > VIDEO_MAX_BYTES) return Result.failure(Exception("วิดีโอใหญ่เกิน 50MB"))
+            if (info.second > VIDEO_MAX_MS) return Result.failure(Exception("วิดีโอยาวเกิน 3 นาที"))
+            val mime = ctx.contentResolver.getType(video)?.takeIf { it.startsWith("video/") } ?: "video/mp4"
+            val ext = android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(mime) ?: "mp4"
+            videoPoster(ctx, video)?.let { cover ->
+                val pp = "posts/${u.uid}/${t0}_v_cover.jpg"
+                if (uploadBytes(pp, cover, "image/jpeg")) posterRef = pp
+            }
+            onProgress("กำลังอัปโหลดวิดีโอ… 0%")
+            val vp = "posts/${u.uid}/${t0}_v.$ext"
+            val ok = suspendCancellableCoroutine<Boolean> { c ->
+                storage.reference.child(vp).putFile(video, StorageMetadata.Builder().setContentType(mime).build())
+                    .addOnProgressListener { s -> if (s.totalByteCount > 0) onProgress("กำลังอัปโหลดวิดีโอ… ${(s.bytesTransferred * 100 / s.totalByteCount)}%") }
+                    .addOnCompleteListener { c.resume(it.isSuccessful) }
+            }
+            if (!ok) return Result.failure(Exception("อัปโหลดวิดีโอไม่สำเร็จ (ยืนยันอีเมลแล้วหรือยัง? หรือเซิร์ฟเวอร์ยังไม่เปิดรับวิดีโอ)"))
+            videoRef = vp
+        }
+        onProgress("กำลังเผยแพร่…")
+        val body = JSONObject().put("text", text.trim()).put("imageRefs", refs).put("visibility", visibility)
+        if (videoRef != null) { body.put("videoRef", videoRef); posterRef?.let { body.put("posterRef", it) } }
+        feeling?.let { body.put("feeling", JSONObject().put("kind", it.kind).put("emoji", it.emoji).put("label", it.label)) }
+        if (place != null && place.label.isNotBlank()) {
+            body.put("place", place.label.trim().take(80))
+            // Coordinates leave the phone only with the user's consent; the server rounds them to ~1 km.
+            if (place.shareCoords && place.lat != null && place.lng != null) body.put("lat", place.lat).put("lng", place.lng).put("shareCoords", true)
+        }
+        val r = BrainApi.call(u, "POST", "/posts", body)
+        if (r.code != 200 || r.json == null) return Result.failure(Exception(r.json?.optString("error")?.ifBlank { null } ?: "โพสต์ไม่สำเร็จ (${r.code})"))
+        val post = parsePost(r.json)
+        // An older server ignores videoRef: remove that post instead of silently publishing it without the video.
+        if (videoRef != null && post.videoUrl.isBlank()) {
+            BrainApi.call(u, "DELETE", "/posts/${post.id}")
+            return Result.failure(Exception("เซิร์ฟเวอร์ยังไม่รองรับโพสต์วิดีโอ (ต้องอัปเดต friendtalk-brain)"))
+        }
+        return Result.success(post)
     }
 
     suspend fun setCommentsOff(id: String, off: Boolean): Boolean = user()?.let { BrainApi.call(it, "PATCH", "/posts/$id", JSONObject().put("commentsOff", off)).code == 200 } ?: false

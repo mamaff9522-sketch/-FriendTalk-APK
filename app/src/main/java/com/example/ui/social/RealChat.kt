@@ -1,5 +1,7 @@
 package com.example.ui.social
 
+import com.example.ui.components.dialogNavPadding
+
 import com.example.ui.components.tr
 import androidx.compose.foundation.border
 import androidx.compose.ui.graphics.Color
@@ -9,6 +11,8 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,10 +20,24 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.CardGiftcard
+import androidx.compose.material.icons.filled.EmojiEmotions
+import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.ui.graphics.Brush
 import com.example.ui.components.ft.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -97,12 +115,21 @@ private fun ChatRow(c: ChatSummary, decor: com.example.social.GiftRepo.Decor? = 
             if (showP) UserProfileDialog(c.otherUid) { showP = false }
             Box(Modifier.clip(CircleShape).border(2.5.dp, androidx.compose.ui.graphics.Brush.linearGradient(listOf(Amber400, Pink500, Purple500)), CircleShape).padding(4.dp).clip(CircleShape).clickable { showP = true }) { Avatar(p?.avatar.orEmpty(), p?.displayName ?: "?", 56) }
             Spacer(Modifier.width(10.dp))
+            val unread = com.example.push.MessageWatcher.unread[c.chatId] ?: 0
             Column(Modifier.weight(1f)) {
                 Text(p?.displayName ?: "…", color = White, fontWeight = FontWeight.Bold, fontSize = 17.sp, maxLines = 1)
-                Text(c.lastMessage.ifBlank { tr("เริ่มคุยกันได้เลย") }, color = Slate300, fontSize = 14.sp, maxLines = 1)
+                Text(c.lastMessage.ifBlank { tr("เริ่มคุยกันได้เลย") }, color = if (unread > 0) White else Slate300, fontSize = 14.sp, maxLines = 1,
+                    fontWeight = if (unread > 0) FontWeight.SemiBold else FontWeight.Normal, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
             }
             decor?.let { Box(Modifier.padding(end = 6.dp)) { DecorMiniPreview(it) } }
-            if (c.lastAt > 0) Text(fmt.format(Date(c.lastAt)), color = Slate300, fontSize = 12.sp, modifier = Modifier.align(Alignment.Top))
+            Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = 6.dp)) {
+                if (c.lastAt > 0) Text(fmt.format(Date(c.lastAt)), color = if (unread > 0) Pink400 else Slate300, fontSize = 12.sp)
+                if (unread > 0) Box(Modifier.padding(top = 6.dp).defaultMinSize(minWidth = 22.dp, minHeight = 22.dp).clip(CircleShape)
+                    .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(Color(0xFFFF2FA8), Color(0xFF9B3DFF)))).padding(horizontal = 6.dp),
+                    contentAlignment = Alignment.Center) {
+                    androidx.compose.material3.Text(if (unread > 99) "99+" else "$unread", color = PureWhite, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            }
         }
     }
 }
@@ -128,6 +155,13 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
     LaunchedEffect(otherUid) { if (otherUid.isNotBlank()) { val u = FirebaseAuth.getInstance().currentUser; if (u != null) blocked = com.example.network.BrainApi.call(u, "GET", "/blocks").json?.optJSONArray("blocked")?.let { a -> (0 until a.length()).any { a.optString(it) == otherUid } } == true } }
     if (reportU && otherUid.isNotBlank()) ReportDialog("user", otherUid, otherUid) { reportU = false }
     val messages by remember(chatId) { SocialRepo.messages(chatId) }.collectAsState(initial = emptyList())
+    // gift video effect: plays for gifts that arrive (or I send) while the chat is open; tapping a gift replays it
+    var giftVideo by remember(chatId) { mutableStateOf<String?>(null) }
+    val chatOpenedAt = remember(chatId) { System.currentTimeMillis() - 3_000 }
+    val playedGifts = remember(chatId) { HashSet<String>() }
+    LaunchedEffect(messages.size) {
+        if (com.example.ui.components.Tweaks.on("chat.giftVideo")) messages.lastOrNull { it.gift != null && it.gift.videoUrl.isNotBlank() && it.at >= chatOpenedAt && playedGifts.add(it.id) }?.let { giftVideo = it.gift!!.videoUrl }
+    }
     val otherRead by remember(chatId, otherUid) { if (otherUid.isBlank()) kotlinx.coroutines.flow.flowOf(0L) else SocialRepo.otherReadAt(chatId, otherUid) }.collectAsState(initial = 0L)
     val token by produceState<String?>(null) { value = idToken() }
     var input by remember { mutableStateOf("") }
@@ -140,10 +174,17 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
     val decorState by produceState<com.example.social.GiftRepo.DecorState?>(null, chatId, decorRev, decorTick) { value = com.example.social.GiftRepo.decor(chatId) }
     val decor = decorState?.decor
     val stickerList by remember { com.example.social.GiftRepo.catalog("stickers") }.collectAsState(initial = emptyList())
-    val prefs = remember { context.getSharedPreferences("friendtalk", 0) }
-    var lite by remember { mutableStateOf(prefs.getBoolean("decorLite", false)) }
+    val lite = false // saver mode removed from the menu; animations always play
     var editDecor by remember { mutableStateOf(false) }
+    var vipInfo by remember { mutableStateOf(false) }
     var giftSheet by remember { mutableStateOf(false) }
+    var stickerSheet by remember { mutableStateOf(false) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val focus = androidx.compose.ui.platform.LocalFocusManager.current
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    // free chat stickers uploaded by admins (catalog/chatStickers), for drawing sticker messages
+    val chatStickers by remember { com.example.social.GiftRepo.catalog("chatStickers", enabledOnly = false) }.collectAsState(initial = emptyList())
+    val chatStickerMap = remember(chatStickers) { com.example.social.ChatSticker.BUILT_IN.associateBy { it.id } + chatStickers.associateBy { it.id } }
     var isFriend by remember { mutableStateOf<Boolean?>(null) }
     LaunchedEffect(otherUid, csTick) { if (otherUid.isNotBlank()) isFriend = com.example.social.NearbyRepo.friendsWithOnline().any { it.first.uid == otherUid } }
     val listState = rememberLazyListState()
@@ -159,25 +200,55 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
         }
     }
 
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(Modifier.fillMaxSize(), color = Slate950) {
+            // a minimized call floats over the chat too (this dialog is its own window, above the app-level bubble)
+            com.example.rtc.CallManager.active?.let { a -> if (com.example.rtc.CallManager.minimized) Box(Modifier.fillMaxSize().zIndex(10f)) { com.example.rtc.CallBubble(a) } }
+            giftVideo?.let { v -> Box(Modifier.fillMaxSize().zIndex(9f)) { key(v) { com.example.ui.components.GiftVideoFx(v, { giftVideo = null }, dim = com.example.ui.components.Tweaks.on("gift.videoDim")) } } }
             // Insets: the input row was drawn behind the navigation bar (edge-to-edge dialog window) → pad for system bars + keyboard.
-            Column(Modifier.fillMaxSize().systemBarsPadding().imePadding()) {
-                Surface(color = Slate900) {
-                    Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(onClick = onClose) { Text("←", color = White, fontSize = 18.sp) }
+            // keyboard open: some keyboards (e.g. Samsung with the tool row) report a shorter height than they draw,
+            // so lift the input row a little more to keep it fully above the keyboard
+            val imeOpen = androidx.compose.foundation.layout.WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
+            Column(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding().imePadding().padding(bottom = if (imeOpen) com.example.ui.components.Tweaks.num("chat.inputLift").dp else 0.dp)) {
+                val askCallPerm = com.example.rtc.rememberRtcPermission { status = tr("ต้องอนุญาตไมโครโฟน/กล้องก่อนโทร") }
+                fun callLocked(video: Boolean) = com.example.ui.components.AppGates.partLocked(if (video) "videoCall" else "voiceCall") && !com.example.ui.components.AppGates.isStaff
+                fun startCall(video: Boolean) {
+                    if (callLocked(video)) { status = if (video) tr("วิดีโอคอลปิดใช้งานชั่วคราว") else tr("การโทรปิดใช้งานชั่วคราว"); return }
+                    askCallPerm(video) {
+                    status = if (video) tr("กำลังเริ่มวิดีโอคอล…") else tr("กำลังโทร…")
+                    com.example.rtc.RtcScope.launch {
+                        status = com.example.rtc.CallManager.start(context, chatId, video, otherUid, other?.displayName ?: "เพื่อน").orEmpty()
+                    }
+                    }
+                }
+                Box(Modifier.fillMaxWidth().background(chatHeaderBrush())) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onClose) { Icon(Icons.AutoMirrored.Filled.ArrowBack, tr("กลับ"), tint = PureWhite) }
                         var showOther by remember { mutableStateOf(false) }
                         if (showOther && otherUid.isNotBlank()) UserProfileDialog(otherUid) { showOther = false }
-                        Box(Modifier.clip(CircleShape).clickable { showOther = true }) { Avatar(other?.avatar.orEmpty(), other?.displayName ?: "?", 36) }
-                        Spacer(Modifier.width(8.dp))
-                        Text(other?.displayName ?: "…", color = White, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                        if (isFriend == false) TextButton(onClick = { scope.launch { status = if (com.example.social.NearbyRepo.requestFriend(otherUid) != null) tr("ส่งคำขอเป็นเพื่อนแล้ว") else tr("ส่งคำขอไม่สำเร็จ"); csTick++ } }, contentPadding = PaddingValues(horizontal = 6.dp)) { Text(tr("➕เพื่อน"), color = White, fontSize = 12.sp) }
-                        TextButton(onClick = { giftSheet = true }, contentPadding = PaddingValues(horizontal = 6.dp)) { Text("🎁", fontSize = 20.sp) }
+                        Box(Modifier.clip(CircleShape).border(2.dp, Brush.linearGradient(listOf(Amber400, Color(0xFFFF2FA8), Color(0xFFB04DFF))), CircleShape).padding(3.dp).clip(CircleShape).clickable { showOther = true }) { Avatar(other?.avatar.orEmpty(), other?.displayName ?: "?", 38) }
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(other?.displayName ?: "…", color = PureWhite, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            when (isFriend) {
+                                true -> Text(tr("เพื่อน"), color = Color(0xFFFFD98A), fontSize = 11.sp, maxLines = 1)
+                                false -> Text(tr("ยังไม่ได้เป็นเพื่อน"), color = PureWhite.copy(alpha = 0.7f), fontSize = 11.sp, maxLines = 1)
+                                null -> {}
+                            }
+                        }
+                        IconButton(onClick = { startCall(false) }, modifier = Modifier.size(40.dp)) { Icon(Icons.Filled.Call, tr("โทรเสียง"), tint = PureWhite.copy(alpha = if (callLocked(false)) 0.35f else 1f)) }
+                        IconButton(onClick = { startCall(true) }, modifier = Modifier.size(40.dp)) { Icon(Icons.Filled.Videocam, tr("วิดีโอคอล"), tint = PureWhite.copy(alpha = if (callLocked(true)) 0.35f else 1f)) }
+                        IconButton(onClick = { giftSheet = true }, modifier = Modifier.size(40.dp)) { Icon(Icons.Filled.CardGiftcard, tr("ส่งของขวัญ"), tint = Color(0xFFFFC94D)) }
                         var menu by remember { mutableStateOf(false) }
                         Box {
-                            TextButton(onClick = { menu = true }) { Text("⋮", color = White, fontSize = 18.sp) }
+                            IconButton(onClick = { menu = true }, modifier = Modifier.size(40.dp)) { Icon(Icons.Filled.MoreVert, tr("เมนู"), tint = PureWhite) }
                             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                                 val c = cs
+                                val ds = decorState
+                                // Room decor (VIP): first item so it is easy to find; free users get the VIP details instead of a dead end.
+                                if (ds?.canEdit == true) DropdownMenuItem(text = { Text(tr("🎨 ตกแต่งห้องแชท"), fontWeight = FontWeight.Bold) }, onClick = { menu = false; editDecor = true })
+                                else if (ds != null && ds.ownerUid.isNotBlank() && ds.ownerUid != me) DropdownMenuItem(text = { Text(tr("🎨 ห้องนี้ตกแต่งโดยอีกฝ่าย"), color = Slate400) }, onClick = { menu = false; status = tr("ห้องนี้ถูกตกแต่งโดยอีกฝ่าย ต้องให้เจ้าของรีเซ็ตก่อนจึงจะตกแต่งเองได้") })
+                                else DropdownMenuItem(text = { Text(tr("🎨 ตกแต่งห้องแชท 👑 VIP")) }, onClick = { menu = false; vipInfo = true })
                                 DropdownMenuItem(text = { Text(tr("🚩 รายงานผู้ใช้")) }, onClick = { menu = false; reportU = true })
                                 DropdownMenuItem(text = { Text(if (blocked) tr("✅ เลิกบล็อก") else tr("⛔ บล็อกผู้ใช้")) }, onClick = { menu = false; scope.launch {
                                     val u = FirebaseAuth.getInstance().currentUser ?: return@launch
@@ -186,34 +257,44 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                                 DropdownMenuItem(text = { Text(tr("🛡 กติกาการแชท")) }, onClick = { menu = false; showRules = true })
                                 if (c?.closed == true && c.closedByMe) DropdownMenuItem(text = { Text(tr("🔓 เปิดแชทอีกครั้ง")) }, onClick = { menu = false; scope.launch { status = SocialRepo.setClosed(chatId, false).orEmpty(); csTick++ } })
                                 else if (c?.closed != true) DropdownMenuItem(text = { Text(tr("🔒 ปิดแชทนี้")) }, onClick = { menu = false; scope.launch { status = SocialRepo.setClosed(chatId, true).orEmpty(); csTick++ } })
-                                val ds = decorState
-                                if (ds?.canEdit == true) DropdownMenuItem(text = { Text(tr("✨ ตกแต่งห้อง VIP")) }, onClick = { menu = false; editDecor = true })
-                                else if (ds != null && ds.ownerUid.isNotBlank() && ds.ownerUid != me) DropdownMenuItem(text = { Text(tr("✨ ห้องนี้ตกแต่งโดยอีกฝ่าย"), color = Slate400) }, onClick = { menu = false })
-                                else DropdownMenuItem(text = { Text(tr("✨ ตกแต่งห้อง (VIP เท่านั้น)"), color = Slate400) }, onClick = { menu = false; status = tr("การตกแต่งห้องสำหรับสมาชิก VIP") })
-                                if (decor != null) DropdownMenuItem(text = { Text(if (lite) tr("🎞 เปิดภาพเคลื่อนไหว") else tr("🪶 โหมดประหยัด (หยุด GIF)")) }, onClick = { menu = false; lite = !lite; prefs.edit().putBoolean("decorLite", lite).apply() })
                                 if (decor != null && ds?.ownerUid != me) DropdownMenuItem(text = { Text(tr("🚩 รายงานพื้นหลังไม่เหมาะสม")) }, onClick = { menu = false; scope.launch { status = if (com.example.social.GiftRepo.reportDecor(chatId, "inappropriate")) tr("รายงานแล้ว ขอบคุณ") else tr("รายงานไม่สำเร็จ") } })
                             }
                         }
                     }
                 }
-                val shared by produceState<com.example.social.Similarity?>(null, otherUid) { if (otherUid.isNotBlank()) value = com.example.social.InterestsRepo.profile(otherUid)?.similarity }
-                shared?.takeIf { it.shared.isNotEmpty() }?.let { Surface(color = Slate800, modifier = Modifier.fillMaxWidth()) { Box(Modifier.padding(10.dp)) { SharedInterests(it) } } }
+                Box(Modifier.fillMaxWidth().height(1.dp).background(Brush.horizontalGradient(listOf(Color.Transparent, Color(0xCCFFC94D), Color.Transparent))))
+                // Slim banner ad right under the header — free users only (the server sets showAds=false for VIP/premium; admin can switch the placement off).
+                Box(Modifier.fillMaxWidth().background(AppThemeMode.dialog), contentAlignment = Alignment.Center) { com.example.ads.PlacementBanner("chatRoom") }
+                if (isFriend == false) Row(Modifier.fillMaxWidth().background(AppThemeMode.card).padding(horizontal = 14.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(tr("คุณยังไม่ได้เป็นเพื่อนกัน"), color = AppThemeMode.muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                    if (otherUid.isNotBlank()) FriendButton(otherUid, small = true, onSent = { csTick++ }, onError = { status = it })
+                }
                 decorState?.hiddenReason?.takeIf { it.isNotBlank() }?.let { Text("✨ $it", color = Slate400, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 12.dp)) }
-                com.example.ads.PlacementBanner("chatRoom")
-                Box(Modifier.weight(1f)) {
+                Box(Modifier.weight(1f).background(chatPageBrush())) {
                 if (decor != null) DecorBackground(chatId, decor, token, stickerList.associateBy { it.id }, lite)
+                val dayStarts = remember(messages) { messages.filterIndexed { i, m -> i == 0 || dayKey(m.at) != dayKey(messages[i - 1].at) }.map { it.id }.toSet() }
                 LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
                     items(messages, key = { it.id }) { m ->
+                        if (m.id in dayStarts) DayChip(m.at)
                         val mine = m.senderUid == me
                         var showSender by remember { mutableStateOf(false) }
                         if (showSender) UserProfileDialog(m.senderUid) { showSender = false }
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.Bottom) {
                         if (!mine) { Box(Modifier.clip(CircleShape).clickable { showSender = true }) { Avatar(other?.avatar.orEmpty(), other?.displayName ?: "?", 28) }; Spacer(Modifier.width(6.dp)) }
                         Column(Modifier.weight(1f, fill = false), horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
-                            if (m.gift != null) GiftBubble(m.gift, mine) { scope.launch { status = com.example.social.GiftRepo.accept(m.gift.txId).msg; csTick++ } }
+                            val stickerId = if (m.imagePath == null && m.gift == null) com.example.social.ChatSticker.decode(m.text) else null
+                            if (m.gift != null) Box(Modifier.clickable(enabled = m.gift.videoUrl.isNotBlank()) { giftVideo = m.gift.videoUrl }) {
+                                GiftBubble(m.gift, mine) { scope.launch { status = com.example.social.GiftRepo.accept(m.gift.txId).msg; csTick++ } } }
+                            else if (stickerId != null) {
+                                // sticker message: the picture itself, no bubble (falls back to text if the admin removed it)
+                                val st = chatStickerMap[stickerId]
+                                if (st != null) Box(Modifier.size(width = 180.dp, height = 112.dp)) { StickerImage(st) } // wide stickers keep their shape
+                                else Text(com.example.social.ChatSticker.PREVIEW, color = Slate400, fontSize = 13.sp, modifier = Modifier.padding(6.dp))
+                            }
                             else if (decor != null && m.imagePath == null) DecorBubble(decor, m.text.orEmpty(), mine)
-                            else Surface(shape = RoundedCornerShape(14.dp), color = if (mine) Pink600 else Slate800) {
+                            else Box(Modifier.clip(bubbleShape(mine)).then(if (mine) Modifier.background(Brush.linearGradient(listOf(Color(0xFFFF2FA8), Color(0xFF9B3DFF))))
+                                else Modifier.background(AppThemeMode.cardSolid).border(1.dp, AppThemeMode.divider, bubbleShape(mine)))) {
                                 if (m.imagePath != null) {
                                     AsyncImage(
                                         model = ImageRequest.Builder(context).data(SocialRepo.imageUrl(chatId, m.imagePath))
@@ -221,32 +302,60 @@ fun RealChatRoomDialog(chatId: String, onClose: () -> Unit) {
                                         contentDescription = tr("รูปภาพ"), contentScale = ContentScale.Crop,
                                         modifier = Modifier.widthIn(max = 220.dp).heightIn(max = 280.dp).clip(RoundedCornerShape(14.dp))
                                     )
-                                } else Text(m.text.orEmpty(), color = if (mine) PureWhite else White, fontSize = 14.sp, modifier = Modifier.padding(10.dp))
+                                } else Text(m.text.orEmpty(), color = if (mine) PureWhite else AppThemeMode.text, fontSize = com.example.ui.components.Tweaks.num("chat.textSize").sp, modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp))
                             }
-                            if (mine && m == messages.lastOrNull { it.senderUid == me } && otherRead >= m.at) Text(tr("อ่านแล้ว"), color = Slate400, fontSize = 9.sp)
+                            Text(hhmm.format(Date(m.at)) + if (mine && m == messages.lastOrNull { it.senderUid == me } && otherRead >= m.at) " · " + tr("อ่านแล้ว") else "",
+                                color = AppThemeMode.muted, fontSize = 10.sp, modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp))
                         }
                         }
                     }
                 }
                 }
                 if (editDecor) RoomDecorEditor(chatId, decor, token) { saved -> editDecor = false; if (saved) decorTick++ }
+                if (vipInfo) com.example.ui.feed.VipDetailsDialog { vipInfo = false }
                 if (giftSheet) ChatGiftSheet(onDismiss = { giftSheet = false }) { item -> giftSheet = false; scope.launch { status = com.example.social.GiftRepo.sendGift(chatId, item.id).msg } }
+                fun sendStickerItem(item: com.example.social.CatalogItem) {
+                    StickerPanelState.remember(ctx, item.id)
+                    scope.launch {
+                        val pc = paid
+                        if (pc != null && pc.first && pc.second != me) { PaidChat.send(chatId, com.example.social.ChatSticker.encode(item.id))?.let { e -> status = e }; return@launch }
+                        if (!SocialRepo.sendSticker(chatId, item.id)) { cs = SocialRepo.chatStatus(chatId); status = if (cs?.canSend == false) "" else tr("ส่งสติกเกอร์ไม่สำเร็จ") } else status = ""
+                    }
+                }
                 if (status.isNotBlank()) Text(status, color = Amber400, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 12.dp))
                 cs?.takeIf { !it.canSend }?.let { Surface(color = Slate800, modifier = Modifier.fillMaxWidth()) { Text("🚫 " + it.reason, color = Amber400, fontSize = 13.sp, modifier = Modifier.padding(12.dp)) } }
-                if (cs?.canSend != false) Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) { Text("📷", fontSize = 20.sp) }
-                    OutlinedTextField(value = input, onValueChange = { if (it.length <= 2000) input = it }, modifier = Modifier.weight(1f),
-                        placeholder = { Text(tr("พิมพ์ข้อความ…"), color = Slate400) }, maxLines = 4,
-                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = White, unfocusedTextColor = White))
-                    Spacer(Modifier.width(6.dp))
-                    Button(enabled = input.isNotBlank(), colors = ButtonDefaults.buttonColors(containerColor = Pink500), onClick = {
-                        val t = input; input = ""
-                        scope.launch {
-                            val pc = paid
-                            if (pc != null && pc.first && pc.second != me) { PaidChat.send(chatId, t)?.let { e -> input = t; status = e }; return@launch }
-                            if (!SocialRepo.sendText(chatId, t)) { input = t; cs = SocialRepo.chatStatus(chatId); status = if (cs?.canSend == false) "" else tr("ส่งไม่สำเร็จ (ยืนยันอีเมลแล้วหรือยัง?)") } else status = "" }
-                    }) { Text(tr("ส่ง")) }
+                fun sendNow() {
+                    val t = input; if (t.isBlank()) return; input = ""
+                    scope.launch {
+                        val pc = paid
+                        if (pc != null && pc.first && pc.second != me) { PaidChat.send(chatId, t)?.let { e -> input = t; status = e }; return@launch }
+                        if (!SocialRepo.sendText(chatId, t)) { input = t; cs = SocialRepo.chatStatus(chatId); status = if (cs?.canSend == false) "" else tr("ส่งไม่สำเร็จ (ยืนยันอีเมลแล้วหรือยัง?)") } else status = "" }
                 }
+                if (cs?.canSend != false) Row(Modifier.fillMaxWidth().background(AppThemeMode.dialog).padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.Bottom) {
+                    val fieldShape = RoundedCornerShape(26.dp)
+                    Row(Modifier.weight(1f).heightIn(min = 52.dp).clip(fieldShape).background(AppThemeMode.field)
+                        .border(1.2.dp, Brush.linearGradient(listOf(Color(0xFFFF2FA8), Color(0xFF9B3DFF), Color(0xFFFFC94D))), fieldShape).padding(horizontal = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { if (!stickerSheet) { focus.clearFocus(); keyboard?.hide() }; stickerSheet = !stickerSheet }, modifier = Modifier.size(42.dp)) { Icon(Icons.Filled.EmojiEmotions, tr("สติกเกอร์"), tint = if (stickerSheet) Color(0xFFFF2FA8) else Color(0xFFC48CFF)) }
+                        TextField(value = input, onValueChange = { if (it.length <= 2000) input = it }, modifier = Modifier.weight(1f).onFocusChanged { if (it.isFocused) stickerSheet = false },
+                            placeholder = { Text(tr("พิมพ์ข้อความ…"), color = AppThemeMode.fieldHint, fontSize = 15.sp) }, maxLines = 5,
+                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 15.sp),
+                            colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent, disabledContainerColor = Color.Transparent,
+                                focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, disabledIndicatorColor = Color.Transparent,
+                                focusedTextColor = AppThemeMode.text, unfocusedTextColor = AppThemeMode.text, cursorColor = Color(0xFFFF2FA8)))
+                        IconButton(onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, modifier = Modifier.size(42.dp)) { Icon(Icons.Filled.PhotoCamera, tr("ส่งรูป"), tint = Color(0xFFC48CFF)) }
+                    }
+                    Spacer(Modifier.width(6.dp))
+                    val canSend = input.isNotBlank()
+                    Box(Modifier.size(52.dp).clip(CircleShape)
+                        .background(if (canSend) Brush.linearGradient(listOf(Color(0xFFFF2FA8), Color(0xFF9B3DFF))) else Brush.linearGradient(listOf(AppThemeMode.skeleton, AppThemeMode.skeleton)))
+                        .clickable(enabled = canSend) { sendNow() }, contentAlignment = Alignment.Center) {
+                        Icon(Icons.AutoMirrored.Filled.Send, tr("ส่ง"), tint = if (canSend) PureWhite else AppThemeMode.muted, modifier = Modifier.size(22.dp))
+                    }
+                }
+                // LINE-style sticker keyboard: opens in place of the phone keyboard, under the message box
+                if (stickerSheet && cs?.canSend != false) StickerPanel(onPick = { sendStickerItem(it) })
+                androidx.activity.compose.BackHandler(enabled = stickerSheet) { stickerSheet = false }
             }
         }
     }
@@ -285,13 +394,51 @@ fun GiftToUserButton(otherUid: String, modifier: Modifier = Modifier, compact: B
         open = false
         scope.launch {
             val chatId = SocialRepo.openChatWith(otherUid)
-            val msg = if (chatId == null) tr("เปิดแชทไม่สำเร็จ") else com.example.social.GiftRepo.sendGift(chatId, item.id).msg
+            val msg = if (chatId == null) SocialRepo.lastOpenError.ifBlank { tr("เปิดแชทไม่สำเร็จ") } else com.example.social.GiftRepo.sendGift(chatId, item.id).msg
             android.widget.Toast.makeText(ctx, msg, android.widget.Toast.LENGTH_LONG).show()
         }
     }
 }
 
 /** Realtime list of enabled chat gifts (catalog/chat). */
+/** Sticker picker: free stickers the admins uploaded (catalog/chatStickers), grouped by category. Tap = send. */
+@Composable
+internal fun ChatStickerSheet(onDismiss: () -> Unit, onPick: (com.example.social.CatalogItem) -> Unit) {
+    val items by remember { com.example.social.GiftRepo.catalog("chatStickers") }.collectAsState(initial = null)
+    var cat by remember { mutableStateOf<String?>(null) }
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = RoundedCornerShape(18.dp), color = Slate900) {
+            Column(Modifier.padding(16.dp).heightIn(max = 520.dp)) {
+                Text(tr("😊 สติกเกอร์"), color = White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text(tr("แตะเพื่อส่ง · ส่งฟรี"), color = Slate400, fontSize = 11.sp)
+                Spacer(Modifier.height(8.dp))
+                // admin catalog first; while it is empty, the built-in emoji stickers are offered
+                val l = items?.ifEmpty { com.example.social.ChatSticker.BUILT_IN }
+                when {
+                    l == null -> CircularProgressIndicator(color = Pink500)
+                    l.isEmpty() -> Text(tr("ยังไม่มีสติกเกอร์ (แอดมินกำลังเพิ่ม)"), color = Slate400, modifier = Modifier.padding(vertical = 16.dp))
+                    else -> {
+                        val cats = l.map { it.category }.filter { it.isNotBlank() && it != "chatStickers" }.distinct()
+                        if (cats.size > 1) Row(Modifier.horizontalScroll(rememberScrollState()).padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            FilterChip(selected = cat == null, onClick = { cat = null }, label = { Text(tr("ทั้งหมด"), fontSize = 12.sp) })
+                            cats.forEach { c -> FilterChip(selected = cat == c, onClick = { cat = c }, label = { Text(c, fontSize = 12.sp) }) }
+                        }
+                        val shown = if (cat == null) l else l.filter { it.category == cat }
+                        // picture stickers are wide (text + character) → 3 per row; emoji-only sets stay 4 square tiles
+                        val wide = shown.any { it.imageUrl.isNotBlank() }
+                        androidx.compose.foundation.lazy.grid.LazyVerticalGrid(androidx.compose.foundation.lazy.grid.GridCells.Fixed(if (wide) 3 else 4), verticalArrangement = Arrangement.spacedBy(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(shown.size) { i -> val it = shown[i]
+                                Box(Modifier.aspectRatio(if (wide) 1.5f else 1f).clip(RoundedCornerShape(12.dp)).background(Slate800).clickable { onPick(it) }.padding(4.dp)) { StickerImage(it) }
+                            }
+                        }
+                    }
+                }
+                TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) { Text(tr("ปิด"), color = Slate300) }
+            }
+        }
+    }
+}
+
 @Composable
 internal fun ChatGiftSheet(onDismiss: () -> Unit, onPick: (com.example.social.CatalogItem) -> Unit) {
     val items by remember { com.example.social.GiftRepo.catalog("chat") }.collectAsState(initial = null)
@@ -317,6 +464,86 @@ internal fun ChatGiftSheet(onDismiss: () -> Unit, onPick: (com.example.social.Ca
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Luxury header: deep violet → plum (dark) / royal purple → magenta (light), white text in both. */
+private fun chatHeaderBrush(): Brush = if (AppThemeMode.dark) Brush.horizontalGradient(listOf(Color(0xFF140F35), Color(0xFF2B1660), Color(0xFF3A1A5E)))
+    else Brush.horizontalGradient(listOf(Color(0xFF5B23A0), Color(0xFF8E45C8), Color(0xFFB0459F)))
+
+private fun chatPageBrush(): Brush = if (AppThemeMode.dark) Brush.verticalGradient(listOf(Color(0xFF0B0824), Color(0xFF130C33), Color(0xFF0B0824)))
+    else Brush.verticalGradient(listOf(Color(0xFFF6EEFF), Color(0xFFF1E2FA), Color(0xFFEBD8F7)))
+
+/** Chat bubble with a small "tail" corner on the sender's side. */
+private fun bubbleShape(mine: Boolean) = if (mine) RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp) else RoundedCornerShape(20.dp, 20.dp, 20.dp, 6.dp)
+
+private val hhmm = SimpleDateFormat("HH:mm", Locale.getDefault())
+private fun dayKey(at: Long) = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date(at))
+
+/** Centered date pill between days: วันนี้ / เมื่อวาน / d MMM yyyy. */
+@Composable
+private fun DayChip(at: Long) {
+    val now = System.currentTimeMillis()
+    val label = when (dayKey(at)) { dayKey(now) -> tr("วันนี้"); dayKey(now - 86_400_000L) -> tr("เมื่อวาน"); else -> SimpleDateFormat("d MMM yyyy", Locale("th", "TH")).format(Date(at)) }
+    Box(Modifier.fillMaxWidth().padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
+        Text(label, color = AppThemeMode.muted, fontSize = 11.sp, modifier = Modifier.clip(RoundedCornerShape(12.dp)).background(AppThemeMode.pill).padding(horizontal = 12.dp, vertical = 3.dp))
+    }
+}
+
+/** Recently sent stickers (on this phone) for the first tab of the sticker keyboard. */
+internal object StickerPanelState {
+    private const val KEY = "recentStickers"
+    fun recent(ctx: android.content.Context): List<String> = ctx.getSharedPreferences("friendtalk", 0).getString(KEY, "").orEmpty().split(',').filter { it.isNotBlank() }
+    fun remember(ctx: android.content.Context, id: String) {
+        val l = (listOf(id) + recent(ctx).filter { it != id }).take(16)
+        ctx.getSharedPreferences("friendtalk", 0).edit().putString(KEY, l.joinToString(",")).apply()
+    }
+}
+
+/**
+ * Sticker keyboard like LINE: a row of pack tabs (each shows the pack's first sticker; first tab = recently used),
+ * and the selected pack's stickers in a grid below. Tap a sticker = send. Stays open for sending more.
+ */
+@Composable
+internal fun StickerPanel(onPick: (com.example.social.CatalogItem) -> Unit) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val items by remember { com.example.social.GiftRepo.catalog("chatStickers") }.collectAsState(initial = null)
+    val all = items?.ifEmpty { com.example.social.ChatSticker.BUILT_IN }
+    var recentIds by remember { mutableStateOf(StickerPanelState.recent(ctx)) }
+    val packs = remember(all) { all.orEmpty().groupBy { it.category.ifBlank { "สติกเกอร์" } }.toList() }
+    var tab by rememberSaveable { mutableStateOf(-2) } // -1 = recent, -2 = not chosen yet
+    LaunchedEffect(packs.size) { if (tab == -2 && packs.isNotEmpty()) tab = if (recentIds.isNotEmpty()) -1 else 0 }
+    Column(Modifier.fillMaxWidth().height(300.dp).background(AppThemeMode.dialog)) {
+        HorizontalDivider(color = AppThemeMode.divider)
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            @Composable fun TabBox(on: Boolean, onClick: () -> Unit, content: @Composable BoxScope.() -> Unit) =
+                Box(Modifier.size(width = 52.dp, height = 40.dp).clip(RoundedCornerShape(10.dp)).background(if (on) AppThemeMode.field else Color.Transparent)
+                    .clickable(onClick = onClick).padding(4.dp), contentAlignment = Alignment.Center, content = content)
+            if (recentIds.isNotEmpty()) TabBox(tab == -1, { tab = -1 }) { Icon(Icons.Filled.AccessTime, tr("ล่าสุด"), tint = Color(0xFF7AA2FF)) }
+            packs.forEachIndexed { i, (_, list) -> TabBox(tab == i, { tab = i }) { StickerImage(list.first()) } }
+        }
+        val shown = when {
+            all == null -> null
+            tab == -1 -> recentIds.mapNotNull { id -> all.firstOrNull { it.id == id } }
+            else -> packs.getOrNull(tab)?.second.orEmpty()
+        }
+        if (tab >= 0) packs.getOrNull(tab)?.first?.let { Text(it, color = AppThemeMode.muted, fontSize = 11.sp, modifier = Modifier.padding(start = 12.dp, bottom = 2.dp)) }
+        when {
+            shown == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Pink500) }
+            shown.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(tr("ยังไม่มีสติกเกอร์"), color = AppThemeMode.muted) }
+            else -> {
+                val wide = shown.any { it.imageUrl.isNotBlank() }
+                androidx.compose.foundation.lazy.grid.LazyVerticalGrid(androidx.compose.foundation.lazy.grid.GridCells.Fixed(if (wide) 3 else 4), Modifier.fillMaxSize().padding(horizontal = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    contentPadding = PaddingValues(bottom = 8.dp)) {
+                    items(shown.size) { i -> val it = shown[i]
+                        Box(Modifier.aspectRatio(if (wide) 1.4f else 1f).clip(RoundedCornerShape(10.dp)).clickable {
+                            onPick(it); recentIds = (listOf(it.id) + recentIds.filter { r -> r != it.id }).take(16)
+                        }.padding(3.dp)) { StickerImage(it) }
                     }
                 }
             }

@@ -1,5 +1,7 @@
 package com.example.ui.shop
 
+import com.example.ui.components.dialogNavPadding
+
 import android.app.Activity
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -42,6 +44,18 @@ private suspend fun connect(client: BillingClient): Boolean = suspendCancellable
     })
 }
 
+// Play Billing 8: plain callback APIs (the result types changed from 7), wrapped as suspend functions here.
+private suspend fun queryDetails(client: BillingClient, params: QueryProductDetailsParams): List<ProductDetails> = suspendCancellableCoroutine { c ->
+    client.queryProductDetailsAsync(params) { r, result ->
+        if (c.isActive) c.resume(if (r.responseCode == BillingClient.BillingResponseCode.OK) result.productDetailsList else emptyList())
+    }
+}
+private suspend fun queryPurchases(client: BillingClient): List<Purchase> = suspendCancellableCoroutine { c ->
+    client.queryPurchasesAsync(QueryPurchasesParams.newBuilder().setProductType(BillingClient.ProductType.INAPP).build()) { r, list ->
+        if (c.isActive) c.resume(if (r.responseCode == BillingClient.BillingResponseCode.OK) list else emptyList())
+    }
+}
+
 @Composable
 fun ShopHost() {
     val tab by Shop.open.collectAsState()
@@ -81,16 +95,14 @@ private fun ShopDialog(initial: String, onClose: () -> Unit) {
         packs = mapOf("diamonds" to parse("diamonds"), "coins" to parse("coins"))
         if (enabled && packs.values.any { it.isNotEmpty() } && connect(client)) {
             val prods = packs.values.flatten().map { QueryProductDetailsParams.Product.newBuilder().setProductId(it.productId).setProductType(BillingClient.ProductType.INAPP).build() }
-            val res = client.queryProductDetails(QueryProductDetailsParams.newBuilder().setProductList(prods).build())
-            details = res.productDetailsList.orEmpty().associateBy { it.productId }
+            details = queryDetails(client, QueryProductDetailsParams.newBuilder().setProductList(prods).build()).associateBy { it.productId }
             // finish any purchase that was paid but not yet credited
-            client.queryPurchasesAsync(QueryPurchasesParams.newBuilder().setProductType(BillingClient.ProductType.INAPP).build()).purchasesList
-                .filter { it.purchaseState == Purchase.PurchaseState.PURCHASED }.forEach { verify(it) }
+            queryPurchases(client).filter { it.purchaseState == Purchase.PurchaseState.PURCHASED }.forEach { verify(it) }
         }
         loading = false
     }
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.fillMaxSize().systemBarsPadding().imePadding(), color = Slate950) {
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        Surface(Modifier.fillMaxSize().systemBarsPadding().dialogNavPadding().imePadding(), color = Slate950) {
             Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("🛍 " + tr("ร้านค้า"), color = White, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp, modifier = Modifier.weight(1f))
@@ -105,8 +117,15 @@ private fun ShopDialog(initial: String, onClose: () -> Unit) {
                 val list = packs[tab].orEmpty()
                 when {
                     loading -> CircularProgressIndicator(color = Pink500)
-                    !enabled || list.isEmpty() -> Surface(shape = RoundedCornerShape(14.dp), color = Slate900) {
-                        Text(tr("ยังไม่เปิดขาย — ระบบชำระเงินผ่าน Google Play กำลังจะเปิดเร็ว ๆ นี้"), color = White, modifier = Modifier.padding(16.dp))
+                    // Google Play billing not available (app not on Play yet / no products) → bank-transfer top-up checked by admins
+                    // Play Store build: digital goods must go through Google Play Billing only (no bank transfer); admins can still grant
+                    com.example.BuildConfig.PLAY_STORE && (!enabled || list.isEmpty() || details.isEmpty()) ->
+                        Text("ℹ️ " + tr("ยังไม่มีแพ็กเกจให้ซื้อในตอนนี้ ลองใหม่ภายหลัง"), color = Slate400, fontSize = 13.sp)
+                    !enabled || list.isEmpty() -> TopupSection(tab)
+                    // Play products configured but this copy was not installed from Google Play (test APK) → offer the other way
+                    details.isEmpty() -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("ℹ️ " + tr("ซื้อผ่าน Google Play ได้เมื่อติดตั้งแอปจาก Play Store — ตอนนี้เติมแบบโอนหรือให้แอดมินเติมให้ได้"), color = Slate400, fontSize = 12.sp)
+                        TopupSection(tab)
                     }
                     else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(list) { p ->
