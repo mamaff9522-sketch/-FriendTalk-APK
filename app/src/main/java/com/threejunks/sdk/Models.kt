@@ -67,9 +67,17 @@ data class ServerConfig(
 
 /**
  * A filter from the project's 3Jump filter library (made in 3Jump Filter Studio, uploaded in Super Admin).
- * [filterJson] is the Studio's filter.json; give it to `ThreeJunksAndroid.setFilter`.
+ * [filterJson] is the Studio's filter.json; give it to `ThreeJunksAndroid.setFilter`. [thumbUrl]: full URL of its
+ * preview image (null = none), cacheable forever. [category]: the picker tab it belongs to.
  */
-data class LibraryFilter(val id: String, val name: String, val updatedAt: Long, val filterJson: String)
+data class LibraryFilter(
+    val id: String,
+    val name: String,
+    val updatedAt: Long,
+    val filterJson: String,
+    val category: String = "",
+    val thumbUrl: String? = null,
+)
 
 data class SessionDescription(val type: String, val sdp: String)
 

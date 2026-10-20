@@ -29,7 +29,7 @@ class FilterLibrary(
                 if (r.code == 304) cache?.let { return it.second }
                 if (r.code == 403) return emptyList()
                 if (!r.isSuccessful) throw IOException("filters: HTTP ${r.code}")
-                val list = parse(JSONObject(r.body!!.string()))
+                val list = parse(JSONObject(r.body!!.string()), base)
                 r.header("ETag")?.let { cache = it to list }
                 return list
             }
@@ -38,11 +38,13 @@ class FilterLibrary(
     }
 
     companion object {
-        internal fun parse(o: JSONObject): List<LibraryFilter> {
+        internal fun parse(o: JSONObject, base: String): List<LibraryFilter> {
             val a = o.optJSONArray("filters") ?: return emptyList()
             return (0 until a.length()).map { i ->
                 val f = a.getJSONObject(i)
-                LibraryFilter(f.getString("id"), f.optString("name"), f.optLong("updatedAt"), f.getJSONObject("filter").toString())
+                val thumb = f.optString("thumbUrl").takeIf { it.isNotEmpty() && it != "null" }
+                LibraryFilter(f.getString("id"), f.optString("name"), f.optLong("updatedAt"), f.getJSONObject("filter").toString(),
+                    category = f.optString("category"), thumbUrl = thumb?.let { if (it.startsWith("/")) base + it else it })
             }
         }
     }

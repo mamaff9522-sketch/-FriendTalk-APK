@@ -6,8 +6,6 @@ import android.media.RingtoneManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.*
@@ -257,7 +255,7 @@ private fun CallScreen(a: CallManager.Active) {
                     }
                 }
                 Spacer(Modifier.weight(1f))
-                if (showFilters && a.video && TjFilters.list.isNotEmpty()) FilterStrip()
+                if (showFilters && a.video && Rtc.camOn && TjFilters.list.isNotEmpty()) FilterPicker(Modifier.padding(bottom = 8.dp))
                 Text("กดปุ่มย้อนกลับเพื่อย่อหน้าจอ แล้วใช้หน้าอื่นได้", color = Color.White.copy(alpha = 0.6f), fontSize = 11.sp,
                     modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 10.dp))
                 Row(Modifier.fillMaxWidth().padding(bottom = 36.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
@@ -272,22 +270,6 @@ private fun CallScreen(a: CallManager.Active) {
             if (a.video && Rtc.camOn) SelfPreview(ctx)
         }
     }
-}
-
-/** 3Jump filters (made in 3Jump Filter Studio, chosen in Three Junks admin), calls and lives: tap one to apply, "ไม่ใช้" = off. */
-@Composable
-internal fun FilterStrip() {
-    val sel = TjFilters.selectedId
-    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterChip("ไม่ใช้", sel == null) { TjFilters.select(null) }
-        TjFilters.list.forEach { f -> FilterChip(f.name, sel == f.id) { TjFilters.select(f) } }
-    }
-}
-
-@Composable
-private fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    Text(label, color = if (selected) Color.Black else Color.White, fontSize = 14.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-        modifier = Modifier.clip(RoundedCornerShape(18.dp)).background(if (selected) Color.White else Color(0x66000000)).clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 8.dp))
 }
 
 /** My own camera in a video call: drag it anywhere; on release it snaps to the nearest side edge (left / right),

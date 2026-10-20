@@ -369,7 +369,7 @@ fun LiveHostScreen(onClose: () -> Unit) {
                         if (err.isNotBlank() || Rtc.error != null) Text(Rtc.error ?: err, color = Color(0xFFFFC94D), fontSize = 12.sp, modifier = Modifier.padding(horizontal = 14.dp))
                         Spacer(Modifier.weight(1f))
                         GiftBanner(msgs, Modifier.padding(start = 12.dp, bottom = 8.dp))
-                        if (showFilters && Rtc.camOn && TjFilters.list.isNotEmpty()) FilterStrip()
+                        if (showFilters && Rtc.camOn && TjFilters.list.isNotEmpty()) FilterPicker(Modifier.padding(bottom = 8.dp))
                         CommentsPanel(id, msgs, Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
                             SmallRound(if (Rtc.micOn) Icons.Filled.Mic else Icons.Filled.MicOff, "ไมค์", active = !Rtc.micOn) { Rtc.toggleMic() }
                             SmallRound(Icons.Filled.Cameraswitch, "สลับกล้อง") { Rtc.switchCamera() }
