@@ -1,4 +1,7 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
+import java.io.IOException
+import java.net.URI
+import java.security.MessageDigest
 
 plugins {
   alias(libs.plugins.android.application)
@@ -13,20 +16,20 @@ plugins {
 // filters still apply colour/skin effects, but no face tracking.
 val faceModelSha = "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff"
 val filterAssets = layout.buildDirectory.dir("generated/filter-assets").get().asFile
-val fetchFaceModel by tasks.registering {
+val fetchFaceModel = tasks.register("fetchFaceModel") {
   outputs.dir(filterAssets)
   doLast {
     val out = File(filterAssets, "face_landmarker.task")
-    fun sha(f: File) = java.security.MessageDigest.getInstance("SHA-256").digest(f.readBytes()).joinToString("") { "%02x".format(it) }
+    fun sha(f: File) = MessageDigest.getInstance("SHA-256").digest(f.readBytes()).joinToString("") { b -> "%02x".format(b) }
     if (out.exists() && sha(out) == faceModelSha) return@doLast
     filterAssets.mkdirs()
     try {
       val tmp = File(filterAssets, "face_landmarker.tmp")
-      java.net.URI("https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task")
-        .toURL().openStream().use { i -> tmp.outputStream().use { i.copyTo(it) } }
+      URI("https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task")
+        .toURL().openStream().use { input -> tmp.outputStream().use { output -> input.copyTo(output) } }
       if (sha(tmp) != faceModelSha) { tmp.delete(); throw GradleException("face_landmarker.task: SHA-256 mismatch") }
       tmp.renameTo(out)
-    } catch (e: java.io.IOException) {
+    } catch (e: IOException) {
       logger.warn("w: face model download failed (${e.message}): 3Jump filters without face tracking in this build")
     }
   }
