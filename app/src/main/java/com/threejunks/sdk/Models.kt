@@ -61,7 +61,15 @@ data class ServerConfig(
     val maxCallDurationSec: Int,
     val ringTimeoutSec: Int,
     val rtcConfig: RtcConfig,
+    /** 3Jump filters are enabled for this project (Super Admin: feature "ฟิลเตอร์ 3Jump"). */
+    val filters: Boolean = false,
 )
+
+/**
+ * A filter from the project's 3Jump filter library (made in 3Jump Filter Studio, uploaded in Super Admin).
+ * [filterJson] is the Studio's filter.json; give it to `ThreeJunksAndroid.setFilter`.
+ */
+data class LibraryFilter(val id: String, val name: String, val updatedAt: Long, val filterJson: String)
 
 data class SessionDescription(val type: String, val sdp: String)
 

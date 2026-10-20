@@ -4,11 +4,15 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.view.View
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.auth.FirebaseAuth
 import com.threejunks.sdk.Call
 import com.threejunks.sdk.CallEnd
 import com.threejunks.sdk.CallState
+import com.threejunks.sdk.LibraryFilter
 import com.threejunks.sdk.ServerConfig
 import com.threejunks.sdk.ThreeJunksListener
 import com.threejunks.sdk.android.ThreeJunksAndroid
@@ -56,6 +60,28 @@ object ThreeJunksCalls {
     private var inviteDeadline = 0L
     private var attempt = 0
 
+    /** 3Jump filters of the project (uploaded in Three Junks Super Admin → คลังฟิลเตอร์ 3Jump); empty = no filter button. */
+    var filters by mutableStateOf<List<LibraryFilter>>(emptyList()); private set
+    /** The filter on my camera (kept for the next call while it is still in the library). */
+    var filterId by mutableStateOf<String?>(null); private set
+
+    /** Apply a library filter to my camera (null = off). Main thread. */
+    fun selectFilter(f: LibraryFilter?) {
+        val s = sdk ?: return
+        runCatching { s.setLibraryFilter(f) }.onSuccess { filterId = f?.id }.onFailure { s.setFilter(null); filterId = null }
+    }
+
+    private fun loadFilters() {
+        val s = sdk ?: return
+        s.loadFilters { r ->
+            if (sdk !== s) return@loadFilters
+            val list = r.getOrNull() ?: return@loadFilters
+            filters = list
+            // re-apply the remembered (or updated) filter; drop it when it left the library
+            selectFilter(list.firstOrNull { it.id == filterId })
+        }
+    }
+
     /** Start Three Junks media for a FriendTalk call (main thread). */
     fun start(ctx: Context, peerUid: String, video: Boolean, outgoing: Boolean): Boolean {
         release()
@@ -95,6 +121,7 @@ object ThreeJunksCalls {
     private val listener = object : ThreeJunksListener {
         override fun onConnected(config: ServerConfig) {
             connected = true
+            if (config.filters) loadFilters() else { filters = emptyList(); sdk?.setFilter(null) }
             if (outgoing && inviteWanted && sdk?.client?.currentCall == null) invite()
         }
 
@@ -121,6 +148,8 @@ object ThreeJunksCalls {
             val msg = if (end.reason == "media_failed") "สัญญาณขาดหาย สายถูกตัด" else ""
             CallManager.hangupFromMedia(msg)
         }
+
+        override fun onFiltersUpdated() = loadFilters()
 
         override fun onError(code: String, message: String) {
             if (code == "not_registered" && retryInvite()) return

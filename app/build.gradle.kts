@@ -8,8 +8,36 @@ plugins {
   alias(libs.plugins.google.services)
 }
 
+// 3Jump filters: MediaPipe Face Landmarker model (Apache-2.0) for face-placed makeup. Downloaded at build time into
+// build/ (not committed) and checked against the same SHA-256 as Three Junks' scripts/fetch-models.js. Without it the
+// filters still apply colour/skin effects, but no face tracking.
+val faceModelSha = "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff"
+val filterAssets = layout.buildDirectory.dir("generated/filter-assets").get().asFile
+val fetchFaceModel by tasks.registering {
+  outputs.dir(filterAssets)
+  doLast {
+    val out = File(filterAssets, "face_landmarker.task")
+    fun sha(f: File) = java.security.MessageDigest.getInstance("SHA-256").digest(f.readBytes()).joinToString("") { "%02x".format(it) }
+    if (out.exists() && sha(out) == faceModelSha) return@doLast
+    filterAssets.mkdirs()
+    try {
+      val tmp = File(filterAssets, "face_landmarker.tmp")
+      java.net.URI("https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task")
+        .toURL().openStream().use { i -> tmp.outputStream().use { i.copyTo(it) } }
+      if (sha(tmp) != faceModelSha) { tmp.delete(); throw GradleException("face_landmarker.task: SHA-256 mismatch") }
+      tmp.renameTo(out)
+    } catch (e: java.io.IOException) {
+      logger.warn("w: face model download failed (${e.message}): 3Jump filters without face tracking in this build")
+    }
+  }
+}
+tasks.named("preBuild") { dependsOn(fetchFaceModel) }
+
 android {
   namespace = "com.example"
+  sourceSets["main"].assets.srcDir(filterAssets)
+  // MediaPipe memory-maps the face model: it must stay uncompressed in the APK/AAB
+  androidResources { noCompress += listOf("task", "tflite") }
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
   defaultConfig {
@@ -116,6 +144,8 @@ dependencies {
   implementation("io.getstream:stream-webrtc-android:1.3.8")
   // Live: LiveKit Android SDK (Apache-2.0); its WebRTC is renamed, so it coexists with the calls' WebRTC.
   implementation("io.livekit:livekit-android:2.29.0")
+  // 3Jump filters (engine vendored in app/src/main/java/com/threejump/filterstudio): face landmarks, Apache-2.0
+  implementation("com.google.mediapipe:tasks-vision:0.10.14")
   implementation(platform(libs.androidx.compose.bom))
   implementation(platform(libs.firebase.bom))
 implementation("com.google.firebase:firebase-auth")

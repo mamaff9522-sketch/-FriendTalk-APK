@@ -6,6 +6,8 @@ import android.media.RingtoneManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.*
@@ -223,6 +225,7 @@ private fun CallScreen(a: CallManager.Active) {
     LaunchedEffect(a.callId) { delay((com.example.ui.components.Tweaks.num("call.ringTimeoutSec") * 1000).toLong()); if (CallManager.connectedAt == 0L && CallManager.active?.callId == a.callId) CallManager.hangup() }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { delay(1000); now = System.currentTimeMillis() } }
+    var showFilters by remember { mutableStateOf(false) }
     val since = CallManager.connectedAt
     val status = when {
         Rtc.error != null -> Rtc.error!!
@@ -254,6 +257,7 @@ private fun CallScreen(a: CallManager.Active) {
                     }
                 }
                 Spacer(Modifier.weight(1f))
+                if (showFilters && a.video && ThreeJunksCalls.filters.isNotEmpty()) FilterStrip()
                 Text("กดปุ่มย้อนกลับเพื่อย่อหน้าจอ แล้วใช้หน้าอื่นได้", color = Color.White.copy(alpha = 0.6f), fontSize = 11.sp,
                     modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 10.dp))
                 Row(Modifier.fillMaxWidth().padding(bottom = 36.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
@@ -261,12 +265,29 @@ private fun CallScreen(a: CallManager.Active) {
                     if (a.video) RoundAction(if (Rtc.camOn) Icons.Filled.Videocam else Icons.Filled.VideocamOff, "กล้อง", if (Rtc.camOn) Color(0x33FFFFFF) else Color.White, 56.dp, dark = !Rtc.camOn) { Rtc.toggleCam() }
                     else RoundAction(Icons.Filled.VolumeUp, "ลำโพง", if (Rtc.speakerOn) Color.White else Color(0x33FFFFFF), 56.dp, dark = Rtc.speakerOn) { Rtc.toggleSpeaker() }
                     if (a.video) RoundAction(Icons.Filled.Cameraswitch, "สลับกล้อง", Color(0x33FFFFFF), 56.dp) { Rtc.switchCamera() }
+                    if (a.video && Rtc.camOn && ThreeJunksCalls.filters.isNotEmpty()) RoundAction(Icons.Filled.AutoAwesome, "ฟิลเตอร์", if (ThreeJunksCalls.filterId != null) Color.White else Color(0x33FFFFFF), 56.dp, dark = ThreeJunksCalls.filterId != null) { showFilters = !showFilters }
                     RoundAction(Icons.Filled.CallEnd, "วางสาย", Color(0xFFFF3B5C), 64.dp) { CallManager.hangup() }
                 }
             }
             if (a.video && Rtc.camOn) SelfPreview(ctx)
         }
     }
+}
+
+/** 3Jump filters (made in 3Jump Filter Studio, chosen in Three Junks admin): tap one to apply, "ไม่ใช้" = off. */
+@Composable
+private fun FilterStrip() {
+    val sel = ThreeJunksCalls.filterId
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilterChip("ไม่ใช้", sel == null) { ThreeJunksCalls.selectFilter(null) }
+        ThreeJunksCalls.filters.forEach { f -> FilterChip(f.name, sel == f.id) { ThreeJunksCalls.selectFilter(f) } }
+    }
+}
+
+@Composable
+private fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Text(label, color = if (selected) Color.Black else Color.White, fontSize = 14.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+        modifier = Modifier.clip(RoundedCornerShape(18.dp)).background(if (selected) Color.White else Color(0x66000000)).clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 8.dp))
 }
 
 /** My own camera in a video call: drag it anywhere; on release it snaps to the nearest side edge (left / right),

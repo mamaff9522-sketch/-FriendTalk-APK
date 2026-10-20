@@ -9,6 +9,7 @@ import android.os.Looper
 import com.threejunks.sdk.Call
 import com.threejunks.sdk.CallEnd
 import com.threejunks.sdk.CallState
+import com.threejunks.sdk.LibraryFilter
 import com.threejunks.sdk.ServerConfig
 import com.threejunks.sdk.ThreeJunksClient
 import com.threejunks.sdk.ThreeJunksListener
@@ -51,6 +52,7 @@ class ThreeJunksAndroid(
         override fun onPeerReconnecting(call: Call, reconnecting: Boolean) = listener.onPeerReconnecting(call, reconnecting)
         override fun onCallEnded(call: Call, end: CallEnd) { audio.stop(); listener.onCallEnded(call, end) }
         override fun onError(code: String, message: String) = listener.onError(code, message)
+        override fun onFiltersUpdated() = listener.onFiltersUpdated()
     }, callbackExecutor = { main.post(it) })
 
     /** Show the local camera in [view] (mirrored). Call on the main thread. */
@@ -71,6 +73,27 @@ class ThreeJunksAndroid(
     fun switchCamera() = media.switchCamera()
 
     fun setSpeakerphone(on: Boolean) = audio.setSpeaker(on)
+
+    /**
+     * Filter on the local camera: the content of `filter.json` exported by 3Jump Filter Studio (null = off).
+     * Rendered on this phone's GPU with the Studio's own engine before the video is sent, so the other side sees it.
+     * Can change at any time, also mid-call. Throws IllegalArgumentException for an invalid filter.json.
+     */
+    fun setFilter(filterJson: String?) = media.filter.set(filterJson)
+
+    /** Apply a filter from the project's 3Jump filter library (null = off). */
+    fun setLibraryFilter(filter: LibraryFilter?) = setFilter(filter?.filterJson)
+
+    /**
+     * Load the project's 3Jump filter library in the background; [done] runs on the main thread with the list
+     * (empty when the project has no filters or they are disabled) or the error.
+     */
+    fun loadFilters(done: (Result<List<LibraryFilter>>) -> Unit) {
+        Thread({
+            val r = runCatching { client.fetchFilters() }
+            main.post { done(r) }
+        }, "threejunks-filters").start()
+    }
 
     /** Reconnect quickly after the app comes to the foreground or the network changes (Wi-Fi <-> mobile data). */
     fun onForegroundOrNetworkChanged() = client.onNetworkOrForegroundChanged()

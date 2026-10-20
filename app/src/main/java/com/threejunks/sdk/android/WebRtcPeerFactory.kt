@@ -8,6 +8,8 @@ import com.threejunks.sdk.PeerEvents
 import com.threejunks.sdk.PeerFactory
 import com.threejunks.sdk.RtcConfig
 import com.threejunks.sdk.SessionDescription
+import com.threejunks.sdk.android.filter.StudioFilterControl
+import com.threejunks.sdk.android.filter.StudioFilterProcessor
 import org.webrtc.AudioSource
 import org.webrtc.AudioTrack
 import org.webrtc.Camera2Enumerator
@@ -24,6 +26,7 @@ import org.webrtc.PeerConnectionFactory
 import org.webrtc.RtpTransceiver
 import org.webrtc.SdpObserver
 import org.webrtc.SurfaceTextureHelper
+import org.webrtc.ThreadUtils
 import org.webrtc.VideoFrame
 import org.webrtc.VideoSink
 import org.webrtc.VideoSource
@@ -50,6 +53,8 @@ class WebRtcPeerFactory(context: Context) : PeerFactory {
     val eglBase: EglBase = EglBase.create()
     val localVideo = ProxyVideoSink()
     val remoteVideo = ProxyVideoSink()
+    /** 3Jump Filter Studio filter on the local camera (off until a filter is set). */
+    val filter = StudioFilterControl()
     @Volatile private var current: WebRtcPeer? = null
 
     private val factory: PeerConnectionFactory by lazy {
@@ -99,6 +104,7 @@ class WebRtcPeerFactory(context: Context) : PeerFactory {
         private var capturer: CameraVideoCapturer? = null
         private var textureHelper: SurfaceTextureHelper? = null
         private var videoSource: VideoSource? = null
+        private var processor: StudioFilterProcessor? = null
         private var videoTrack: VideoTrack? = null
         @Volatile private var closed = false
 
@@ -195,20 +201,24 @@ class WebRtcPeerFactory(context: Context) : PeerFactory {
             val cap = cams.createCapturer(name, null) ?: return
             val helper = SurfaceTextureHelper.create("tj-capture", eglBase.eglBaseContext)
             val source = factory.createVideoSource(false)
+            val fx = StudioFilterProcessor(app, helper.handler, filter)
+            source.setVideoProcessor(fx)
             cap.initialize(helper, app, source.capturerObserver)
             cap.startCapture(1280, 720, 30)
             val track = factory.createVideoTrack("tj-video", source)
             track.addSink(localVideo)
             tr.sender.setTrack(track, false)
-            capturer = cap; textureHelper = helper; videoSource = source; videoTrack = track
+            capturer = cap; textureHelper = helper; videoSource = source; videoTrack = track; processor = fx
         }
 
         private fun stopCamera() {
             videoTransceiver?.sender?.setTrack(null, false)
             videoTrack?.removeSink(localVideo)
             try { capturer?.stopCapture() } catch (e: InterruptedException) { Thread.currentThread().interrupt() }
+            val fx = processor; val helper = textureHelper
+            if (fx != null && helper != null) ThreadUtils.invokeAtFrontUninterruptibly(helper.handler, Runnable { fx.release() })
             capturer?.dispose(); videoTrack?.dispose(); videoSource?.dispose(); textureHelper?.dispose()
-            capturer = null; videoTrack = null; videoSource = null; textureHelper = null
+            capturer = null; videoTrack = null; videoSource = null; textureHelper = null; processor = null
         }
 
         fun switchCamera() { capturer?.switchCamera(null) }
